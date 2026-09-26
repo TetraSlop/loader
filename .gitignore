@@ -1,0 +1,13 @@
+/build*/
+/out/
+/tmloader.ini
+*.log
+*.pdb
+*.ilk
+*.obj
+*.exe
+*.dll
+*.dat
+*.bin
+*.bmp
+__pycache__/
