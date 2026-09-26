@@ -21,4 +21,5 @@ std::string sha256File(const std::filesystem::path& path);
 bool isProfileAlias(const char* host);
 bool isIpv4Address(const std::string& host);
 bool pathIsWithin(const std::filesystem::path& path, const std::filesystem::path& root);
+bool outputPathAllowed(const Config& config, const std::filesystem::path& path);
 }

@@ -45,7 +45,10 @@ Changes deliberately made during extraction:
 - Diagnostic frame capture is opt-in. Automatic UI events, watchdog thread
   suspension, timed window closure and bounded probe termination are omitted.
 - File mutation checks now include create/truncate dispositions and resolved
-  path boundaries. Error handling rejects invalid paths before passing them on.
+  path boundaries. Log/capture destinations are confined to the dedicated
+  runtime/logs tree and reject data/pub/DLL aliases and hard-linked files.
+  Capture destinations are checked again immediately before writing. Error
+  handling rejects invalid paths before passing them on.
 - COM factory references are released after creating their objects; unused
   generated COM declarations are replaced by a minimal independently declared
   ABI with the observed method slots.
@@ -71,3 +74,31 @@ Remaining debt, not hidden by the module split:
 - The local xiloader checkout provided module/build/API style reference only;
   no xiloader implementation files or proprietary runtime files were copied.
   `source_provenance.json` records hashes of the supplied harness sources.
+
+## COM ABI audit after review
+
+The first extraction accidentally omitted the two SquareEnix registry-name
+getters when counting the area setter. This was caught before any native run.
+The corrected mappings were checked against both C and C++ declarations in
+the supplied `polcore_interface.h` and the named calls in `tm_wrapper.cpp`:
+
+| Call | Slot | ABI arguments after this |
+|---|---:|---|
+| SetParamInit |5| HINSTANCE, mutable LPSTR |
+| GetCommonFunctionTable |7| unsigned long** |
+| SetAreaCode |27| signed long |
+| TM GameStart |9| core IUnknown*, 28-byte LaunchDescriptor* |
+
+Slots23/24 are PlayOnline registry-name getters and25/26 are SquareEnix
+registry-name getters; neither pair may be skipped. All calls above return
+HRESULT and use stdcall. COM factories use the Windows SDK IClassFactory ABI.
+The existing D3D8 slots/signatures were compared with the original wrapper
+without changes: factory CreateDevice15, display mode8, device Present15,
+back-buffer16, texture20, draw70..73; surface description8, lock9, unlock10.
+Common-function-table calls remain the original cdecl variadic ABI, separate
+from COM vtable indices.
+
+The headless mock declares the complete named Viewer method sequence through
+SetAreaCode and verifies actual dispatch, input arguments and output-table
+pointer. It explicitly demonstrates that slot25 reaches a different method;
+reintroducing the original mistaken index fails the regression check.

@@ -50,11 +50,11 @@ int launch(const Config& config) {
     installFileHooks(coreModule, false);
     installNetworkHooks(coreModule);
     IUnknown* core = createObject(coreModule, abi::coreClass, abi::coreInterface);
-    checked(abi::coreCall<abi::SetAreaCode>(core, 1UL), "Viewer area");
+    checked(abi::coreCall<abi::SetAreaCode>(core, 1L), "Viewer area");
     static char cmd[] = " /game DdcMLbB";
     checked(abi::coreCall<abi::SetParamInit>(core, GetModuleHandleW(nullptr), cmd), "Viewer parameters");
     Command* table = nullptr;
-    checked(abi::coreCall<abi::GetCommonTable>(core, &table), "Viewer command table");
+    checked(abi::coreCall<abi::GetCommonTable>(core, reinterpret_cast<unsigned long**>(&table)), "Viewer command table");
     if (reinterpret_cast<BYTE*>(table) != reinterpret_cast<BYTE*>(coreModule) + 0x6fbe8)
         throw std::runtime_error("Unsupported live Viewer command-table layout");
     table[0x3c5](1); // POL_LANG / registry language.

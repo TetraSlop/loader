@@ -81,7 +81,7 @@ Config parseConfig(const std::vector<std::string>& args) {
         if (p.is_relative()) p = c.runtimeDir / p;
         p = std::filesystem::absolute(p).lexically_normal();
     };
-    resolve(c.game, "TM_native.dll"); resolve(c.core, "polcore_native.dll"); resolve(c.log, "tmloader.log");
+    resolve(c.game, "TM_native.dll"); resolve(c.core, "polcore_native.dll"); resolve(c.log, "logs/tmloader.log");
     if (!isIpv4Address(c.server)) throw std::runtime_error("--server must be a numeric IPv4 address");
     if (c.gamePort == c.profilePort) throw std::runtime_error("Game and profile ports must differ");
     if (c.profilePort == 51241) throw std::runtime_error("Profile port cannot use the client's reserved GameIRC port 51241");
@@ -90,10 +90,9 @@ Config parseConfig(const std::vector<std::string>& args) {
         throw std::runtime_error("--pol-id must be an eight-character PlayOnline ID");
     if (c.password.empty() || c.password.size() > 15 || c.password.find_first_of("\r\n") != std::string::npos)
         throw std::runtime_error("Password must contain 1..15 bytes without CR/LF");
-    if (!pathIsWithin(c.log, c.runtimeDir)) throw std::runtime_error("Log must be inside --runtime-dir");
-    if (std::filesystem::weakly_canonical(c.log) == std::filesystem::weakly_canonical(c.game) ||
-        std::filesystem::weakly_canonical(c.log) == std::filesystem::weakly_canonical(c.core))
-        throw std::runtime_error("Log cannot overwrite a runtime DLL");
+    if (!outputPathAllowed(c, c.log)) throw std::runtime_error("Log must be in runtime/logs and cannot alias an input DLL or asset");
+    if (c.diagnostics && !outputPathAllowed(c, c.runtimeDir / "logs/captures/frame_00060.bmp"))
+        throw std::runtime_error("Diagnostic capture directory escapes the runtime/logs output tree");
     return c;
 }
 
@@ -108,7 +107,7 @@ const char* usage() {
            "  --profile-port PORT    Profile service (default 51220)\n"
            "  --pol-id ID            Synthetic account (default EEEEEEEF)\n"
            "  --password VALUE       Synthetic password (default tm-local-test)\n"
-           "  --log FILE             Log inside runtime dir (default tmloader.log)\n"
+           "  --log FILE             Log inside runtime/logs (default logs/tmloader.log)\n"
            "  --diagnostics          Extra renderer logs and frame captures\n"
            "  --check                Read-only files/hash/config checks; no game launch\n"
            "  --help | --version\n";

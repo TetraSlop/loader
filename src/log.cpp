@@ -65,6 +65,9 @@ int WINAPI loggedMessageW(HWND, const wchar_t *text, const wchar_t *title, UINT 
 }
 
 void openLog(const std::filesystem::path& path) {
+    if (!outputPathAllowed(options, path)) throw std::runtime_error("Refusing unsafe log destination");
+    std::filesystem::create_directories(path.parent_path());
+    if (options.diagnostics) std::filesystem::create_directories(options.runtimeDir / "logs/captures");
     logfile = _wfopen(path.c_str(), L"w");
     if (!logfile) throw std::runtime_error("Cannot open log file");
 }

@@ -12,7 +12,9 @@ static_assert(sizeof(LaunchDescriptor) == 28, "The game requires its 32-bit laun
 using GetClass = HRESULT(STDAPICALLTYPE*)(REFCLSID, REFIID, void**);
 using GameStart = HRESULT(__stdcall*)(IUnknown*, IUnknown*, LaunchDescriptor*);
 // IUnknown slots0..2; these Viewer method positions match the observed ABI.
-enum CoreMethod { SetParamInit = 5, GetCommonTable = 7, SetAreaCode = 25 };
+// Slots23/24 are PlayOnline registry-name getters;25/26 are the separate
+// SquareEnix registry-name getters. SetAreaCode follows both pairs at27.
+enum CoreMethod { SetParamInit = 5, GetCommonTable = 7, SetAreaCode = 27 };
 template<unsigned Slot, typename... Args>
 HRESULT coreCall(IUnknown* object, Args... args) {
     using Fn = HRESULT(__stdcall*)(IUnknown*, Args...);

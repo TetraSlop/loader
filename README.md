@@ -47,6 +47,12 @@ to the external directory. Paths for game/core/log are relative to runtime-dir
 unless absolute. A relative runtime-dir in a config is resolved beside that
 config. Command-line settings override config entries.
 
+Log destinations must remain inside `runtime-dir/logs`; the default is
+`logs/tmloader.log`. Captures use `logs/captures/frame_NNNNN.bmp`. Canonical
+paths escaping that tree, paths inside data/pub, input DLL aliases and existing
+hard-linked output files are rejected. These directories are created only
+during an actual launch, not by `--check`.
+
 This command is read-only: it verifies config, DLL hashes and representative
 required assets without loading DLLs, creating windows or connecting:
 

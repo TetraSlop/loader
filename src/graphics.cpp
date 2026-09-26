@@ -95,9 +95,11 @@ static void captureFrame(void *device, DWORD frame)
     hr = ((Lock)sv[9])(surface, &locked, NULL, 0x10);
     if (SUCCEEDED(hr) && (desc[0] == 21 || desc[0] == 22))
     {
-        char name[MAX_PATH];
-        sprintf_s(name, "%s\\frame_%05lu.bmp", runtimeRoot, frame);
-        FILE *f = fopen(name, "wb");
+        char name[40];
+        sprintf_s(name, "frame_%05lu.bmp", frame);
+        const auto path = options.runtimeDir / "logs/captures" / name;
+        FILE *f = outputPathAllowed(options, path) ? _wfopen(path.c_str(), L"wb") : nullptr;
+        if (!f) logf("Diagnostic capture skipped: unsafe or unwritable destination");
         if (f)
         {
             BITMAPFILEHEADER bf = {};

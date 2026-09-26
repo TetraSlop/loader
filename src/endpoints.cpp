@@ -23,4 +23,33 @@ bool pathIsWithin(const std::filesystem::path& path, const std::filesystem::path
         if (i == p.end() || _wcsicmp(i->c_str(), j->c_str())) return false;
     return i != p.end();
 }
+
+bool outputPathAllowed(const Config& config, const std::filesystem::path& path) {
+    // Resolve directory junctions/file symlinks before checking boundaries.
+    // The dedicated output tree must itself remain within the runtime root.
+    if (!pathIsWithin(path, config.runtimeDir / "logs") || !pathIsWithin(path, config.runtimeDir) ||
+        pathIsWithin(path, config.runtimeDir / "data") || pathIsWithin(path, config.runtimeDir / "pub")) return false;
+    std::error_code ec;
+    auto resolved = std::filesystem::weakly_canonical(path, ec);
+    if (ec) return false;
+    for (const auto& input : {config.game, config.core}) {
+        auto canonicalInput = std::filesystem::weakly_canonical(input, ec);
+        if (ec || !_wcsicmp(resolved.c_str(), canonicalInput.c_str())) return false;
+    }
+    // A hard link inside logs can still name a DLL or asset outside logs.
+    // Refuse all multiply-linked existing output files, without writing them.
+    DWORD attributes = GetFileAttributesW(path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        DWORD error = GetLastError();
+        return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
+    }
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY) return false;
+    HANDLE file = CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return false;
+    BY_HANDLE_FILE_INFORMATION info{};
+    BOOL ok = GetFileInformationByHandle(file, &info);
+    CloseHandle(file);
+    return ok && info.nNumberOfLinks == 1;
+}
 }

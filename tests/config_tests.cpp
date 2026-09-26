@@ -34,6 +34,8 @@ int main() {
     rejects([] { parseConfig({"--runtime-dir", ".", "--unknown", "a"}); });
     rejects([] { parseConfig({"--runtime-dir", ".", "--log", "../outside.log"}); });
     rejects([] { parseConfig({"--runtime-dir", ".", "--log", "TM_native.dll"}); });
+    for (const auto* path : {"data/gW201.dat", "pub/home00/option.bin", "logs/../data/gW201.dat", "logs-other/output.log"})
+        rejects([&] { parseConfig({"--runtime-dir", ".", "--log", path}); });
     rejects([] { parseConfig({"--runtime-dir", ".", "--pol-id", "invalid"}); });
     rejects([] { parseConfig({"--runtime-dir", ".", "--password", ""}); });
 
@@ -47,5 +49,29 @@ int main() {
     { std::ofstream f(fixture, std::ios::binary); f << "abc"; }
     assert(sha256File(fixture) == "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD");
     std::filesystem::remove(fixture);
+
+    const auto runtime = std::filesystem::current_path() / "output-path-fixture";
+    assert(!std::filesystem::exists(runtime)); // Never reuse/remove an unrelated existing directory.
+    std::filesystem::create_directories(runtime / "data");
+    std::filesystem::create_directories(runtime / "pub/home00");
+    std::filesystem::create_directories(runtime / "logs/captures");
+    for (const auto* relative : {"TM_native.dll", "polcore_native.dll", "data/gW201.dat", "pub/home00/option.bin"}) {
+        { std::ofstream f(runtime / relative); f << "read-only-fixture"; }
+        rejects([&] { parseConfig({"--runtime-dir", runtime.string(), "--log", relative}); });
+    }
+    c = parseConfig({"--runtime-dir", runtime.string(), "--diagnostics"});
+    assert(outputPathAllowed(c, c.log));
+    assert(outputPathAllowed(c, runtime / "logs/captures/frame_00060.bmp"));
+    const auto alias = runtime / "logs/captures/frame_00060.bmp";
+    std::filesystem::create_hard_link(runtime / "data/gW201.dat", alias);
+    assert(!outputPathAllowed(c, alias));
+    rejects([&] { parseConfig({"--runtime-dir", runtime.string(), "--log", "logs/captures/frame_00060.bmp"}); });
+    rejects([&] { parseConfig({"--runtime-dir", runtime.string(), "--diagnostics"}); });
+    std::filesystem::remove(alias);
+    for (const auto* relative : {"TM_native.dll", "polcore_native.dll", "data/gW201.dat", "pub/home00/option.bin"}) {
+        std::ifstream f(runtime / relative); std::string text; std::getline(f, text);
+        assert(text == "read-only-fixture"); // Validation never truncated any fixture.
+    }
+    std::filesystem::remove_all(runtime);
     std::cout << "Config, endpoint aliases, path boundaries and SHA256 passed.\n";
 }

@@ -5,7 +5,7 @@ Windows SDK10.0.26100.0. Configuration: x86 RelWithDebInfo, static C++ runtime.
 
 - `cmake --build build --config RelWithDebInfo --parallel 4`: succeeded with no
   warnings in the final changed-source build.
-- `ctest --test-dir build -C RelWithDebInfo --output-on-failure`: **3/3 passed**.
+- `ctest --test-dir build -C RelWithDebInfo --output-on-failure`: **4/4 passed**.
   Input tests use fake pointer/focus/key APIs and do not interact with the
   desktop. They cover focus/window-entry/acquisition discontinuities, scaled
   movement, absolute virtual-cursor alignment, keyboard-animation handoff,
@@ -14,7 +14,14 @@ Windows SDK10.0.26100.0. Configuration: x86 RelWithDebInfo, static C++ runtime.
   fields, endpoint syntax/ports, complete ppNNN alias family, path boundaries,
   reserved profile-port ambiguity, credential shape and a known SHA256 vector.
   Temporary test config files are created only inside the build directory and
-  removed by the test.
+  removed by the test. Additional fixtures verify that data/gW201.dat,
+  pub/home00/option.bin, DLL paths, directory traversal and hard-linked capture
+  aliases are rejected without changing any file's contents.
+- The COM ABI regression test uses a full named mock vtable, independent of
+  numerical loader indices, to verify SetAreaCode27, SetParamInit5 and
+  GetCommonFunctionTable7, their arguments/output pointer and the launch
+  descriptor ABI. It demonstrates that the old slot25 reaches the wrong
+  method. No native DLL or COM server is loaded for this test.
 - `python -B tools/verify_build.py`: x86 PE32, Windows GUI subsystem,
   embedded asInvoker/uiAccess=false manifest and preserved legacy DEP/ASLR
   compatibility flags verified by reading the built executable.
