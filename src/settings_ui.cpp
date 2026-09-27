@@ -2,6 +2,7 @@
 #include "window.h"
 #include "render_scale.h"
 #include "texture_replacements.h"
+#include "screenshot.h"
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx9.h"
@@ -51,16 +52,7 @@ LRESULT CALLBACK panelProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam
     return DefWindowProcW(hwnd, message, wparam, lparam);
 }
 
-void settingsContents() {
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->WorkPos);
-    ImGui::SetNextWindowSize(viewport->WorkSize);
-    ImGui::Begin("Wrapper settings", nullptr, ImGuiWindowFlags_NoDecoration |
-                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-    ImGui::TextUnformatted("TETRA MASTER");
-    ImGui::TextDisabled("Window settings");
-    ImGui::Separator();
-    auto value = currentWindowSettings();
+void displaySettings(WindowSettings value) {
     ImGui::Spacing();
     if (ImGui::Checkbox("Borderless fullscreen", &value.fullscreen))
         postWindowAction(WindowAction::fullscreen, value.fullscreen);
@@ -77,32 +69,55 @@ void settingsContents() {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextUnformatted("Rendering resolution");
-    int resolution = static_cast<int>(std::find(renderScales.begin(), renderScales.end(), value.renderScale) - renderScales.begin());
+    int resolution = value.autoResolution ? 0 : 1 + static_cast<int>(
+        std::find(renderScales.begin(), renderScales.end(), value.renderScale) - renderScales.begin());
     ImGui::SetNextItemWidth(-1);
     if (ImGui::Combo("##resolution", &resolution,
-        "1x - 640 x 480 (original)\0" "2x - 1280 x 960\0"
+        "Automatic - match display\0" "1x - 640 x 480 (original)\0"
+        "720p - 960 x 720\0" "2x - 1280 x 960\0" "1080p - 1440 x 1080\0"
         "1440p - 1920 x 1440\0" "4x - 2560 x 1920\0"
         "4K - 2880 x 2160\0" "Supersampled - 3840 x 2880\0"))
-        postWindowAction(WindowAction::renderScale, resolution);
+        postWindowAction(resolution == 0 ? WindowAction::autoResolution : WindowAction::renderScale, resolution - 1);
     float active = activeRenderScale();
     ImGui::TextDisabled("Currently rendering at %.0f x %.0f", 640 * active, 480 * active);
-    ImGui::TextWrapped("Rendering resolution applies after relaunch.");
+    ImGui::TextWrapped("Applies after relaunch. Automatic chooses the resolution for your monitor, up to 4K height.");
+}
+
+void artworkSettings(WindowSettings value) {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextUnformatted("Artwork");
-    if (ImGui::Checkbox("Use HD textures", &value.hdTextures))
+    if (ImGui::Checkbox("Enhanced cards and artwork", &value.hdTextures))
         postWindowAction(WindowAction::hdTextures, value.hdTextures);
+    if (ImGui::Checkbox("Enhanced fonts", &value.hdFonts))
+        postWindowAction(WindowAction::hdFonts, value.hdFonts);
     if (texturePackCount())
         ImGui::TextDisabled("%zu images available; %u replacements loaded", texturePackCount(), textureReplacementCount());
     else ImGui::TextDisabled("No HD texture pack loaded");
     ImGui::TextWrapped("Switches immediately. Images missing from the pack use their originals.");
+    ImGui::TextWrapped("Font selection affects in-game text. Lettering painted into menus or card images follows the artwork setting.");
+}
+
+void screenshotSettings() {
+    ImGui::Spacing();
+    ImGui::TextWrapped("Press F12 in the game to save a PNG at the active rendering resolution, without window borders or this panel.");
+    ImGui::TextWrapped("Saved in runtime/logs/screenshots. Each capture gets its own filename.");
+    if (ImGui::Button("Save screenshot and return")) {
+        requestScreenshot();
+        closeRequested = true;
+    }
+    const auto status = screenshotStatus();
+    if (!status.empty()) ImGui::TextWrapped("%s", status.c_str());
+}
+
+void settingsFooter() {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextUnformatted("Audio");
     ImGui::TextWrapped("Adjust music and sound effect levels in the game's Options menu.");
     ImGui::Spacing();
     ImGui::Separator();
-    ImGui::TextUnformatted("F10: settings     Alt+Enter: fullscreen");
+    ImGui::TextWrapped("F10: settings   F12: screenshot   Alt+Enter: fullscreen");
     ImGui::TextWrapped("Window preferences are saved for this local account. Online matches continue while this panel is open.");
     ImGui::Spacing();
     if (ImGui::Button("Return to game")) closeRequested = true;
@@ -111,12 +126,44 @@ void settingsContents() {
         postWindowAction(WindowAction::close);
         closeRequested = true;
     }
+}
+
+void settingsContents() {
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->WorkPos);
+    ImGui::SetNextWindowSize(viewport->WorkSize);
+    // Keep ImGui's vertical scrolling available when the monitor's work area
+    // is shorter than the preferred panel; controls must remain reachable.
+    ImGui::Begin("Wrapper settings", nullptr, ImGuiWindowFlags_NoTitleBar |
+                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::TextUnformatted("TETRA MASTER");
+    ImGui::TextDisabled("Game settings");
+    ImGui::Separator();
+    const auto value = currentWindowSettings();
+    if (ImGui::BeginTabBar("settings-tabs")) {
+        if (ImGui::BeginTabItem("Display")) {
+            displaySettings(value);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Artwork & text")) {
+            artworkSettings(value);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Screenshots")) {
+            screenshotSettings();
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+    settingsFooter();
     ImGui::End();
 }
 
 void panelMain() {
     // The supported ImGui Win32/DX9 backends own a separate settings window.
     // Its message/render loop stays responsive if the legacy D3D8 game pauses.
+    ImGui_ImplWin32_EnableDpiAwareness();
     HINSTANCE instance = GetModuleHandleW(nullptr);
     WNDCLASSEXW wc{sizeof(WNDCLASSEXW)};
     wc.style = CS_CLASSDC;

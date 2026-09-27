@@ -3,6 +3,7 @@
 #endif
 #include "texture_pack.h"
 #include "texture_replacements.h"
+#include <unknwn.h>
 #include <nlohmann/json.hpp>
 #include <cassert>
 #include <cstring>
@@ -35,8 +36,9 @@ template<class F> void rejects(F fn) {
 struct FakeTexture {
     void** table;
     unsigned width, height, references = 1;
-    FakeTexture* hd = nullptr;
+    IUnknown* attachment = nullptr;
 };
+bool failAttachment = false;
 ULONG WINAPI addRef(FakeTexture* self) { return ++self->references; }
 ULONG WINAPI release(FakeTexture* self) { return --self->references; }
 HRESULT WINAPI description(FakeTexture* self, UINT level, DWORD* desc) {
@@ -44,8 +46,35 @@ HRESULT WINAPI description(FakeTexture* self, UINT level, DWORD* desc) {
 }
 HRESULT WINAPI privateData(FakeTexture* self, REFGUID, const void* object, DWORD size, DWORD flags) {
     assert(size == sizeof(void*) && flags == 1);
-    self->hd = const_cast<FakeTexture*>(static_cast<const FakeTexture*>(object));
-    addRef(self->hd);
+    if (failAttachment) return E_FAIL;
+    if (self->attachment) self->attachment->Release();
+    self->attachment = const_cast<IUnknown*>(static_cast<const IUnknown*>(object));
+    self->attachment->AddRef();
+    return S_OK;
+}
+HRESULT WINAPI getPrivateData(FakeTexture* self, REFGUID, void* object, DWORD* size) {
+    assert(*size == sizeof(void*));
+    if (!self->attachment) return E_FAIL;
+    *static_cast<IUnknown**>(object) = self->attachment;
+    self->attachment->AddRef();
+    return S_OK;
+}
+void clearAttachment(FakeTexture& texture) {
+    if (texture.attachment) texture.attachment->Release();
+    texture.attachment = nullptr;
+}
+struct FakeDevice { void** table; FakeTexture* bound = nullptr; };
+HRESULT WINAPI getTexture(FakeDevice* self, UINT stage, FakeTexture** output) {
+    assert(stage == 0);
+    *output = self->bound;
+    if (*output) addRef(*output);
+    return S_OK;
+}
+HRESULT WINAPI setTexture(FakeDevice* self, UINT stage, FakeTexture* texture) {
+    assert(stage == 0);
+    if (texture) addRef(texture);
+    if (self->bound) release(self->bound);
+    self->bound = texture;
     return S_OK;
 }
 void* vtable[19]{};
@@ -71,6 +100,30 @@ HRESULT invoke(const std::vector<uint8_t>& bytes, void** output) {
     return uploadTextureWithReplacement(nullptr, bytes.data(), static_cast<UINT>(bytes.size()),
         0xffffffff,0xffffffff,1,0,21,0,0x80001,0xffffffff,0,nullptr,nullptr,output);
 }
+void checkSelection(TextureCategory category) {
+    void* table[62]{};
+    table[60] = reinterpret_cast<void*>(getTexture);
+    table[61] = reinterpret_cast<void*>(setTexture);
+    FakeDevice device{table};
+    setTexture(&device, 0, &original);
+    for (bool artwork : {false, true}) for (bool fonts : {false, true}) {
+        {
+            TextureDrawBinding binding(&device, artwork, fonts);
+            const bool enabled = category == TextureCategory::font ? fonts : artwork;
+            assert(device.bound == (enabled ? &replacement : &original));
+        }
+        assert(device.bound == &original);
+    }
+    for (bool enabled : {false, true}) {
+        {
+            TextureDrawBinding combined(&device, enabled);
+            assert(device.bound == (enabled ? &replacement : &original));
+        }
+        assert(device.bound == &original);
+    }
+    setTexture(&device, 0, nullptr);
+    assert(original.references == 1 && replacement.references == 1);
+}
 int main() {
     const auto root = fs::current_path() / "texture-pack-fixture";
     assert(!fs::exists(root));
@@ -89,7 +142,7 @@ int main() {
     pack.load(manifest);
     assert(pack.size() == 1);
     auto* match = pack.match(source.data(), source.size());
-    assert(match && match->scale == 4 && pack.read(*match) == hd);
+    assert(match && match->scale == 4 && match->category == TextureCategory::artwork && pack.read(*match) == hd);
     for (unsigned pad = 0; pad <= 15; ++pad) {
         auto aligned = source; aligned.insert(aligned.end(), pad, 0xcd);
         assert(pack.match(aligned.data(), aligned.size()) == match);
@@ -106,25 +159,63 @@ int main() {
     for (const auto& sizes : {nlohmann::json{288,383}, nlohmann::json{0,384}, nlohmann::json{8193,8193}, nlohmann::json{288}}) {
         auto bad = record; bad["physical_size"] = sizes; save(bad); rejects([&] { pack.load(manifest); });
     }
+    // Classify every verified atlas, without treating arbitrary embedded text
+    // or similar-looking asset names as font data. No new manifest field needed.
+    for (unsigned index = 0; index < 42; ++index) {
+        auto font = record;
+        font["id"] = "gW000/0090/font_" + std::string(index < 10 ? "0" : "") + std::to_string(index);
+        save(font); pack.load(manifest);
+        assert(pack.match(source.data(), source.size())->category == TextureCategory::font);
+    }
+    for (const auto* id : {"gW000/0090/font_42", "gW000/0090/font_0", "gW000/0090/font_000",
+                          "gW000/0090/font_01.png", "gW000/0090/font_1a", "gW000/0090/font_-1",
+                          "gW000/0092/font_00", "other/font_00", "gW000/0090/window", "gW201/1000/ttl_menu"}) {
+        auto artwork = record; artwork["id"] = id; artwork["category"] = "font";
+        save(artwork); pack.load(manifest);
+        assert(pack.match(source.data(), source.size())->category == TextureCategory::artwork);
+    }
+    {
+        auto alias = record; alias["id"] = "gW000/0090/font_00";
+        std::ofstream out(manifest);
+        out << nlohmann::json{{"version", 1}, {"textures", {record, alias}}};
+        out.close();
+        rejects([&] { pack.load(manifest); }); // Source-hash aliases cannot disagree about category.
+    }
     save(record);
     vtable[1] = reinterpret_cast<void*>(addRef); vtable[2] = reinterpret_cast<void*>(release);
-    vtable[4] = reinterpret_cast<void*>(privateData); vtable[14] = reinterpret_cast<void*>(description);
+    vtable[4] = reinterpret_cast<void*>(privateData); vtable[5] = reinterpret_cast<void*>(getPrivateData);
+    vtable[14] = reinterpret_cast<void*>(description);
     configureTextureReplacements(manifest, upload);
     void* out = nullptr;
-    assert(invoke(source, &out) == S_OK && out == &original && original.hd == &replacement);
+    assert(invoke(source, &out) == S_OK && out == &original && original.attachment);
     assert(uploads == 2 && replacement.references == 1); // Attachment owns the one remaining HD ref.
     assert(original.width == 128 && original.height == 128);
-    original.hd = nullptr; release(&replacement);
+    checkSelection(TextureCategory::artwork);
+    clearAttachment(original);
     assert(replacement.references == 0);
+    for (const auto* id : {"gW000/0090/font_00", "gW201/1000/ttl_menu"}) {
+        auto selected = record; selected["id"] = id; save(selected);
+        configureTextureReplacements(manifest, upload);
+        replacement.references = 1;
+        assert(invoke(source, &out) == S_OK && original.attachment);
+        checkSelection(id == std::string("gW000/0090/font_00") ? TextureCategory::font : TextureCategory::artwork);
+        clearAttachment(original);
+        assert(replacement.references == 0);
+    }
+    save(record); configureTextureReplacements(manifest, upload);
+    replacement.references = 1; failAttachment = true;
+    assert(invoke(source, &out) == S_OK && out == &original && !original.attachment);
+    assert(replacement.references == 0); // Failed private-data attachment releases its companion.
+    failAttachment = false;
     uploads = 0; failHd = true;
-    assert(invoke(source, &out) == S_OK && out == &original && !original.hd && uploads == 2);
+    assert(invoke(source, &out) == S_OK && out == &original && !original.attachment && uploads == 2);
     failHd = false; failOriginal = true; uploads = 0;
     assert(FAILED(invoke(source, &out)) && !out && uploads == 1);
     failOriginal = false;
     write(root / "card.png", png(284,384)); uploads = 0;
-    assert(invoke(source, &out) == S_OK && out == &original && !original.hd && uploads == 1);
+    assert(invoke(source, &out) == S_OK && out == &original && !original.attachment && uploads == 1);
     fs::remove(root / "card.png"); uploads = 0;
     assert(invoke(source, &out) == S_OK && out == &original && uploads == 1);
     fs::remove(manifest); fs::remove(root);
-    std::cout << "PASS: source alignment, path/dimension/hash validation, padded upload and original fallback\n";
+    std::cout << "PASS: source alignment, category classification, independent font/artwork selection, padded upload and original fallback\n";
 }

@@ -39,8 +39,8 @@ target_include_directories(loader_textures PUBLIC src)
 target_link_libraries(loader_textures PUBLIC loader_config PRIVATE nlohmann_json::nlohmann_json)
 add_executable(tmloader WIN32 src/main.cpp src/loader.cpp src/runtime.cpp src/log.cpp
     src/patch.cpp src/files.cpp src/graphics.cpp src/input.cpp src/network.cpp
-    src/window.cpp src/settings_ui.cpp src/audio.cpp src/desktop.cpp src/render_scale.cpp)
-target_link_libraries(tmloader PRIVATE loader_config loader_imgui loader_textures ole32 advapi32 user32 gdi32 ws2_32)
+    src/window.cpp src/settings_ui.cpp src/audio.cpp src/desktop.cpp src/render_scale.cpp src/screenshot.cpp)
+target_link_libraries(tmloader PRIVATE loader_config loader_imgui loader_textures ole32 windowscodecs advapi32 user32 gdi32 ws2_32)
 # The protected original DLL executes legacy generated code; preserve the
 # confirmed process-local compatibility settings, not system DEP/UAC changes.
 target_link_options(tmloader PRIVATE /ENTRY:mainCRTStartup /NXCOMPAT:NO /DYNAMICBASE:NO
@@ -72,6 +72,9 @@ if(BUILD_TESTING)
     add_executable(graphics_tests tests/graphics_tests.cpp src/render_scale.cpp)
     target_link_libraries(graphics_tests PRIVATE loader_config loader_textures user32 ole32)
     add_test(NAME graphics_presentation COMMAND graphics_tests)
+    add_executable(screenshot_tests tests/screenshot_tests.cpp)
+    target_link_libraries(screenshot_tests PRIVATE loader_config windowscodecs ole32 advapi32)
+    add_test(NAME screenshot_png COMMAND screenshot_tests)
     add_executable(settings_ui_tests tests/settings_ui_tests.cpp)
     target_include_directories(settings_ui_tests PRIVATE src)
     target_link_libraries(settings_ui_tests PRIVATE loader_imgui user32 gdi32)

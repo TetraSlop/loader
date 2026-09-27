@@ -19,14 +19,18 @@ to the runtime; the earlier `textures/` pack remains available.
 Launch the normal sibling `tmserver/Play.cmd`. No launch or desktop control
 was performed while preparing these changes.
 
-1. Compare the main menu, collection and shop with **F10 > Use HD textures**
-   enabled and disabled. This takes effect immediately. The panel should show
+1. Compare the main menu, collection and shop with **F10 > Artwork & text**
+   artwork/font toggles enabled and disabled independently. This takes effect immediately. The panel should show
    images loaded, and the log should identify successful HD uploads.
 2. Start a CPU game and check card art, direction arrows, yellow scores, text
    colors/shadows, hover alignment, cursor poses and scene transitions.
 3. Review the replacement Latin face and gold menu labels for style preference.
    They retain original placement and spacing, but are newly rasterized faces.
    The conservative original-glyph font pack remains in the texture lab.
+4. Use F12 to save full-resolution PNGs for comparison; inspect the Screenshots
+   tab for the saved path or any failure. Automatic resolution and manual choices
+   take effect on relaunch. Check resizing/pointer alignment with Windows display
+   scaling enabled, since the game and settings threads now opt into DPI awareness.
 
 ## Known visual limits
 

@@ -120,12 +120,13 @@ void draw(void* device) {
     check(call(device, 72, 5UL, 2U, vertices.data(), static_cast<UINT>(sizeof(Vertex))), "Draw textured quad");
 }
 
-std::vector<DWORD> render(void* device, void* original, bool useScope, bool enabled, void* expectedDuringDraw) {
+std::vector<DWORD> render(void* device, void* original, bool useScope, bool enabled,
+    void* expectedDuringDraw, bool fontsEnabled = true) {
     check(call(device, 61, 0U, original), "Bind original texture");
     check(call(device, 36, 0UL, nullptr, 1UL, background, 1.0f, 0UL), "Clear offscreen frame");
     check(call(device, 34), "Begin scene");
     if (useScope) {
-        TextureDrawBinding binding(device, enabled);
+        TextureDrawBinding binding(device, enabled, fontsEnabled);
         checkBinding(device, expectedDuringDraw);
         draw(device);
     } else {
@@ -185,15 +186,17 @@ private:
 };
 
 void checkOwnership(void* device, bool defaultPool) {
-    bool destroyed = false;
-    auto original = defaultPool ? defaultPoolTexture(device) : texture(device, false);
-    auto* probe = new LifetimeProbe(destroyed);
-    const HRESULT result = attachTextureReplacement(original.Get(), probe);
-    probe->Release();
-    check(result, "Attach ownership probe");
-    require(!destroyed, "Original failed to retain replacement after caller Release");
-    original.Reset();
-    require(destroyed, "Original Release leaked its private replacement reference");
+    for (auto category : {TextureCategory::artwork, TextureCategory::font}) {
+        bool destroyed = false;
+        auto original = defaultPool ? defaultPoolTexture(device) : texture(device, false);
+        auto* probe = new LifetimeProbe(destroyed);
+        const HRESULT result = attachTextureReplacement(original.Get(), probe, category);
+        probe->Release();
+        check(result, "Attach ownership probe");
+        require(!destroyed, "Original failed to retain replacement after caller Release");
+        original.Reset();
+        require(destroyed, "Original Release leaked its private replacement reference");
+    }
 }
 
 void checkDefaultPoolLifecycle(void* device, Present8& parameters, const std::vector<DWORD>& expected) {
@@ -239,7 +242,7 @@ ComPtr<IUnknown> fontTexture(void* device, UINT scale) {
 }
 
 std::vector<DWORD> renderFont(void* device, void* buffer, void* source,
-    DWORD shader, float scale, bool reference) {
+    DWORD shader, float scale, bool reference, bool artworkEnabled = true, bool fontsEnabled = true) {
     check(call(device, 61, 0U, source), "Bind font atlas");
     if (!reference) check(setScaleConstants(device, scale), "Set font scale");
     check(call(device, 76, reference ? gameVertexFormat : shader), "Select font shader");
@@ -265,7 +268,7 @@ std::vector<DWORD> renderFont(void* device, void* buffer, void* source,
         std::memcpy(data, vertices.data(), sizeof(vertices));
         check(call(buffer, 12), "Unlock font vertices");
         {
-            TextureDrawBinding replacement(device, !reference);
+            TextureDrawBinding replacement(device, !reference && artworkEnabled, !reference && fontsEnabled);
             check(call(device, 70, 5UL, 0U, 2U), "Draw font glyph");
         }
         checkBinding(device, source);
@@ -276,7 +279,7 @@ std::vector<DWORD> renderFont(void* device, void* buffer, void* source,
 
 void checkFontRendering(void* device, Present8& parameters) {
     auto original = fontTexture(device, 1), replacement = fontTexture(device, 4);
-    check(attachTextureReplacement(original.Get(), replacement.Get()), "Attach font replacement");
+    check(attachTextureReplacement(original.Get(), replacement.Get(), TextureCategory::font), "Attach font replacement");
     const auto nativeDescription = description(original.Get());
     for (float scale : {3.0f, 4.5f}) {
         parameters.width = static_cast<UINT>(640 * scale);
@@ -296,6 +299,14 @@ void checkFontRendering(void* device, Present8& parameters) {
         const auto expected = renderFont(device, buffer.Get(), replacement.Get(), shader, scale, true);
         const auto actual = renderFont(device, buffer.Get(), original.Get(), shader, scale, false);
         require(differences(expected, actual) == 0, "Font UV, tint, alpha or shadow differs from independent reference");
+        const auto native = renderFont(device, buffer.Get(), original.Get(), shader, scale, true);
+        require(differences(expected, native) > 100, "Font fixtures do not distinguish original and enhanced glyphs");
+        require(differences(expected, renderFont(device, buffer.Get(), original.Get(), shader, scale, false, false, true)) == 0,
+            "Disabling artwork also disabled enhanced fonts");
+        require(differences(native, renderFont(device, buffer.Get(), original.Get(), shader, scale, false, true, false)) == 0,
+            "Enhanced artwork prevented selecting original fonts");
+        require(differences(native, renderFont(device, buffer.Get(), original.Get(), shader, scale, false, false, false)) == 0,
+            "Disabling both categories did not retain original fonts");
         size_t visible = 0;
         for (DWORD pixel : actual) if ((pixel & 0xffffff) != (background & 0xffffff)) ++visible;
         require(visible > 1000, "Font comparison contains no visible glyphs");
@@ -339,6 +350,8 @@ int main() {
         require(attachTextureReplacement(nullptr, replacement.Get()) == E_INVALIDARG, "Null original accepted");
         require(attachTextureReplacement(original.Get(), nullptr) == E_INVALIDARG, "Null replacement accepted");
         require(attachTextureReplacement(original.Get(), original.Get()) == E_INVALIDARG, "Self attachment accepted");
+        require(attachTextureReplacement(original.Get(), replacement.Get(), static_cast<TextureCategory>(99)) == E_INVALIDARG,
+            "Unknown replacement category accepted");
         check(attachTextureReplacement(original.Get(), replacement.Get()), "Attach HD texture");
         checkLogicalSize(original.Get());
         require(description(original.Get()) == originalDescription, "Original level description changed after attachment");
@@ -350,6 +363,10 @@ int main() {
         checkAlphaAndCrop(enabled);
         const auto disabled = render(device.Get(), original.Get(), true, false, original.Get());
         require(differences(disabled, originalFrame) == 0, "Disabling replacements failed to restore original artwork");
+        require(differences(render(device.Get(), original.Get(), true, true, borrowedReplacement, false), expected) == 0,
+            "Disabling enhanced fonts also disabled HD artwork");
+        require(differences(render(device.Get(), original.Get(), true, false, original.Get(), false), originalFrame) == 0,
+            "Disabling both categories did not retain original artwork");
         checkLogicalSize(original.Get());
         require(description(original.Get()) == originalDescription, "Original level description changed after drawing");
         auto missing = texture(device.Get(), false);

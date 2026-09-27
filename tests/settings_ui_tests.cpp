@@ -5,17 +5,67 @@
 #include "window.h"
 #include "imgui_internal.h"
 #include <cassert>
+#include <cstdio>
+#include <cstring>
 #include "../src/settings_ui.cpp"
+namespace {
+tmloader::WindowSettings testSettings;
+std::string captureStatus;
+unsigned screenshotRequests, statusReads;
+size_t availableImages = 503;
+}
 namespace tmloader {
 HWND gameWindow{};
 void logf(const char*, ...) {}
-WindowSettings currentWindowSettings() { return {}; }
+WindowSettings currentWindowSettings() { return testSettings; }
 float activeRenderScale() { return 4.5f; }
-size_t texturePackCount() { return 250; }
+size_t texturePackCount() { return availableImages; }
 unsigned textureReplacementCount() { return 5; }
 void postWindowAction(WindowAction, LPARAM) {}
+void requestScreenshot() noexcept { ++screenshotRequests; }
+std::string screenshotStatus() { ++statusReads; return captureStatus; }
 }
+
+namespace {
+void frame() {
+    ImGui::NewFrame();
+    tmloader::settingsContents();
+    ImGui::Render();
+    assert(ImGui::GetDrawData()->Valid && ImGui::GetDrawData()->TotalVtxCount > 0);
+}
+
+ImGuiWindow* selectTab(const char* label, ImVec2 size) {
+    auto& io = ImGui::GetIO();
+    io.DisplaySize = size;
+    frame();
+    auto* window = ImGui::FindWindowByName("Wrapper settings");
+    assert(window);
+    auto* tabs = ImGui::GetCurrentContext()->TabBars.GetByKey(window->GetID("settings-tabs"));
+    assert(tabs && tabs->Tabs.Size == 3);
+    ImGuiID selected = 0;
+    for (auto& tab : tabs->Tabs)
+        if (std::strcmp(ImGui::TabBarGetTabName(tabs, &tab), label) == 0) selected = tab.ID;
+    assert(selected);
+    tabs->NextSelectedTabId = selected;
+    ImGui::SetScrollY(window, 0);
+    // Tab transitions and scrollbar visibility use previous-frame measurements.
+    for (int i = 0; i < 3; ++i) frame();
+    assert(tabs->VisibleTabId == selected);
+    return window;
+}
+
+void checkWidth(ImGuiWindow* window) {
+    assert(window->ScrollMax.x == 0);
+    const float available = window->InnerRect.GetWidth() - window->WindowPadding.x * 2;
+    if (window->ContentSize.x > available + 1) {
+        printf("Content width %.1f exceeds available %.1f\n", window->ContentSize.x, available);
+        assert(false);
+    }
+}
+}
+
 int main() {
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     // Build the real panel's draw lists without a window, GPU, game or desktop input.
     for (float scale : {1.0f, 1.5f, 2.0f}) {
         ImGui::CreateContext();
@@ -24,21 +74,53 @@ int main() {
         assert((io.ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) != 0);
         assert((io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange) == 0);
         assert(io.IniFilename == nullptr && io.LogFilename == nullptr);
-        io.DisplaySize = ImVec2(524 * scale, 730 * scale);
         io.DeltaTime = 1.0f / 60.0f;
         io.Fonts->AddFontDefault();
         unsigned char* pixels;
         int width, height;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        // Two frames settle auto-measured content bounds.
-        for (int frame = 0; frame < 2; ++frame) {
-            ImGui::NewFrame();
-            tmloader::settingsContents();
-            ImGui::Render();
+        const ImVec2 preferred{524 * scale, 730 * scale};
+        captureStatus.clear();
+        for (const char* tab : {"Display", "Artwork & text", "Screenshots"}) {
+            auto* window = selectTab(tab, preferred);
+            checkWidth(window);
+            assert(window->ScrollMax.y == 0);
         }
-        assert(ImGui::GetDrawData()->Valid && ImGui::GetDrawData()->TotalVtxCount > 0);
-        auto* window = ImGui::FindWindowByName("Wrapper settings");
-        assert(window && window->ScrollMax.x == 0 && window->ScrollMax.y == 0);
+        testSettings.autoResolution = false;
+        testSettings.renderScale = 4.5f;
+        auto* window = selectTab("Display", preferred);
+        checkWidth(window);
+        assert(window->ScrollMax.y == 0);
+        availableImages = 0;
+        window = selectTab("Artwork & text", preferred);
+        checkWidth(window);
+        assert(window->ScrollMax.y == 0);
+        availableImages = 503;
+        for (const auto& status : {
+            "Screenshot saved: C:/Users/Player/Documents/GitHub/tmloader/runtime/logs/screenshots/" +
+                std::string(180, 'A') + "-20260927-234959-999-player-EEEEEEEF-000001.png",
+            "Screenshot failed: Cannot write the PNG to C:/Users/Player/Documents/GitHub/tmloader/runtime/logs/screenshots/" +
+                std::string(220, 'B') + ".png. The destination folder is unavailable; please check its permissions and try again."}) {
+            captureStatus = status;
+            const unsigned before = statusReads;
+            window = selectTab("Screenshots", preferred);
+            assert(statusReads > before);
+            checkWidth(window);
+            assert(window->ScrollMax.y == 0);
+        }
+        // The native window clamps to the monitor work area. A short monitor
+        // should produce vertical scrolling, never clip or widen the controls.
+        for (const char* tab : {"Display", "Artwork & text", "Screenshots"}) {
+            window = selectTab(tab, {524 * scale, 260 * scale});
+            checkWidth(window);
+            assert(window->ScrollMax.y > 0 && window->ScrollbarY);
+            ImGui::SetScrollY(window, window->ScrollMax.y);
+            for (int i = 0; i < 3; ++i) frame();
+            assert(window->Scroll.y >= window->ScrollMax.y - 1);
+            assert(window->DC.CursorMaxPos.y <= window->InnerRect.Max.y + 1);
+        }
+        assert(screenshotRequests == 0); // Layout must not request a capture.
+        printf("PASS: all tabs and long screenshot status fit at %.0f%%; short panels scroll\n", scale * 100);
         ImGui::DestroyContext();
     }
 }

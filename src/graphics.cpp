@@ -3,6 +3,7 @@
 #include "render_scale.h"
 #include "d3d8_abi.h"
 #include "texture_replacements.h"
+#include "screenshot.h"
 #include <atomic>
 namespace tmloader {
 typedef HRESULT(WINAPI *CreateDevice8)(void *, UINT, DWORD, HWND, DWORD, Present8 *, void **);
@@ -82,23 +83,27 @@ static HRESULT countDraw(HRESULT hr)
 }
 static HRESULT WINAPI draw(void *d, DWORD t, UINT s, UINT n)
 {
-    TextureDrawBinding replacement(d, currentWindowSettings().hdTextures);
+    const auto settings = currentWindowSettings();
+    TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
     return countDraw(realDraw(d, t, s, n));
 }
 static HRESULT WINAPI drawUP(void *d, DWORD t, UINT n, const void *data, UINT stride)
 {
-    TextureDrawBinding replacement(d, currentWindowSettings().hdTextures);
+    const auto settings = currentWindowSettings();
+    TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
     return countDraw(realDrawUP(d, t, n, data, stride));
 }
 static HRESULT WINAPI drawIdx(void *d, DWORD t, UINT m, UINT v, UINT s, UINT n)
 {
-    TextureDrawBinding replacement(d, currentWindowSettings().hdTextures);
+    const auto settings = currentWindowSettings();
+    TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
     return countDraw(realDrawIdx(d, t, m, v, s, n));
 }
 static HRESULT WINAPI drawIdxUP(void *d, DWORD t, UINT m, UINT v, UINT n, const void *i, DWORD f, const void *p,
                                 UINT stride)
 {
-    TextureDrawBinding replacement(d, currentWindowSettings().hdTextures);
+    const auto settings = currentWindowSettings();
+    TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
     return countDraw(realDrawIdxUP(d, t, m, v, n, i, f, p, stride));
 }
 static HRESULT WINAPI texture(void *d, UINT w, UINT h, UINT l, DWORD u, DWORD f, DWORD pool, void **out)
@@ -182,13 +187,13 @@ static HRESULT WINAPI presentFrame(void *self, const RECT *source, const RECT *d
              gameValue(0x306adc), gameValue(0x2ff1fc));
         captureFrame(self, frame);
     }
+    saveRequestedScreenshot(self);
     RECT scaledSource{};
     if (source && renderingFactor > 1) {
-        // Every supported scale is a multiple of 0.5; round rectangle edges
-        // consistently rather than truncating odd coordinates at 4.5x.
-        int twiceFactor = static_cast<int>(renderingFactor * 2);
-        scaledSource = {MulDiv(source->left, twiceFactor, 2), MulDiv(source->top, twiceFactor, 2),
-                        MulDiv(source->right, twiceFactor, 2), MulDiv(source->bottom, twiceFactor, 2)};
+        // Quarter-step presets include native 1080p height at 2.25x.
+        int quarters = static_cast<int>(renderingFactor * 4);
+        scaledSource = {MulDiv(source->left, quarters, 4), MulDiv(source->top, quarters, 4),
+                        MulDiv(source->right, quarters, 4), MulDiv(source->bottom, quarters, 4)};
         source = &scaledSource;
     }
     if (renderingFactor > 1) dirty = nullptr; // Native Present uses a complete frame.
@@ -201,13 +206,24 @@ static HRESULT WINAPI presentFrame(void *self, const RECT *source, const RECT *d
     lastResult = hr;
     return hr;
 }
+static float monitorRenderScale(HWND window, UINT fallbackWidth, UINT fallbackHeight) {
+    MONITORINFOEXW monitor{};
+    monitor.cbSize = sizeof(monitor);
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(mode);
+    // Display settings report physical pixels, including when Windows scaling
+    // would otherwise virtualize window dimensions.
+    if (GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor) &&
+        EnumDisplaySettingsW(monitor.szDevice, ENUM_CURRENT_SETTINGS, &mode))
+        return automaticRenderScale(mode.dmPelsWidth, mode.dmPelsHeight);
+    return automaticRenderScale(fallbackWidth, fallbackHeight);
+}
 static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND window, DWORD behavior, Present8 *pp,
                                      void **device)
 {
     logf("D3D8 CreateDevice adapter=%u type=%lu behavior=%lX window=%p %lux%lu format=%lu windowed=%d", adapter, type,
          behavior, window, pp->width, pp->height, pp->format, pp->windowed);
     initializeGameWindow(window);
-    renderingFactor = currentWindowSettings().renderScale;
     gameValue(0x2ff248) = 1;
     DWORD mode[4] = {};
     typedef HRESULT(WINAPI * DisplayMode)(void *, UINT, DWORD *);
@@ -215,6 +231,8 @@ static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND 
     HRESULT modeHr = ((DisplayMode)vt[8])(self, adapter, mode);
     logf("D3D8 desktop mode=%08lX %lux%lu format=%lu", modeHr, mode[0], mode[1], mode[3]);
     desktopFormat = SUCCEEDED(modeHr) ? mode[3] : 22;
+    const auto settings = currentWindowSettings();
+    renderingFactor = settings.autoResolution ? monitorRenderScale(window, mode[0], mode[1]) : settings.renderScale;
     windowedParameters(*pp);
     HRESULT hr = originalDevice(self, adapter, type, window, (behavior & ~(0x40 | 0x80 | 0x10)) | 0x20, pp, device);
     if (SUCCEEDED(hr) && renderingFactor > 1) {

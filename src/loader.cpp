@@ -1,6 +1,8 @@
 #include "abi.h"
 #include "window.h"
 #include "texture_replacements.h"
+#include "imgui.h"
+#include "imgui_impl_win32.h"
 #include <stdexcept>
 
 namespace tmloader {
@@ -35,6 +37,7 @@ int launch(const Config& config) {
     logf("Legacy process DEP=%d error=%lu", dep, GetLastError());
     if (!lowerIntegrity()) throw std::runtime_error("Cannot initialize low-integrity runtime");
     checked(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED), "COM initialization");
+    ImGui_ImplWin32_EnableDpiAwareness();
 
     HMODULE game = LoadLibraryExW(config.game.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!game) throw std::runtime_error("Cannot load game DLL");

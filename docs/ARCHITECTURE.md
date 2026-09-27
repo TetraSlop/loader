@@ -12,6 +12,7 @@ generation, hidden environment navigation switches or probe header is needed.
 | network/endpoints | Account identity, profile cipher lifetime, initial profile requests, DNS/endpoint routing |
 | files | Virtual registry, correct empty LOADDIR, runtime write boundary |
 | graphics/render_scale | D3D8 device/reset, optional higher-resolution rasterization, scaled presentation, captures |
+| screenshot | User-requested backbuffer capture, WIC PNG encoding, unique output files and status |
 | window/window_settings | Desktop system commands, fullscreen/resize, shared viewport, account-scoped preferences, short-click latch |
 | settings_ui | Dear ImGui panel using official Win32/DX9 backends on an owned UI thread |
 | audio | DirectSound 8 factory and diagnostics; game retains music/effect mixing |
@@ -102,12 +103,35 @@ desktop commands to DefWindowProc, handles close/Alt+F4 directly, and posts
 WM_QUIT to the native main loop (+18778E/+18798C). Shutdown is not a synthetic
 game result or an in-game save command; the server handles disconnected sessions.
 
-D3D8 uses a back buffer selected at startup (640x480 times 1, 2, 3, 4, 4.5 or 6), with
+D3D8 uses a back buffer selected at startup (640x480 times 1, 1.5, 2, 2.25, 3, 4, 4.5 or 6), with
 D3DSWAPEFFECT_COPY allowing an explicit presentation rectangle. Device Reset
 keeps that resolution and recreates the scale shader. Resizing the window only
 changes presentation. The shared content rectangle drives presentation and input. The input
 fallback requires the game window itself to have focus and is suspended while
 settings are open; settings clicks cannot become game actions.
+
+Automatic resolution reads physical display dimensions for the game's monitor,
+falling back to the adapter's display mode. It rounds the fitted 4:3 area up to
+the next supported preset and caps automatic selection at 4.5x. The 6x setting
+remains a manual supersampling option. Account preferences v5 preserve v1-v4
+manual scales and migrate the old HD toggle to both artwork and fonts. Each
+game/settings thread enables DPI awareness through the official ImGui helper
+before creating its windows. Automatic selection uses the monitor hosting the
+window at startup; moving the window later does not trigger a device reset.
+
+F12 is handled by the game window and excluded from fallback keyboard samples.
+A queued screenshot is consumed on the render thread before Present. It copies
+the actual 32-bit backbuffer, respecting row pitch, then unlocks before WIC PNG
+encoding. Only opaque RGB is saved because render-target alpha is unreliable.
+Output remains inside the existing logs boundary; CREATE_NEW makes filename
+collisions non-destructive. No request means no readback, encoding or disk I/O.
+The settings panel displays success/failure and can queue a capture before closing.
+
+HD companions carry artwork/font metadata in the same resource-owned COM
+attachment as the retained texture. Draws select a companion according to its
+category and restore the original binding afterward. Only exact verified font
+atlas IDs are classified as fonts; mixed lettering and unknown assets remain
+artwork. Conflicting categories for the same source image hash are rejected.
 
 The supported game's renderer sets FVF 0x1C4 at +18297F and creates a dynamic
 32-byte-stride vertex buffer at +1829C0. All fourteen draw sites in its rendering
@@ -128,8 +152,9 @@ instruction by instruction; there is no runtime shader compiler dependency.
 Resolution is a next-launch preference to avoid resetting the device while
 native default-pool resources and an online match are active. Failure to create
 the larger device or shader at startup retries at 1x and logs the fallback.
-Window settings v4 stores a fractional scale and the HD-texture toggle; v1-v3
-preferences remain readable. Only the six advertised scales are accepted.
+Window settings v5 stores a fractional manual scale, automatic selection and
+separate artwork/font toggles; v1-v4 preferences remain readable. Only the eight
+advertised manual scales are accepted.
 The 4.5x preset is 2880x2160: exact-height 4:3 content on a 4K display. Present
 source rectangles use consistently rounded edges at fractional scales. The
 ImGui panel reports the actual active resolution separately. Texture replacement

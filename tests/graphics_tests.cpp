@@ -6,7 +6,20 @@
 #include <cassert>
 #include <cmath>
 static BOOL fakeIconic(HWND) { return FALSE; }
+static bool monitorAvailable = true, displayAvailable = true;
+static DWORD displayWidth = 3840, displayHeight = 2160;
+static HMONITOR fakeMonitor(HWND, DWORD) { return reinterpret_cast<HMONITOR>(1); }
+static BOOL fakeMonitorInfo(HMONITOR, MONITORINFOEXW*) { return monitorAvailable; }
+static BOOL fakeDisplaySettings(LPCWSTR, DWORD mode, DEVMODEW* info) {
+    assert(mode == ENUM_CURRENT_SETTINGS);
+    info->dmPelsWidth = displayWidth; info->dmPelsHeight = displayHeight;
+    return displayAvailable;
+}
+static unsigned screenshotChecks;
 #define IsIconic fakeIconic
+#define MonitorFromWindow fakeMonitor
+#define GetMonitorInfoW fakeMonitorInfo
+#define EnumDisplaySettingsW fakeDisplaySettings
 #include "../src/graphics.cpp"
 #undef IsIconic
 namespace tmloader {
@@ -17,6 +30,7 @@ DWORD frames = 10;
 void logf(const char*, ...) {}
 void initializeGameWindow(HWND) {}
 WindowSettings currentWindowSettings() { return {}; }
+void saveRequestedScreenshot(void*) noexcept { ++screenshotChecks; }
 RECT gameContentRect() { return {240, 0, 1680, 1080}; }
 }
 static HRESULT WINAPI reset(void*, tmloader::Present8* pp) {
@@ -30,9 +44,9 @@ static HRESULT WINAPI reset(void*, tmloader::Present8* pp) {
 static HRESULT WINAPI present(void*, const RECT* source, const RECT* dest, HWND, const RGNDATA*) {
     assert(dest && dest->left == 240 && dest->top == 0 && dest->right == 1680 && dest->bottom == 1080);
     if (source) {
-        int twiceScale = static_cast<int>(tmloader::activeRenderScale() * 2);
-        assert(source->left == MulDiv(11, twiceScale, 2) && source->top == MulDiv(21, twiceScale, 2) &&
-               source->right == MulDiv(631, twiceScale, 2) && source->bottom == MulDiv(471, twiceScale, 2));
+        int quarters = static_cast<int>(tmloader::activeRenderScale() * 4);
+        assert(source->left == MulDiv(11, quarters, 4) && source->top == MulDiv(21, quarters, 4) &&
+               source->right == MulDiv(631, quarters, 4) && source->bottom == MulDiv(471, quarters, 4));
     }
     return S_OK;
 }
@@ -62,6 +76,14 @@ static HRESULT WINAPI makeBuffer(void*, UINT size, DWORD usage, DWORD format, DW
 }
 int main() {
     using namespace tmloader;
+    assert(monitorRenderScale(nullptr, 640, 480) == 4.5f);
+    displayWidth = 1920; displayHeight = 1080;
+    assert(monitorRenderScale(nullptr, 3840, 2160) == 2.25f);
+    monitorAvailable = false;
+    assert(monitorRenderScale(nullptr, 2560, 1440) == 3);
+    monitorAvailable = true; displayAvailable = false;
+    assert(monitorRenderScale(nullptr, 1280, 720) == 1.5f);
+    assert(monitorRenderScale(nullptr, 0, 0) == 1);
     Present8 pp{};
     pp.width = 1920; pp.height = 1080; pp.swap = 1; pp.refresh = 60;
     originalReset = reset;
@@ -92,5 +114,6 @@ int main() {
         assert(source.left == 11 && source.right == 631);
     }
     deleteScaleShader(&device, scaleShader);
-    assert(shaderCreates == 5 && shaderDeletes == 5 && constantsCalls == 5);
+    assert(shaderCreates == static_cast<int>(renderScales.size()) - 1 && shaderDeletes == shaderCreates && constantsCalls == shaderCreates);
+    assert(screenshotChecks == renderScales.size() + 1);
 }

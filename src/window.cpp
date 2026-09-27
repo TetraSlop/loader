@@ -1,5 +1,6 @@
 #include "runtime.h"
 #include "window.h"
+#include "screenshot.h"
 #include <fstream>
 #include <mutex>
 
@@ -98,9 +99,18 @@ void action(HWND hwnd, WindowAction command, LPARAM value) {
         break;
     case WindowAction::renderScale:
         if (value >= 0 && static_cast<size_t>(value) < renderScales.size()) {
-            { std::lock_guard<std::mutex> lock(settingsMutex); settings.renderScale = renderScales[value]; }
+            { std::lock_guard<std::mutex> lock(settingsMutex);
+              settings.renderScale = renderScales[value]; settings.autoResolution = false; }
             rememberSettings(); // Applied on next launch; no mid-match device reset.
         }
+        break;
+    case WindowAction::autoResolution:
+        { std::lock_guard<std::mutex> lock(settingsMutex); settings.autoResolution = true; }
+        rememberSettings();
+        break;
+    case WindowAction::hdFonts:
+        { std::lock_guard<std::mutex> lock(settingsMutex); settings.hdFonts = value != 0; }
+        rememberSettings();
         break;
     }
 }
@@ -126,6 +136,11 @@ LRESULT CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lp
         return 0;
     }
     if ((message == WM_KEYUP || message == WM_SYSKEYUP) && wparam == VK_F10) return 0;
+    if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) && wparam == VK_F12) {
+        if (!(lparam & (1L << 30))) requestScreenshot();
+        return 0;
+    }
+    if ((message == WM_KEYUP || message == WM_SYSKEYUP) && wparam == VK_F12) return 0;
     if (message == WM_SYSKEYDOWN && wparam == VK_F4) { closeGame(); return 0; }
     if (message == WM_SYSKEYDOWN && wparam == VK_RETURN) {
         if (!(lparam & (1L << 30))) fullscreen(hwnd, !currentWindowSettings().fullscreen);
@@ -201,6 +216,6 @@ void initializeGameWindow(HWND hwnd) {
     // The original fullscreen window starts at (0,0); keep its caption on screen.
     SetWindowPos(hwnd, nullptr, 80, 80, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     if (loaded.fullscreen) fullscreen(hwnd, true);
-    logf("Window controls installed: F10 settings, Alt+Enter fullscreen");
+    logf("Window controls installed: F10 settings, F12 screenshot, Alt+Enter fullscreen");
 }
 }

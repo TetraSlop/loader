@@ -13,10 +13,13 @@ struct PngInfo {
 PngInfo pngInfo(const void* data, size_t bytes);
 std::string sha256Bytes(const void* data, size_t bytes);
 
+enum class TextureCategory { artwork, font };
+
 struct TextureAsset {
     std::string id, sourceHash, imageHash;
     std::filesystem::path file;
     unsigned width = 0, height = 0, scale = 0;
+    TextureCategory category = TextureCategory::artwork;
 };
 class TexturePack {
 public:

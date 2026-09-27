@@ -10,7 +10,7 @@
 // Exercise the actual subclass without creating or controlling any window.
 static UINT defaultMessage;
 static WPARAM defaultCommand;
-static int quitRequests, panelToggles, panelStops, legacyMessages;
+static int quitRequests, panelToggles, panelStops, legacyMessages, screenshotRequests;
 static HWND testWindow = reinterpret_cast<HWND>(1);
 static HWND testForeground = testWindow;
 static bool testPanelOpen;
@@ -62,6 +62,7 @@ void logf(const char*, ...) {}
 void toggleSettingsPanel() { ++panelToggles; }
 void stopSettingsPanel() { ++panelStops; }
 bool settingsPanelOpen() { return testPanelOpen; }
+void requestScreenshot() noexcept { ++screenshotRequests; }
 }
 int main() {
     using namespace tmloader;
@@ -98,6 +99,10 @@ int main() {
     wrapperWindow(nullptr, WM_KEYDOWN, VK_F10, 1L << 30);
     wrapperWindow(nullptr, WM_SYSKEYUP, VK_F10, 0);
     assert(panelToggles == 1);
+    wrapperWindow(nullptr, WM_KEYDOWN, VK_F12, 0);
+    wrapperWindow(nullptr, WM_KEYDOWN, VK_F12, 1L << 30);
+    wrapperWindow(nullptr, WM_KEYUP, VK_F12, 0);
+    assert(screenshotRequests == 1 && legacyMessages == 0);
     wrapperWindow(nullptr, WM_MOUSEMOVE, 0, 0);
     assert(legacyMessages == 1);
     wrapperWindow(nullptr, WM_LBUTTONDOWN, 0, 0);
@@ -105,7 +110,7 @@ int main() {
     wrapperWindow(nullptr, WM_LBUTTONDOWN, 0, 0);
     wrapperWindow(nullptr, WM_KILLFOCUS, 0, 0);
     assert(takeMousePresses() == 0);
-    wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::renderScale), 4);
+    wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::renderScale), 6);
     assert(currentWindowSettings().renderScale == 4.5f);
     wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::renderScale), -1);
     wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::renderScale), renderScales.size());
@@ -113,6 +118,15 @@ int main() {
     std::ifstream saved(settingsFile());
     assert(readWindowSettings(saved).renderScale == 4.5f);
     saved.close();
+    assert(!currentWindowSettings().autoResolution);
+    wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::autoResolution), 0);
+    assert(currentWindowSettings().autoResolution && currentWindowSettings().renderScale == 4.5f);
+    wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::hdFonts), 0);
+    assert(!currentWindowSettings().hdFonts && currentWindowSettings().hdTextures);
+    std::ifstream updated(settingsFile());
+    auto preferences = readWindowSettings(updated);
+    assert(preferences.autoResolution && !preferences.hdFonts && preferences.hdTextures);
+    updated.close();
     gameWindow = testWindow;
     originalWindowProc = reinterpret_cast<WNDPROC>(1234);
     installedProcedure = reinterpret_cast<LONG_PTR>(wrapperWindow);

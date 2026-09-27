@@ -3,7 +3,7 @@
 
 namespace tmloader {
 constexpr UINT settingsMessage = WM_APP + 0x54;
-enum class WindowAction : WPARAM { size, fullscreen, aspect, close, renderScale, hdTextures };
+enum class WindowAction : WPARAM { size, fullscreen, aspect, close, renderScale, hdTextures, hdFonts, autoResolution };
 void initializeGameWindow(HWND window);
 WindowSettings currentWindowSettings();
 RECT gameContentRect();

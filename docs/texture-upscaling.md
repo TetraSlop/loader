@@ -28,7 +28,7 @@ are required by the native loader after generating the pack. Set
 `texture-pack=textures-hd/pack.json` in the local INI to select the complete pack.
 
 Run the usual sibling `tmserver/Play.cmd` yourself, then open the collection or
-shop and compare **F10 > Use HD textures** on/off. The loader logs indexed
+shop and compare the independent **F10 > Artwork & text** toggles. The loader logs indexed
 images, successful uploads and fallback reasons. The native game was not
 launched during development; this remains the user-run integration check.
 The original archives remain untouched; see the [font findings](ui-texture-upscaling.md),

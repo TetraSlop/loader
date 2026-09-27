@@ -36,6 +36,17 @@ unsigned dimension(const nlohmann::json& value) {
     if (n < 1 || n > 8192) throw std::runtime_error("Texture dimension outside 1..8192");
     return static_cast<unsigned>(n);
 }
+TextureCategory categoryFor(const std::string& id) {
+    // Only these verified bitmap atlases use the native font renderer. Menu
+    // labels, card digits and other embedded lettering remain artwork.
+    constexpr char prefix[] = "gW000/0090/font_";
+    constexpr size_t length = sizeof(prefix) - 1;
+    if (id.size() == length + 2 && id.compare(0, length, prefix) == 0 &&
+        id[length] >= '0' && id[length] <= '4' && id[length + 1] >= '0' && id[length + 1] <= '9' &&
+        (id[length] - '0') * 10 + id[length + 1] - '0' < 42)
+        return TextureCategory::font;
+    return TextureCategory::artwork;
+}
 }
 
 PngInfo pngInfo(const void* data, size_t bytes) {
@@ -85,6 +96,7 @@ void TexturePack::load(const std::filesystem::path& manifest) {
     for (const auto& record : document.at("textures")) {
         TextureAsset asset;
         asset.id = record.at("id").get<std::string>();
+        asset.category = categoryFor(asset.id);
         asset.sourceHash = hashText(record.at("source_sha256").get<std::string>());
         asset.imageHash = hashText(record.at("sha256").get<std::string>());
         const auto relative = std::filesystem::u8path(record.at("file").get<std::string>());
@@ -104,7 +116,8 @@ void TexturePack::load(const std::filesystem::path& manifest) {
             throw std::runtime_error("Texture replacement must be uniformly 2x, 3x or 4x");
         const auto previous = assets.find(asset.sourceHash);
         if (previous != assets.end() && (previous->second.imageHash != asset.imageHash ||
-            previous->second.width != asset.width || previous->second.height != asset.height || previous->second.scale != asset.scale))
+            previous->second.width != asset.width || previous->second.height != asset.height ||
+            previous->second.scale != asset.scale || previous->second.category != asset.category))
             throw std::runtime_error("Conflicting replacements for one original image");
         assets.emplace(asset.sourceHash, std::move(asset));
     }

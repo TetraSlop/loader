@@ -92,7 +92,7 @@ class LocalInputDevice : public IDirectInputDevice8A
             {
                 UINT code = (scan & 0x7f) | ((scan & 0x80) ? 0xe000 : 0);
                 UINT vk = MapVirtualKeyA(code, MAPVK_VSC_TO_VK_EX);
-                if (vk == VK_F10 || (vk == VK_RETURN && (GetAsyncKeyState(VK_MENU) & 0x8000))) continue;
+                if (vk == VK_F10 || vk == VK_F12 || (vk == VK_RETURN && (GetAsyncKeyState(VK_MENU) & 0x8000))) continue;
                 if (vk && (GetAsyncKeyState(vk) & 0x8000))
                     keys[scan] = 0x80;
             }

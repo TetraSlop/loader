@@ -37,7 +37,8 @@ static DWORD fakeWindowThread(HWND, LPDWORD pid) { *pid = testFocused ? GetCurre
 static BOOL fakeCursor(LPPOINT p) { *p = testPointer; return TRUE; }
 static BOOL fakeToClient(HWND, LPPOINT) { return TRUE; }
 static BOOL fakeClientRect(HWND, LPRECT r) { *r = {0, 0, testWidth, testHeight}; return TRUE; }
-static SHORT fakeKey(int key) { return key == VK_LBUTTON ? testButton : 0; }
+static int pressedKey = 0;
+static SHORT fakeKey(int key) { return key == VK_LBUTTON ? testButton : key == pressedKey ? static_cast<SHORT>(0x8000) : 0; }
 #define GetForegroundWindow fakeForeground
 #define GetWindowThreadProcessId fakeWindowThread
 #define GetCursorPos fakeCursor
@@ -119,5 +120,15 @@ int main()
     assert(latchedPresses == 0);
     panelOpen = false;
     sample(mouse, 960, 540, 0, 0);
+    LocalInputDevice keyboard(true);
+    keyboard.SetCooperativeLevel(testWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+    BYTE keys[256]{};
+    for (int key : {VK_F10, VK_F12}) {
+        pressedKey = key;
+        assert(keyboard.GetDeviceState(sizeof(keys), keys) == S_OK);
+        for (BYTE value : keys) assert(value == 0);
+    }
+    pressedKey = 'A';
+    assert(keyboard.GetDeviceState(sizeof(keys), keys) == S_OK && keys[DIK_A] == 0x80);
     puts("Mouse bridge: transitions, scaling, absolute alignment, keyboard handoff and clicks passed.");
 }

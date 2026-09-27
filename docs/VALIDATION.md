@@ -1,5 +1,37 @@
 # Refactor validation
 
+## Automatic resolution, independent fonts and screenshots, 2026-09-27
+
+The wrapper now chooses rendering resolution from physical monitor dimensions,
+offers independent artwork/font toggles, and saves user-requested F12 PNGs.
+Manual resolution choices remain available. Preferences v5 preserve older
+manual settings and the previous HD choice for both new categories.
+
+- The x86 RelWithDebInfo build succeeds; the changed-source rebuild is warning-free.
+  **16/16 CTest cases pass**, with no skipped graphics or audio checks.
+- Actual D3D8 colored/textured output matches the independent reference with
+  zero RGB differences at all eight presets, including new 720p and 1080p heights.
+- Monitor selection covers widescreen, ultrawide, portrait, 4K and missing-display
+  fallbacks. Settings tests cover migration, independent flags and manual override.
+- Font/artwork checks cover all four combinations, exact atlas classification,
+  original metadata/bindings, COM lifetime and device Reset. The installed
+  503-entry pack has 42 font atlases and no cross-category source-hash conflicts.
+- Screenshot tests encode and decode actual PNGs through WIC, verifying exact
+  colors, opaque output, row pitch, filename collisions, disk-write failures,
+  resource cleanup and request ordering. A disposable low-integrity child verifies
+  PNG writes in a low-labeled fixture and denial in a medium-labeled control.
+- F12 key repeats/keyup are consumed without forwarding to the game; keyboard
+  samples reserve F10/F12 and still deliver ordinary keys.
+- All three ImGui tabs fit at 100/150/200% scaling, including long capture status.
+  Short panels now expose a vertical scrollbar so the final controls stay reachable.
+- PE/asInvoker verification, installed-pack hash validation and the sibling
+  launcher's read-only `Play.cmd --check` pass. No game or services were launched.
+
+The prepared primary account now selects Automatic and both enhanced artwork
+and fonts, preserving its window size/mode and stored 4.5x manual choice.
+Native visual/input review, especially Windows DPI scaling, remains a user check.
+The tests create no visible windows, perform no desktop capture and inject no input.
+
 ## HD artwork and 4K rendering, 2026-09-27
 
 The loader now substitutes separate HD resources while keeping the native
