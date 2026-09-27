@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 # beta/version-suffix cells remain untouched. Copyright is +14AC41/+14ACAF.
 VERSION_WIDTHS = (10, 8, 9, 9, 10, 9, 9, 9, 9, 10)
 TITLE_LABELS = (
-    ("Â©2000â€“2004 SQUARE ENIX", (0, 0, 200, 19)),
+    ("©2000–2004 SQUARE ENIX", (0, 0, 200, 19)),
     ("CO., LTD. All Rights Reserved.", (0, 24, 195, 43)),
     ("Ver.", (0, 48, 24, 64)),
     (".", (24, 48, 28, 64)),
