@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 # beta/version-suffix cells remain untouched. Copyright is +14AC41/+14ACAF.
 VERSION_WIDTHS = (10, 8, 9, 9, 10, 9, 9, 9, 9, 10)
 TITLE_LABELS = (
-    ("©2000–2004 SQUARE ENIX", (0, 0, 200, 19)),
+    ("Â©2000â€“2004 SQUARE ENIX", (0, 0, 200, 19)),
     ("CO., LTD. All Rights Reserved.", (0, 24, 195, 43)),
     ("Ver.", (0, 48, 24, 64)),
     (".", (24, 48, 28, 64)),
@@ -141,8 +141,8 @@ def _finish(canvas, baseline, scale, checks, method):
     result = np.array(canvas)
     allowed = np.zeros(baseline.shape[:2], bool)
     for check in checks:
-        l, t, r, b = check["rect"]
-        allowed[t * scale : b * scale, l * scale : r * scale] = True
+        left, top, right, bottom = check["rect"]
+        allowed[top * scale : bottom * scale, left * scale : right * scale] = True
     if not np.array_equal(result[~allowed], baseline[~allowed]):
         raise ValueError("Reconstruction changed unaudited pixels")
     return result, {
@@ -199,16 +199,16 @@ def refine_pol_atlas(source, baseline, font_file):
         for label, rect in POL_LABELS
     ]
     for label, rect in KEY_CELLS:
-        l, t, r, b = rect
+        left, top, right, bottom = rect
         bounds = _ink_bounds(source, rect, bright=False)
         x0, y0, x1, y1 = bounds
-        patch = Image.new("RGBA", ((r - l) * scale, (b - t) * scale))
+        patch = Image.new("RGBA", ((right - left) * scale, (bottom - top) * scale))
         draw = ImageDraw.Draw(patch)
         box = (
-            (x0 - l) * scale,
-            (y0 - t) * scale,
-            (x1 - l) * scale - 1,
-            (y1 - t) * scale - 1,
+            (x0 - left) * scale,
+            (y0 - top) * scale,
+            (x1 - left) * scale - 1,
+            (y1 - top) * scale - 1,
         )
         draw.rounded_rectangle(
             box,
@@ -240,9 +240,11 @@ def refine_pol_atlas(source, baseline, font_file):
         mask = _glyph(font, label, (width, height))
         ink = Image.new("RGBA", mask.size, (28, 31, 29, 255))
         ink.putalpha(mask)
-        patch.alpha_composite(ink, ((x0 - l + 4) * scale, (y0 - t + 3) * scale))
-        canvas.paste((0, 0, 0, 0), (l * scale, t * scale, r * scale, b * scale))
-        canvas.alpha_composite(patch, (l * scale, t * scale))
+        patch.alpha_composite(ink, ((x0 - left + 4) * scale, (y0 - top + 3) * scale))
+        canvas.paste(
+            (0, 0, 0, 0), (left * scale, top * scale, right * scale, bottom * scale)
+        )
+        canvas.alpha_composite(patch, (left * scale, top * scale))
         checks.append({"label": label, "rect": list(rect), "ink": list(bounds)})
     return _finish(
         canvas,
@@ -259,7 +261,7 @@ def refine_status_icons_atlas(source, baseline):
     canvas = Image.fromarray(baseline)
     checks = []
     for label, rect in STATUS_CELLS:
-        l, t, r, b = rect
+        left, top, right, bottom = rect
         bounds = _ink_bounds(source, rect, bright=False)
         x0, y0, x1, y1 = bounds
         # Construct smooth shapes at a finer scale, then rasterize once.
@@ -321,7 +323,9 @@ def refine_status_icons_atlas(source, baseline):
         patch = halo.resize(
             ((x1 - x0) * scale, (y1 - y0) * scale), Image.Resampling.LANCZOS
         )
-        canvas.paste((0, 0, 0, 0), (l * scale, t * scale, r * scale, b * scale))
+        canvas.paste(
+            (0, 0, 0, 0), (left * scale, top * scale, right * scale, bottom * scale)
+        )
         canvas.alpha_composite(patch, (x0 * scale, y0 * scale))
         checks.append({"label": label, "rect": list(rect), "ink": list(bounds)})
     return _finish(

@@ -29,9 +29,9 @@ def atlas(size, labels):
     source = np.zeros((height, width, 4), dtype=np.uint8)
     # Nonzero invisible RGB catches accidental changes outside the allowed cells.
     source[:, :, :3] = (13, 19, 23)
-    for index, (_, (l, t, r, b)) in enumerate(labels):
+    for index, (_, (left, top, right, bottom)) in enumerate(labels):
         color = (230, 210, 170) if index % 2 == 0 else (140, 120, 100)
-        source[t + 2 : b - 2, l + 1 : r - 1] = (*color, 255)
+        source[top + 2 : bottom - 2, left + 1 : right - 1] = (*color, 255)
     baseline = np.array(Image.fromarray(source).resize((width * 4, height * 4)))
     return source, baseline
 
@@ -70,9 +70,9 @@ class TitleGlyphTests(unittest.TestCase):
             ((48, 48, 56, 64), (68, 403, 76, 419)),
             ((48, 48, 56, 64), (76, 403, 84, 419)),
         )
-        for (l, t, r, b), (x0, y0, x1, y1) in records:
-            self.assertEqual((r - l, b - t), (x1 - x0, y1 - y0))
-            crop = result[t * 4 : b * 4, l * 4 : r * 4]
+        for (left, top, right, bottom), (x0, y0, x1, y1) in records:
+            self.assertEqual((right - left, bottom - top), (x1 - x0, y1 - y0))
+            crop = result[top * 4 : bottom * 4, left * 4 : right * 4]
             self.assertTrue(np.any(crop[:, :, 3] > 128))
             self.assertTrue(np.any(crop[:, :, 3] == 0))
 
@@ -80,18 +80,18 @@ class TitleGlyphTests(unittest.TestCase):
         source, baseline = atlas((200, 168), (*POL_LABELS, *KEY_CELLS))
         result, audit = refine_pol_atlas(source, baseline, FONT)
         # Untouched Chat wording, pad buttons, F4 and each key's extra UV texel.
-        for l, t, r, b in (
+        for left, top, right, bottom in (
             (144, 24, 200, 115),
             (0, 72, 200, 95),
             (160, 120, 200, 143),
             (80, 162, 177, 164),
         ):
             np.testing.assert_array_equal(
-                result[t * 4 : b * 4, l * 4 : r * 4],
-                baseline[t * 4 : b * 4, l * 4 : r * 4],
+                result[top * 4 : bottom * 4, left * 4 : right * 4],
+                baseline[top * 4 : bottom * 4, left * 4 : right * 4],
             )
-        for index, (_, (l, t, r, b)) in enumerate(POL_LABELS[:2]):
-            crop = result[t * 4 : b * 4, l * 4 : r * 4]
+        for index, (_, (left, top, right, bottom)) in enumerate(POL_LABELS[:2]):
+            crop = result[top * 4 : bottom * 4, left * 4 : right * 4]
             ink = (230, 210, 170) if index == 0 else (140, 120, 100)
             self.assertTrue(np.any(np.all(crop[:, :, :3] == ink, axis=2)))
             orange = (
@@ -106,8 +106,8 @@ class TitleGlyphTests(unittest.TestCase):
         np.testing.assert_array_equal(result[: 48 * 4], baseline[: 48 * 4])
         np.testing.assert_array_equal(result[80 * 4 :], baseline[80 * 4 :])
         np.testing.assert_array_equal(result[:, 72 * 4 :], baseline[:, 72 * 4 :])
-        for _, (l, t, r, b) in STATUS_CELLS:
-            crop = result[t * 4 : b * 4, l * 4 : r * 4]
+        for _, (left, top, right, bottom) in STATUS_CELLS:
+            crop = result[top * 4 : bottom * 4, left * 4 : right * 4]
             # Clear outline and antialiased coverage both survive rasterization.
             self.assertTrue(np.any(crop[:, :, 3] == 255))
             self.assertTrue(np.any((crop[:, :, 3] > 0) & (crop[:, :, 3] < 255)))
