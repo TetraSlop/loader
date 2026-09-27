@@ -4,6 +4,12 @@ A standalone 32-bit host for the original Tetra Master PC client, arranged into
 small loader modules in the style of xiloader. It opens the original online
 startup and connects to a separately running compatible game/profile server.
 
+For the integrated local setup, the sibling `tmserver` project now provides
+`Play.cmd` and a [native test checklist](../tmserver/docs/NATIVE_TEST_CHECKLIST.md).
+It starts the packaged services, passes their free ports and account IDs to this
+loader, and keeps them alive until all game windows close. This machine's
+prepared working copy is in ignored `runtime/`; `tmloader.ini` points there.
+
 This is a compiled first refactor of the working local harness. **It has not
 been launched with the game after the refactor.** The earlier harness reached
 the title, room and a completed computer match. That runtime evidence does not
@@ -38,8 +44,12 @@ pub/home00/option.bin        (Viewer local settings)
 
 The known DLL SHA256 hashes are pinned in `src/validation.cpp`. Unknown builds
 are rejected before loading; fixed offsets require the matching original
-builds. The current loader does not discover installed files or prepare/copy
-assets. Legacy runtime paths must fit MAX_PATH and the client uses ANSI file
+builds. The loader executable does not discover installed files or copy assets.
+The optional `python tools/prepare_runtime.py --source PATH` setup helper copies
+a prepared user-owned runtime into ignored `runtime/`, labels that new working
+copy for the existing low-integrity client, and writes local configuration.
+It refuses existing destinations and never launches the game.
+Legacy runtime paths must fit MAX_PATH and the client uses ANSI file
 APIs internally.
 
 Copy `tmloader.example.ini` to the ignored `tmloader.ini`, then set runtime-dir

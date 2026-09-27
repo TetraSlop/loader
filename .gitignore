@@ -1,6 +1,7 @@
 /build*/
 /out/
 /tmloader.ini
+/runtime/
 *.log
 *.pdb
 *.ilk

@@ -1,5 +1,20 @@
 # Refactor validation
 
+## Integration setup, 2026-09-27
+
+The sibling `tmserver` now supplies `Play.cmd`, coordinating both loopback
+services and one to three user-operated clients. It passes selected ports and
+account IDs explicitly. `tools/prepare_runtime.py` prepared the ignored local
+`runtime/` copy and `tmloader.ini`; 133 files matched the original source.
+
+The existing C++ executable rebuilt successfully; all four CTest cases and the
+read-only PE/asInvoker verification passed again. Its actual `--check` command
+accepted the prepared runtime and each generated account/endpoint command line.
+The agent did not launch the game. Native presentation remains awaiting the
+user's [integrated checklist](../../tmserver/docs/NATIVE_TEST_CHECKLIST.md).
+
+## Original refactor checkpoint
+
 Checked on2026-09-26 using Visual Studio18 2026, MSVC19.51.36248 and
 Windows SDK10.0.26100.0. Configuration: x86 RelWithDebInfo, static C++ runtime.
 
