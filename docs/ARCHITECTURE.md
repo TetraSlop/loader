@@ -14,7 +14,7 @@ generation, hidden environment navigation switches or probe header is needed.
 | graphics | D3D8 windowed device/reset, scaled presentation, first-frame activation, optional captures |
 | window/window_settings | Desktop system commands, fullscreen/resize, shared viewport, account-scoped preferences, short-click latch |
 | settings_ui | Dear ImGui panel using official Win32/DX9 backends on an owned UI thread |
-| audio | Native DirectSound factory diagnostics; game retains music/effect mixing |
+| audio | DirectSound 8 factory and diagnostics; game retains music/effect mixing |
 | desktop | Disable native global shortcut interception, cursor warping and forced activation |
 | input/input_bridge | Native DirectInput factory plus existing keyboard/mouse fallback |
 | patch | Process-local pointer/import replacement |
@@ -80,9 +80,21 @@ Remaining debt, not hidden by the module split:
 
 The startup harness deliberately returned SOUND=0. TM's +187149 registry read
 stores this at +2369CC; +180E40 skips all sound initialization when it is zero.
-The virtual registry now supplies SOUND=1. DirectSoundCreate (+20401C import)
-and the resulting native sound-engine state are logged to distinguish disabled
-audio from an actual device initialization failure.
+The virtual registry now supplies SOUND=1. The native +20401C import is
+DirectSoundCreate8 (dsound ordinal 11), which the audio adapter must preserve.
+Both music (+1AAFCF) and effect (+1AA933) paths require IDirectSoundBuffer8;
+substituting DirectSoundCreate initializes successfully but its buffers reject
+that interface with E_NOINTERFACE, leaving playback silent. The factory now
+uses the SDK's exact DirectSoundCreate8 signature. The game's decoding, mixing
+and volume handling remain intact. Factory results and native sound-engine
+state are logged, but initialization alone does not establish audible output.
+
+The audio regression check creates and locks both native buffer configurations
+on the Windows audio device, under the same low-integrity setting as the loader.
+It requires IDirectSoundBuffer8 and never starts playback or creates a window.
+CTest reports it as skipped (77) only when Windows has no audio driver.
+See Microsoft's [buffer API](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418039(v=vs.85))
+and [DirectSoundCreate8](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee416762(v=vs.85)).
 
 The original window procedure at +1863D0 discards WM_SYSCOMMAND at +186838.
 That includes SC_SIZE, SC_MOVE, SC_MAXIMIZE and SC_CLOSE. The wrapper routes

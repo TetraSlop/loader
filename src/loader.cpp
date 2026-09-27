@@ -46,7 +46,7 @@ int launch(const Config& config) {
     installDesktopHooks(game);
     setSlot(game, 0x204260, reinterpret_cast<void*>(localD3D8));
     setSlot(game, 0x204014, reinterpret_cast<void*>(tracedInput));
-    setSlot(game, 0x20401c, reinterpret_cast<void*>(tracedSound));
+    setSlot(game, 0x20401c, reinterpret_cast<void*>(tracedSound8));
 
     HMODULE coreModule = LoadLibraryExW(config.core.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!coreModule) throw std::runtime_error("Cannot load Viewer DLL");

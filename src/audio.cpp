@@ -2,11 +2,14 @@
 #include <dsound.h>
 
 namespace tmloader {
-HRESULT WINAPI tracedSound(LPCGUID guid, LPDIRECTSOUND* output, LPUNKNOWN outer) {
-    using Factory = HRESULT(WINAPI*)(LPCGUID, LPDIRECTSOUND*, LPUNKNOWN);
-    static auto factory = reinterpret_cast<Factory>(GetProcAddress(LoadLibraryW(L"dsound.dll"), "DirectSoundCreate"));
+HRESULT WINAPI tracedSound8(LPCGUID guid, LPDIRECTSOUND8* output, LPUNKNOWN outer) {
+    // TM imports dsound ordinal 11 (DirectSoundCreate8) and requires
+    // IDirectSoundBuffer8 for both music and effects. DirectSoundCreate can
+    // succeed here but its buffers reject that interface with E_NOINTERFACE.
+    static auto factory = reinterpret_cast<decltype(&DirectSoundCreate8)>(
+        GetProcAddress(LoadLibraryW(L"dsound.dll"), "DirectSoundCreate8"));
     HRESULT result = factory ? factory(guid, output, outer) : E_NOINTERFACE;
-    logf("DirectSoundCreate=%08lX", result);
+    logf("DirectSoundCreate8=%08lX", result);
     return result;
 }
 }

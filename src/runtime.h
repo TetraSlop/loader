@@ -27,7 +27,7 @@ void installNetworkHooks(HMODULE module);
 void installDesktopHooks(HMODULE module);
 void initializeViewerSession(HMODULE core, Command* table);
 HRESULT WINAPI tracedInput(HINSTANCE, DWORD, REFIID, void**, IUnknown*);
-HRESULT WINAPI tracedSound(LPCGUID, LPDIRECTSOUND*, LPUNKNOWN);
+HRESULT WINAPI tracedSound8(LPCGUID, LPDIRECTSOUND8*, LPUNKNOWN);
 void* WINAPI localD3D8(UINT);
 BYTE takeMousePresses();
 int WINAPI loggedMessage(HWND, const char*, const char*, UINT);

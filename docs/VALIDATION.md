@@ -1,5 +1,32 @@
 # Refactor validation
 
+## DirectSound 8 correction, 2026-09-27
+
+The user confirmed the desktop behavior works but audio remained silent. Their
+`20260927-074040-b6ca9e` session initialized the sound engine successfully and
+saved both Se=3 and Bgm=3 (High). The audio assets were present. The loader's
+diagnostic hook had incorrectly replaced DirectSoundCreate8 with DirectSoundCreate.
+
+The original protected DLL imports dsound ordinal 11 (DirectSoundCreate8).
+Decoded music and effect creation paths both query IID_IDirectSoundBuffer8
+(`6825A449-7524-4D82-920F-50E36AB3AB1E`). A silent Windows device regression
+check reproduced the error before the fix: factory and buffer creation returned
+S_OK, but that QueryInterface returned **80004002 / E_NOINTERFACE**. The corrected
+factory and SDK signature preserve DirectSound 8.
+
+- **11/11 CTest cases pass**, including actual Windows music/effect buffer
+  creation, required interface acquisition, Lock/Unlock and stopped status.
+  The passing device test uses the same low-integrity process setting as the
+  loader, creates no windows and never requests playback. On machines without
+  an audio driver, CTest explicitly skips this device-dependent case.
+- The x86 RelWithDebInfo build, PE/asInvoker verification and sibling
+  `Play.cmd --check` passed. The launcher resolves the rebuilt executable.
+- No native game was launched or controlled, and no save/assets were changed.
+
+The interface failure is reproduced and corrected; audible in-game music and
+effects still require the user's next launch. Buffer checks do not establish
+speaker output or validate the complete native decoder path.
+
 ## Desktop focus/cursor correction, 2026-09-27
 
 The user's next run revealed persistent foreground/input grabbing and an

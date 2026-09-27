@@ -10,11 +10,11 @@ It starts the packaged services, passes their free ports and account IDs to this
 loader, and keeps them alive until all game windows close. This machine's
 prepared working copy is in ignored `runtime/`; `tmloader.ini` points there.
 
-The user has exercised the integrated loader and reported silent audio and
-unresponsive window controls. The current build addresses those reports and
-adds a Dear ImGui settings panel. These latest changes pass headless checks;
-native sound, resizing, settings and shutdown still need a user test. See
-[validation](docs/VALIDATION.md).
+The user confirmed the desktop input/focus fixes work. The remaining silent
+audio was traced to the loader selecting DirectSound instead of DirectSound 8;
+the corrected build passes real Windows music/effect buffer checks without
+playing audio. Audible in-game output still needs confirmation after relaunch.
+See [validation](docs/VALIDATION.md).
 
 ## Window controls
 
