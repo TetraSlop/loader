@@ -92,9 +92,13 @@ void action(HWND hwnd, WindowAction command, LPARAM value) {
         rememberSettings();
         break;
     case WindowAction::close: closeGame(); break;
+    case WindowAction::hdTextures:
+        { std::lock_guard<std::mutex> lock(settingsMutex); settings.hdTextures = value != 0; }
+        rememberSettings();
+        break;
     case WindowAction::renderScale:
-        if (validRenderScale(static_cast<int>(value))) {
-            { std::lock_guard<std::mutex> lock(settingsMutex); settings.renderScale = static_cast<int>(value); }
+        if (value >= 0 && static_cast<size_t>(value) < renderScales.size()) {
+            { std::lock_guard<std::mutex> lock(settingsMutex); settings.renderScale = renderScales[value]; }
             rememberSettings(); // Applied on next launch; no mid-match device reset.
         }
         break;
@@ -178,6 +182,10 @@ void postWindowAction(WindowAction command, LPARAM value) {
     PostMessageW(gameWindow, settingsMessage, static_cast<WPARAM>(command), value);
 }
 void initializeGameWindow(HWND hwnd) {
+    // Native startup can create another device for the same window. Installing
+    // our subclass twice would save wrapperWindow as its own forwarding target.
+    if (hwnd == gameWindow && originalWindowProc &&
+        GetWindowLongPtrA(hwnd, GWLP_WNDPROC) == reinterpret_cast<LONG_PTR>(wrapperWindow)) return;
     gameWindow = hwnd;
     WindowSettings loaded;
     if (settingsPathAllowed(options, settingsFile())) {

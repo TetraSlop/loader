@@ -102,7 +102,7 @@ desktop commands to DefWindowProc, handles close/Alt+F4 directly, and posts
 WM_QUIT to the native main loop (+18778E/+18798C). Shutdown is not a synthetic
 game result or an in-game save command; the server handles disconnected sessions.
 
-D3D8 uses a back buffer selected at startup (640x480 times 1, 2, 3 or 4), with
+D3D8 uses a back buffer selected at startup (640x480 times 1, 2, 3, 4, 4.5 or 6), with
 D3DSWAPEFFECT_COPY allowing an explicit presentation rectangle. Device Reset
 keeps that resolution and recreates the scale shader. Resizing the window only
 changes presentation. The shared content rectangle drives presentation and input. The input
@@ -113,7 +113,7 @@ The supported game's renderer sets FVF 0x1C4 at +18297F and creates a dynamic
 32-byte-stride vertex buffer at +1829C0. All fourteen draw sites in its rendering
 module use DrawPrimitive with this pretransformed XYZRHW/color/specular/UV
 layout. Simply enlarging the buffer would leave these coordinates unscaled.
-At 2x-4x, the wrapper substitutes a small vs.1.1 shader at SetVertexShader (slot
+Above 1x, the wrapper substitutes a small vs.1.1 shader at SetVertexShader (slot
 76). It converts the existing screen coordinates to clip space, preserves depth
 and reciprocal W, and passes colors/UVs through. Pixel edges follow
 `(coordinate + 0.5) * factor - 0.5`; no game coordinates, input or assets change.
@@ -128,8 +128,18 @@ instruction by instruction; there is no runtime shader compiler dependency.
 Resolution is a next-launch preference to avoid resetting the device while
 native default-pool resources and an online match are active. Failure to create
 the larger device or shader at startup retries at 1x and logs the fallback.
-Window settings v2 adds the scale, reads v1 files with 1x, and rejects scales
-outside 1-4. The ImGui panel reports the actual active scale separately.
+Window settings v4 stores a fractional scale and the HD-texture toggle; v1-v3
+preferences remain readable. Only the six advertised scales are accepted.
+The 4.5x preset is 2880x2160: exact-height 4:3 content on a 4K display. Present
+source rectangles use consistently rounded edges at fractional scales. The
+ImGui panel reports the actual active resolution separately. Texture replacement
+dimensions are independent of the render scale; native UVs remain unchanged.
+
+Native initialization at +1828AB/+1828BF selects linear minification and
+magnification; +1828D3/+1828E7 selects clamp addressing. The native code scan
+through +1B0000 found no indirect SetViewport (slot40) calls that would restore
+a 640x480 viewport after CreateDevice. These are static observations; full
+native visual validation remains separate from the headless pixel checks.
 
 ABI references: [Direct3D 8 interfaces](https://github.com/wine-mirror/wine/blob/master/include/d3d8.h).
 Pixel alignment follows the [Direct3D rasterization convention](https://learn.microsoft.com/en-us/windows/win32/direct3d9/directly-mapping-texels-to-pixels).

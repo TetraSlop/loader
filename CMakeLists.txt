@@ -25,13 +25,22 @@ add_library(loader_imgui STATIC
 target_include_directories(loader_imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
 target_link_libraries(loader_imgui PUBLIC d3d9 dwmapi)
 
+FetchContent_Declare(nlohmann_json
+    URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz
+    URL_HASH SHA256=42f6e95cad6ec532fd372391373363b62a14af6d771056dbfc86160e6dfff7aa
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(nlohmann_json)
+
 add_library(loader_config STATIC src/config.cpp src/endpoints.cpp src/validation.cpp)
 target_include_directories(loader_config PUBLIC src)
 target_link_libraries(loader_config PUBLIC bcrypt ws2_32)
+add_library(loader_textures STATIC src/texture_pack.cpp src/texture_replacements.cpp src/texture_hooks.cpp)
+target_include_directories(loader_textures PUBLIC src)
+target_link_libraries(loader_textures PUBLIC loader_config PRIVATE nlohmann_json::nlohmann_json)
 add_executable(tmloader WIN32 src/main.cpp src/loader.cpp src/runtime.cpp src/log.cpp
     src/patch.cpp src/files.cpp src/graphics.cpp src/input.cpp src/network.cpp
     src/window.cpp src/settings_ui.cpp src/audio.cpp src/desktop.cpp src/render_scale.cpp)
-target_link_libraries(tmloader PRIVATE loader_config loader_imgui ole32 advapi32 user32 gdi32 ws2_32)
+target_link_libraries(tmloader PRIVATE loader_config loader_imgui loader_textures ole32 advapi32 user32 gdi32 ws2_32)
 # The protected original DLL executes legacy generated code; preserve the
 # confirmed process-local compatibility settings, not system DEP/UAC changes.
 target_link_options(tmloader PRIVATE /ENTRY:mainCRTStartup /NXCOMPAT:NO /DYNAMICBASE:NO
@@ -61,7 +70,7 @@ if(BUILD_TESTING)
     target_link_libraries(virtual_registry_tests PRIVATE loader_config advapi32)
     add_test(NAME virtual_registry COMMAND virtual_registry_tests)
     add_executable(graphics_tests tests/graphics_tests.cpp src/render_scale.cpp)
-    target_link_libraries(graphics_tests PRIVATE loader_config user32 ole32)
+    target_link_libraries(graphics_tests PRIVATE loader_config loader_textures user32 ole32)
     add_test(NAME graphics_presentation COMMAND graphics_tests)
     add_executable(settings_ui_tests tests/settings_ui_tests.cpp)
     target_include_directories(settings_ui_tests PRIVATE src)
@@ -79,4 +88,14 @@ if(BUILD_TESTING)
     target_link_libraries(render_scale_tests PRIVATE loader_config user32 advapi32)
     add_test(NAME render_scale_pixels COMMAND render_scale_tests)
     set_tests_properties(render_scale_pixels PROPERTIES SKIP_RETURN_CODE 77 LABELS "graphics-device")
+    add_executable(texture_hooks_tests tests/texture_hooks_tests.cpp src/texture_hooks.cpp)
+    target_include_directories(texture_hooks_tests PRIVATE src)
+    add_test(NAME texture_call_hooks COMMAND texture_hooks_tests)
+    add_executable(texture_pack_tests tests/texture_pack_tests.cpp)
+    target_link_libraries(texture_pack_tests PRIVATE loader_textures nlohmann_json::nlohmann_json)
+    add_test(NAME texture_pack COMMAND texture_pack_tests)
+    add_executable(texture_replacements_tests tests/texture_replacements_tests.cpp src/runtime.cpp src/log.cpp src/render_scale.cpp)
+    target_link_libraries(texture_replacements_tests PRIVATE loader_textures user32 advapi32 ole32)
+    add_test(NAME texture_replacement_pixels COMMAND texture_replacements_tests)
+    set_tests_properties(texture_replacement_pixels PROPERTIES SKIP_RETURN_CODE 77 LABELS "graphics-device")
 endif()

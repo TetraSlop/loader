@@ -78,8 +78,15 @@ def build(args) -> dict:
     root = args.lab.resolve()
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     textures = {entry["id"]: entry for entry in manifest["textures"]}
-    output = root / "sample-4x"
-    output.mkdir(exist_ok=True)
+    output = contained(root, args.output.as_posix())
+    if output == root or output.is_relative_to(root / "original"):
+        raise ValueError("Output must be a separate directory inside the texture lab")
+    output.mkdir(parents=True, exist_ok=True)
+    comparisons = (
+        root / "comparisons"
+        if args.output == Path("sample-4x")
+        else output / "comparisons"
+    )
     records = []
     for texture_id in args.ids or SAMPLE_IDS:
         entry = textures[texture_id]
@@ -120,9 +127,7 @@ def build(args) -> dict:
         baseline = Image.fromarray(rgba).resize(final.size, Image.Resampling.BILINEAR)
         comparison.paste(baseline, (0, 28), baseline)
         comparison.paste(final, (final.width, 28), final)
-        comparison_path = contained(
-            root / "comparisons", texture_id.replace("/", "_") + ".png"
-        )
+        comparison_path = contained(comparisons, texture_id.replace("/", "_") + ".png")
         comparison_path.parent.mkdir(parents=True, exist_ok=True)
         comparison.save(comparison_path)
         records.append(
@@ -137,7 +142,9 @@ def build(args) -> dict:
             }
         )
         print(
-            f"Upscaled {texture_id}: {entry['width']}x{entry['height']} -> {final.width}x{final.height}",
+            f"{args.model.name}: {texture_id} "
+            f"{entry['width']}x{entry['height']} -> {final.width}x{final.height}; "
+            f"saved {destination}",
             flush=True,
         )
     pack = {
@@ -172,9 +179,15 @@ def main() -> None:
     parser.add_argument(
         "--model",
         type=Path,
-        default=Path("out/hd-work/models/RealESRGAN_x4plus_anime_6B.pth"),
+        default=Path("out/hd-work/models/RealESRGAN_x4plus.pth"),
     )
     parser.add_argument("--lab", type=Path, default=Path("out/texture-lab"))
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("variants/real-esrgan"),
+        help="Output directory relative to --lab, e.g. variants/real-esrgan",
+    )
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--threads", type=int, choices=range(1, 33), default=4)
     parser.add_argument("ids", nargs="*")

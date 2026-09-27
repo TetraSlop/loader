@@ -3,16 +3,24 @@
 #include <istream>
 #include <ostream>
 #include <string>
+#include <array>
+#include <algorithm>
 
 namespace tmloader {
 struct WindowSettings {
     int width = 640, height = 480;
     bool fullscreen = false;
     bool preserveAspect = true;
-    int renderScale = 1;
+    float renderScale = 1;
+    bool hdTextures = true;
 };
 
-inline bool validRenderScale(int factor) { return factor >= 1 && factor <= 4; }
+// 4:3 content fills a 1440p display at 3x and a 2160p display at 4.5x.
+// The final preset allows supersampling on a 4K display.
+inline constexpr std::array<float, 6> renderScales{1, 2, 3, 4, 4.5f, 6};
+inline bool validRenderScale(float factor) {
+    return std::find(renderScales.begin(), renderScales.end(), factor) != renderScales.end();
+}
 
 inline bool validWindowSize(int width, int height) {
     return width >= 320 && width <= 7680 && height >= 240 && height <= 4320;
@@ -37,17 +45,22 @@ inline WindowSettings readWindowSettings(std::istream& in) {
     std::string magic;
     int width, height, fullscreen, aspect;
     if ((in >> magic >> width >> height >> fullscreen >> aspect) &&
-        (magic == "tmloader-window-v1" || magic == "tmloader-window-v2") &&
+        (magic == "tmloader-window-v1" || magic == "tmloader-window-v2" ||
+         magic == "tmloader-window-v3" || magic == "tmloader-window-v4") &&
         validWindowSize(width, height) && (fullscreen == 0 || fullscreen == 1) && (aspect == 0 || aspect == 1)) {
         result = {width, height, fullscreen != 0, aspect != 0};
-        int scale;
-        if (magic == "tmloader-window-v2" && (in >> scale) && validRenderScale(scale))
+        float scale;
+        if (magic != "tmloader-window-v1" && (in >> scale) && validRenderScale(scale))
             result.renderScale = scale;
+        int hd;
+        if ((magic == "tmloader-window-v3" || magic == "tmloader-window-v4") &&
+            (in >> hd) && (hd == 0 || hd == 1))
+            result.hdTextures = hd != 0;
     }
     return result;
 }
 inline void writeWindowSettings(std::ostream& out, const WindowSettings& value) {
-    out << "tmloader-window-v2\n" << value.width << ' ' << value.height << ' '
-        << value.fullscreen << ' ' << value.preserveAspect << ' ' << value.renderScale << '\n';
+    out << "tmloader-window-v4\n" << value.width << ' ' << value.height << ' '
+        << value.fullscreen << ' ' << value.preserveAspect << ' ' << value.renderScale << ' ' << value.hdTextures << '\n';
 }
 }

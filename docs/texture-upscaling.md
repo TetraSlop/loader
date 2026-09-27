@@ -1,10 +1,38 @@
 # Offline texture upscaling with chaiNNer
 
-The first sample pack is ready for comparison, but **tmloader does not load
-replacement textures yet**. All generated files and third-party tools live in
-ignored `out/`; the original `runtime/data`, DLLs, and saved game are untouched.
+The loader now supports separate HD packs, with an immediate **F10 > Use HD
+textures** toggle. The prepared local pack covers all 503 exported images:
+250 cards, 30 portraits, 42 font atlases and 181 UI/background images. D is
+used for illustrations; verified Latin characters, main-menu labels, large
+card digits and direction arrows have vector replacements. Other lettering
+and functional symbols are conservatively filtered. Samples and third-party
+tools live in ignored `out/`; the installed complete pack lives in ignored
+`runtime/textures-hd/`. The original
+`runtime/data`, DLLs, and saved game are untouched.
 No game, desktop UI, Electron window, or local web server is started by this
 workflow.
+
+## Install a reviewed pack
+
+```powershell
+out/hd-work/venv/Scripts/python.exe tools/assemble_texture_pack.py out/texture-lab/cards-real-esrgan out/texture-lab/variants/ui-complete out/texture-lab/variants/fonts-vector-4x-v2 --output runtime/textures-hd
+build/RelWithDebInfo/tmloader.exe --config tmloader.ini --texture-pack textures-hd/pack.json --check
+```
+
+The assembler verifies originals, replacement hashes and dimensions before
+creating a new pack directory. It refuses an existing destination.
+For a later revision, choose a new directory with `--output` and point the
+loader's `texture-pack` setting at its `pack.json`. The default manifest is
+`textures/pack.json`, relative to the configured runtime. No Python or models
+are required by the native loader after generating the pack. Set
+`texture-pack=textures-hd/pack.json` in the local INI to select the complete pack.
+
+Run the usual sibling `tmserver/Play.cmd` yourself, then open the collection or
+shop and compare **F10 > Use HD textures** on/off. The loader logs indexed
+images, successful uploads and fallback reasons. The native game was not
+launched during development; this remains the user-run integration check.
+The original archives remain untouched; see the [font findings](ui-texture-upscaling.md),
+[UI treatment](ui-asset-plan.md) and [remaining visual review](HD_REVIEW.md).
 
 ## What is in the game
 
@@ -39,12 +67,13 @@ out/hd-work/venv/Scripts/python.exe -m pip install torch==2.7.0 torchvision==0.2
 out/hd-work/venv/Scripts/python.exe -m pip install -r tools/texture_requirements.txt
 ```
 
-Download the official [RealESRGAN_x4plus_anime_6B model](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth)
-to `out/hd-work/models/RealESRGAN_x4plus_anime_6B.pth` and check it with
+The selected default is **D**, the general 4x model. Download the official
+[RealESRGAN_x4plus model](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth)
+to `out/hd-work/models/RealESRGAN_x4plus.pth` and check it with
 `Get-FileHash -Algorithm SHA256`. Expected hash:
 
 ```
-f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da
+4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1
 ```
 
 Then:
@@ -76,9 +105,9 @@ Outputs:
 
 - `out/texture-lab/manifest.json`: all original image identities and hashes.
 - `out/texture-lab/original/`: 503 lossless PNG exports.
-- `out/texture-lab/sample-4x/`: four enhanced images and `pack.json`, recording
+- `out/texture-lab/variants/real-esrgan/`: four enhanced images and `pack.json`, recording
   model/source/output hashes, tool versions, original and physical dimensions.
-- `out/texture-lab/comparisons/`: original bilinear scaling on the left and
+- `out/texture-lab/variants/real-esrgan/comparisons/`: original bilinear scaling on the left and
   chaiNNer output on the right, at identical displayed dimensions.
 
 Default sample IDs are `gW001/1000/cad00000`, `gW001/1002/cad00020`,
@@ -86,6 +115,59 @@ Default sample IDs are `gW001/1000/cad00000`, `gW001/1002/cad00020`,
 arguments to evaluate another small batch. Each run rewrites the sample
 manifest to describe that run; old images may remain on disk but are not
 listed as part of the new pack.
+
+For separate model trials, use `--output variants/<name>` (relative to
+`--lab`). The PNGs, `pack.json`, and that variant's `comparisons/` are written
+there, preserving the initial anime sample and other variants. The original export
+directory cannot be selected as an output destination.
+
+Two additional official models have been evaluated on both small card samples:
+
+| Variant | Official model | Release | SHA256 |
+| --- | --- | --- | --- |
+| `real-esrgan` | [RealESRGAN_x4plus.pth](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth) | v0.1.0 | `4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1` |
+| `real-esrnet` | [RealESRNet_x4plus.pth](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.1/RealESRNet_x4plus.pth) | v0.1.1 | `a820b9bde89a874d7599d545567308ce6c128fc8754a53208eda016d40aa81df` |
+
+Both are 23-block 4x RGB networks, loaded through the same chaiNNer backend.
+The general GAN model retains more surface variation than the anime sample;
+ESRNet is smoother and less grainy. Both still interpret ambiguous source
+pixels, so inspect the actual comparison rather than assuming either is an
+automatic improvement. Alpha handling is identical between all three models.
+
+The downloaded file sizes match the official GitHub release assets; hashes
+above were calculated locally. Those older releases do not publish a GitHub
+asset digest. Their URLs are also referenced by the upstream
+[inference script](https://github.com/xinntao/Real-ESRGAN/blob/master/inference_realesrgan.py).
+The local `out/hd-work/models/general-models.provenance.json` records release
+URLs, asset IDs, sizes, hashes and the upstream BSD-3-Clause license link.
+Each prepared variant's `pack.json` includes that provenance.
+
+Example after downloading a model to `out/hd-work/models/`:
+
+```powershell
+out/hd-work/venv/Scripts/python.exe tools/upscale_textures.py --model out/hd-work/models/RealESRGAN_x4plus.pth --output variants/real-esrgan gW001/1000/cad00000 gW001/1002/cad00020
+```
+
+The six-way review also uses the earlier anime sample in `sample-4x`. To
+reproduce it, download the official
+[anime 6B model](https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth)
+(SHA256 `f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da`)
+and pass `--model out/hd-work/models/RealESRGAN_x4plus_anime_6B.pth --output sample-4x`.
+After all three models' samples are ready, generate the six-way visual review:
+
+```powershell
+out/hd-work/venv/Scripts/python.exe tools/compare_texture_variants.py
+```
+
+`out/texture-lab/variant-review/` contains labeled comparison sheets, separate
+RGBA outputs and `review.json`. The panels compare bilinear, lightly sharpened
+Lanczos, anime AI, general GAN, ESRNet, and a 25% general-GAN blend. The review
+tool verifies source/sample hashes, dimensions and matching alpha first.
+
+The user preferred panel **D** (general `RealESRGAN_x4plus`). See
+[FFIX upscaling research](ffix-upscaling-research.md) for the Moguri
+developers' workflows and a direct comparison with zePilot's original
+FFIX-trained model. D remains the preferred offline baseline.
 
 ## Assessment and limits
 
@@ -107,17 +189,19 @@ Fonts `gW000/0090/font_00` through `font_41` are deliberately excluded from
 AI processing. They are 256x256 bitmap atlases, including Latin, Japanese,
 symbols and placeholder sheets. A replacement needs the native character
 mapping, cell bounds, baseline, advance and coverage convention preserved.
-The matching original typeface has not been identified. Rendering a known
-font at higher resolution into each existing cell is preferable once that
-mapping is verified; blindly upscaling whole font atlases risks altering
-small strokes and glyph spacing.
+The matching original typeface has not been identified. The font workflow now
+filters all 42 atlases cell by cell and substitutes 95 verified ASCII mappings
+using fitted MS UI Gothic vector glyphs. Every other cell keeps its original
+character. This is a deliberate substitute face, not a claim to have recovered
+the original outlines; the conservative all-original-glyph pack is retained.
 
 ## Loader integration contract
 
 Use the archive/group/name identity and the original PNG hash, then load a
 separate replacement only when the source matches. Do not rewrite archives.
-The sample manifest is a draft contract, not a runtime feature. Missing,
-mismatched or invalid replacements must fall back to the original texture.
+The source PNG hash selects the replacement (identical PNGs shared between
+archive identities share the same visual result). Missing, mismatched or
+invalid replacements fall back to the original texture.
 
 The native loader obtains texture dimensions using D3D8 `GetLevelDesc(0)` at
 TM `+17C568..+17C5AB`, then stores width/height floats in its texture entry at
@@ -130,12 +214,14 @@ can then address the same art regions at 4x detail. Physical padding to a
 power of two, edge texels, texture pitch and any native copies into atlases
 must be traced before choosing the exact interception point.
 
-Next implementation milestone: a disabled-by-default replacement loader for
-one card and one background, verified by an offscreen D3D8 pixel test. Check
-original logical size, actual replacement detail, transparency, UVs, missing
-file fallback, device reset and COM lifetime. Only then expand to all assets
-and ask the user to test the native game. No replacement hooks were added in
-this offline-workflow checkpoint.
+The implemented adapter guards seven native PNG-upload call sites, always
+returns the original resource, and attaches a managed HD companion through
+D3D8 private data. Each draw temporarily binds that companion and restores
+the original before the native renderer resumes. Its metadata, texture cache,
+font dimensions and normal release/reset paths therefore keep seeing original
+resources. HD GPU dimensions include scaled original power-of-two padding;
+the native FILTER_NONE upload preserves image placement and transparent borders.
+See [the traced load path](texture-load-path.md) for the ABI and offsets.
 
 ## Provenance and licensing
 

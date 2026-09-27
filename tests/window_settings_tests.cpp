@@ -30,12 +30,22 @@ int main() {
     std::istringstream legacy("tmloader-window-v1 960 720 0 1");
     value = readWindowSettings(legacy);
     assert(value.width == 960 && value.height == 720 && value.renderScale == 1);
-    for (int scale : {1, 2, 3, 4}) {
+    for (float scale : renderScales) {
         std::stringstream saved;
         value.renderScale = scale;
         writeWindowSettings(saved, value);
         assert(readWindowSettings(saved).renderScale == scale);
     }
+    std::stringstream hd;
+    value.hdTextures = false;
+    writeWindowSettings(hd, value);
+    assert(!readWindowSettings(hd).hdTextures);
+    std::istringstream previous("tmloader-window-v2 1280 960 1 0 4");
+    value = readWindowSettings(previous);
+    assert(value.renderScale == 4 && value.hdTextures);
+    std::istringstream third("tmloader-window-v3 1280 960 1 0 3 0");
+    value = readWindowSettings(third);
+    assert(value.renderScale == 3 && !value.hdTextures);
     for (const char* scale : {"0", "-1", "5", "999999999999999999", "oops", ""}) {
         std::istringstream invalid(std::string("tmloader-window-v2 960 720 0 1 ") + scale);
         value = readWindowSettings(invalid);

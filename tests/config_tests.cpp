@@ -26,6 +26,8 @@ int main() {
     assert(!isIpv4Address("0.0.0.0"));
     auto c = parseConfig({"--runtime-dir", ".", "--check"});
     assert(c.game.filename() == "TM_native.dll" && c.core.filename() == "polcore_native.dll");
+    assert(c.texturePack == c.runtimeDir / "textures/pack.json");
+    assert(parseConfig({"--runtime-dir", ".", "--texture-pack", "custom/pack.json"}).texturePack == c.runtimeDir / "custom/pack.json");
     assert(c.checkOnly && c.polId == "EEEEEEEF" && c.gamePort == 51241 && c.profilePort == 51220);
     for (const auto* value : {"0", "65536", "-1", "x", "1x"})
         rejects([&] { parseConfig({"--runtime-dir", ".", "--game-port", value}); });

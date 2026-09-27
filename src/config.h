@@ -5,7 +5,7 @@
 
 namespace tmloader {
 struct Config {
-    std::filesystem::path runtimeDir, game, core, log;
+    std::filesystem::path runtimeDir, game, core, log, texturePack;
     std::string server = "127.0.0.1";
     std::string polId = "EEEEEEEF";
     std::string password = "tm-local-test";

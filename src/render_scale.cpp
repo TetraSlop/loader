@@ -29,7 +29,7 @@ HRESULT createScaleShader(void* device, DWORD* shader) {
     auto table = *static_cast<void***>(device);
     return reinterpret_cast<Create>(table[75])(device, declaration, program, shader, 0);
 }
-HRESULT setScaleConstants(void* device, int factor) {
+HRESULT setScaleConstants(void* device, float factor) {
     // Map pixel edges: (x + 0.5) * factor - 0.5. This also preserves the
     // original rasterization exactly at 1x, including half-pixel aligned quads.
     const float offset = 0.5f - 0.5f / factor;

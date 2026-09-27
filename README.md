@@ -25,21 +25,40 @@ new resolutions. See [validation](docs/VALIDATION.md).
 
 The panel offers 640x480, 960x720 and 1280x960 presets and a **Keep original
 4:3 proportions** toggle. A separate **Rendering resolution** selector offers
-640x480 (1x), 1280x960 (2x), 1920x1440 (3x), and 2560x1920 (4x). Choose a scale,
+640x480 (1x), 1280x960 (2x), 1920x1440 (1440p), 2560x1920 (4x),
+2880x2160 (4K), and 3840x2880 (supersampling). Choose a scale,
 close normally, and relaunch with `Play.cmd`; changing this setting does not
 reset the graphics device during a match. The panel displays the active
 resolution. Existing accounts keep 1x until a higher scale is selected.
 
+The 4K preset fills the height of a 3840x2160 display while preserving the
+game's 4:3 composition. Keep **original 4:3 proportions** enabled to avoid
+stretching cards and text across a widescreen or ultrawide monitor.
+
 Higher scales rasterize the game's geometry at the selected resolution before
 fitting the image into the window. They preserve the original 640x480 layout;
 mouse mapping follows the same content rectangle and ignores black bars.
-Original card art and bitmap text retain their source detail. An unsupported
+Textures without an installed replacement retain their source detail. An unsupported
 higher-resolution device/shader falls back to 640x480 and records the reason
 in the loader log.
 
-An [offline chaiNNer texture workflow](docs/texture-upscaling.md) can extract
-the original artwork and create a small 4x sample pack for comparison.
-Replacement textures are not yet loaded by the game.
+The [chaiNNer texture workflow](docs/texture-upscaling.md) creates separate 4x
+replacement PNGs. The loader reads `runtime/textures/pack.json` by default;
+`--texture-pack FILE` selects another manifest. **F10 > Use HD textures**
+switches between original and enhanced artwork immediately and is remembered
+per account. Missing or invalid replacements use the original artwork.
+The prepared local pack covers all 503 source images: 250 card illustrations,
+30 portraits, 42 font atlases and 181 UI/background images. Illustrated artwork
+uses the selected D (general RealESRGAN) model. Mapped Latin text, main-menu
+labels, large card digits and direction arrows have crisp vector replacements;
+other text/symbols use conservative filtering. Five backgrounds are processed
+as joined images before splitting them back into their original tiles.
+The prepared INI selects `runtime/textures-hd/pack.json`; the earlier card-only
+pack remains separate. Original archives are never rewritten. See the
+[remaining visual review](docs/HD_REVIEW.md), [font work](docs/ui-texture-upscaling.md)
+and [UI work](docs/ui-asset-plan.md) for coverage and limits.
+Headless GPU and native-call tests cover the new loading/drawing adapters;
+the complete native game still needs a user-run visual check.
 
 Alt+Tab and Windows shortcuts remain available. The wrapper disables the
 client's legacy global keyboard hook, pointer warping and focus reclaim.
@@ -48,7 +67,7 @@ borders, black bars and other apps keep a normal cursor.
 The panel has its own window/render loop so it can work while the original
 client is inactive. It does not pause an online match.
 
-Window size, aspect preference and fullscreen state are remembered per account
+Window size, aspect preference, fullscreen state and HD-texture preference are remembered per account
 in `runtime/settings/<POL-ID>.window`. Music and effect levels remain in the
 game's Options menu; the loader now enables the native sound engine at startup.
 
@@ -58,7 +77,8 @@ Requires CMake 3.24+ and Visual Studio with the Desktop C++ workload and an x86
 Windows SDK toolchain. CMake downloads Dear ImGui 1.92.5 from an immutable
 upstream commit and verifies its SHA256. Later builds use the cached source.
 Its official Win32/DX9 backends render the settings panel; the game retains
-its D3D8 renderer. See [third-party notices](docs/THIRD_PARTY.md).
+its D3D8 renderer. CMake also fetches pinned nlohmann/json 3.12.0 for texture
+pack manifests. See [third-party notices](docs/THIRD_PARTY.md).
 
 ```powershell
 cmake -S . -B build -A Win32
@@ -93,7 +113,7 @@ Legacy runtime paths must fit MAX_PATH and the client uses ANSI file
 APIs internally.
 
 Copy `tmloader.example.ini` to the ignored `tmloader.ini`, then set runtime-dir
-to the external directory. Paths for game/core/log are relative to runtime-dir
+to the external directory. Paths for game/core/log/texture-pack are relative to runtime-dir
 unless absolute. A relative runtime-dir in a config is resolved beside that
 config. Command-line settings override config entries.
 
@@ -104,7 +124,8 @@ hard-linked output files are rejected. These directories are created only
 during an actual launch, not by `--check`.
 
 This command is read-only: it verifies config, DLL hashes and representative
-required assets without loading DLLs, creating windows or connecting:
+required assets, and any installed texture pack's paths/dimensions/hashes,
+without loading DLLs, creating windows or connecting:
 
 ```powershell
 .\build\RelWithDebInfo\tmloader.exe --config .\tmloader.ini --check

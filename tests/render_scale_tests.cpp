@@ -1,6 +1,7 @@
 #include "runtime.h"
 #include "d3d8_abi.h"
 #include "render_scale.h"
+#include "window_settings.h"
 #include <unknwn.h>
 #include <wrl/client.h>
 #include <array>
@@ -27,7 +28,7 @@ struct Vertex { float x, y, z, rhw; DWORD color, specular; float u, v; };
 static_assert(sizeof(Vertex) == 32);
 struct Locked { int pitch; BYTE* data; };
 
-std::vector<DWORD> pixels(void* device, int factor) {
+std::vector<DWORD> pixels(void* device, float factor) {
     ComPtr<IUnknown> surface;
     check(call(device, 16, 0, 0, surface.GetAddressOf()));
     DWORD desc[8]{};
@@ -43,7 +44,7 @@ std::vector<DWORD> pixels(void* device, int factor) {
     return result;
 }
 
-std::vector<DWORD> render(void* device, void* buffer, DWORD shader, int factor, bool reference) {
+std::vector<DWORD> render(void* device, void* buffer, DWORD shader, float factor, bool reference) {
     // A clipped quad with unequal W, interpolated alpha/color and noninteger
     // positions. CPU-scaled fixed-function rendering is the independent oracle.
     std::array<Vertex, 4> vertices{{
@@ -84,9 +85,9 @@ int main() {
         if (!d3d) { puts("SKIP: Direct3D 8 unavailable"); return 77; }
         DWORD mode[4]{};
         check(call(d3d.Get(), 8, 0, mode));
-        for (int factor : {1, 2, 3, 4}) {
+        for (float factor : renderScales) {
             Present8 pp{};
-            pp.width = 640 * factor; pp.height = 480 * factor;
+            pp.width = static_cast<UINT>(640 * factor); pp.height = static_cast<UINT>(480 * factor);
             pp.format = mode[3]; pp.count = 1; pp.swap = 3;
             pp.window = GetDesktopWindow(); pp.windowed = TRUE; pp.flags = 1;
             ComPtr<IUnknown> device;
@@ -126,7 +127,7 @@ int main() {
                         if (delta > 2) { ++differing; break; }
                     }
                 }
-                printf("%dx %s: %zu pixels, %zu differ by >2, max delta %u\n",
+                printf("%gx %s: %zu pixels, %zu differ by >2, max delta %u\n",
                     factor, textured ? "textured" : "colored", painted, differing, maxDelta);
                 if (painted < actual.size() / 2 || differing > actual.size() / 10000)
                     throw std::runtime_error("Scaled rendering differs from reference");
@@ -134,7 +135,7 @@ int main() {
             check(call(device.Get(), 76, gameVertexFormat));
             deleteScaleShader(device.Get(), shader);
         }
-        puts("PASS: actual 1x/2x/3x/4x rendering matches independently scaled geometry");
+        puts("PASS: actual rendering through 4K and 6x matches independently scaled geometry");
         return 0;
     } catch (const std::exception& e) {
         fprintf(stderr, "FAIL: %s\n", e.what());

@@ -21,7 +21,7 @@ RECT gameContentRect() { return {240, 0, 1680, 1080}; }
 }
 static HRESULT WINAPI reset(void*, tmloader::Present8* pp) {
     // Emulate D3D8's presentation contract: explicit rectangles require COPY.
-    int scale = tmloader::activeRenderScale();
+    float scale = tmloader::activeRenderScale();
     assert(pp->windowed && pp->width == 640U * scale && pp->height == 480U * scale);
     assert(pp->swap == 3 && pp->count == 1 && pp->multisample == 0);
     assert(pp->window == tmloader::gameWindow && pp->refresh == 0);
@@ -30,9 +30,9 @@ static HRESULT WINAPI reset(void*, tmloader::Present8* pp) {
 static HRESULT WINAPI present(void*, const RECT* source, const RECT* dest, HWND, const RGNDATA*) {
     assert(dest && dest->left == 240 && dest->top == 0 && dest->right == 1680 && dest->bottom == 1080);
     if (source) {
-        int scale = tmloader::activeRenderScale();
-        assert(source->left == 10 * scale && source->top == 20 * scale &&
-               source->right == 630 * scale && source->bottom == 470 * scale);
+        int twiceScale = static_cast<int>(tmloader::activeRenderScale() * 2);
+        assert(source->left == MulDiv(11, twiceScale, 2) && source->top == MulDiv(21, twiceScale, 2) &&
+               source->right == MulDiv(631, twiceScale, 2) && source->bottom == MulDiv(471, twiceScale, 2));
     }
     return S_OK;
 }
@@ -66,6 +66,9 @@ int main() {
     pp.width = 1920; pp.height = 1080; pp.swap = 1; pp.refresh = 60;
     originalReset = reset;
     originalPresent = present;
+    rememberOriginal(originalPresent, reinterpret_cast<void*>(presentFrame), presentFrame);
+    rememberOriginal(originalReset, reinterpret_cast<void*>(resetDevice), resetDevice);
+    assert(originalPresent == present && originalReset == reset);
     assert(resetDevice(nullptr, &pp) == S_OK);
     assert(presentFrame(nullptr, nullptr, nullptr, nullptr, nullptr) == S_OK);
     void* table[97]{};
@@ -75,7 +78,7 @@ int main() {
     void** device = table;
     originalVertexShader = selectShader;
     originalVertexBuffer = makeBuffer;
-    for (int factor : {1, 2, 3, 4}) {
+    for (float factor : renderScales) {
         renderingFactor = factor;
         assert(resetDevice(&device, &pp) == S_OK);
         assert(setVertexShader(&device, gameVertexFormat) == S_OK);
@@ -84,10 +87,10 @@ int main() {
         assert(bufferFormat == (factor == 1 ? gameVertexFormat : 0));
         assert(vertexBuffer(&device, 128, 0x238, 0x142, 0, nullptr) == S_OK && bufferFormat == 0x142);
         assert(setVertexShader(&device, 0x142) == S_OK && selectedShader == 0x142);
-        RECT source{10, 20, 630, 470};
+        RECT source{11, 21, 631, 471};
         assert(presentFrame(nullptr, &source, nullptr, nullptr, nullptr) == S_OK);
-        assert(source.left == 10 && source.right == 630);
+        assert(source.left == 11 && source.right == 631);
     }
     deleteScaleShader(&device, scaleShader);
-    assert(shaderCreates == 3 && shaderDeletes == 3 && constantsCalls == 3);
+    assert(shaderCreates == 5 && shaderDeletes == 5 && constantsCalls == 5);
 }

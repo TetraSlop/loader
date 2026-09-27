@@ -27,6 +27,20 @@ static LRESULT fakeDefault(HWND, UINT message, WPARAM command, LPARAM) {
     defaultMessage = message; defaultCommand = command; return 123;
 }
 static LRESULT fakeLegacy(WNDPROC, HWND, UINT, WPARAM, LPARAM) { ++legacyMessages; return 321; }
+static LONG_PTR installedProcedure;
+static volatile bool forbidSubclass = true;
+static LONG_PTR fakeGetWindowLongPtr(HWND hwnd, int index) {
+    assert(hwnd == testWindow && index == GWLP_WNDPROC);
+    return installedProcedure;
+}
+static LONG_PTR fakeSetWindowLongPtr(HWND, int, LONG_PTR) {
+    if (forbidSubclass) throw std::runtime_error("Repeated initialization tried to subclass the window again");
+    return installedProcedure;
+}
+#undef GetWindowLongPtrA
+#undef SetWindowLongPtrA
+#define GetWindowLongPtrA fakeGetWindowLongPtr
+#define SetWindowLongPtrA fakeSetWindowLongPtr
 #define PostQuitMessage fakeQuit
 #define DefWindowProcA fakeDefault
 #define CallWindowProcA fakeLegacy
@@ -91,5 +105,19 @@ int main() {
     wrapperWindow(nullptr, WM_LBUTTONDOWN, 0, 0);
     wrapperWindow(nullptr, WM_KILLFOCUS, 0, 0);
     assert(takeMousePresses() == 0);
+    wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::renderScale), 4);
+    assert(currentWindowSettings().renderScale == 4.5f);
+    wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::renderScale), -1);
+    wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::renderScale), renderScales.size());
+    assert(currentWindowSettings().renderScale == 4.5f);
+    std::ifstream saved(settingsFile());
+    assert(readWindowSettings(saved).renderScale == 4.5f);
+    saved.close();
+    gameWindow = testWindow;
+    originalWindowProc = reinterpret_cast<WNDPROC>(1234);
+    installedProcedure = reinterpret_cast<LONG_PTR>(wrapperWindow);
+    initializeGameWindow(testWindow);
+    assert(originalWindowProc == reinterpret_cast<WNDPROC>(1234));
+    assert(currentWindowSettings().renderScale == 4.5f);
     std::filesystem::remove_all(options.runtimeDir);
 }

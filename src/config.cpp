@@ -22,6 +22,7 @@ void assign(Config& c, const std::string& name, const std::string& value) {
     else if (name == "game") c.game = value;
     else if (name == "core") c.core = value;
     else if (name == "log") c.log = value;
+    else if (name == "texture-pack") c.texturePack = value;
     else if (name == "server") c.server = value;
     else if (name == "game-port") c.gamePort = port(value);
     else if (name == "profile-port") c.profilePort = port(value);
@@ -82,6 +83,7 @@ Config parseConfig(const std::vector<std::string>& args) {
         p = std::filesystem::absolute(p).lexically_normal();
     };
     resolve(c.game, "TM_native.dll"); resolve(c.core, "polcore_native.dll"); resolve(c.log, "logs/tmloader.log");
+    resolve(c.texturePack, "textures/pack.json");
     if (!isIpv4Address(c.server)) throw std::runtime_error("--server must be a numeric IPv4 address");
     if (c.gamePort == c.profilePort) throw std::runtime_error("Game and profile ports must differ");
     if (c.profilePort == 51241) throw std::runtime_error("Profile port cannot use the client's reserved GameIRC port 51241");
@@ -108,6 +110,7 @@ const char* usage() {
            "  --pol-id ID            Synthetic account (default EEEEEEEF)\n"
            "  --password VALUE       Synthetic password (default tm-local-test)\n"
            "  --log FILE             Log inside runtime/logs (default logs/tmloader.log)\n"
+           "  --texture-pack FILE    HD manifest (default runtime/textures/pack.json)\n"
            "  --diagnostics          Extra renderer logs and frame captures\n"
            "  --check                Read-only files/hash/config checks; no game launch\n"
            "  --help | --version\n";

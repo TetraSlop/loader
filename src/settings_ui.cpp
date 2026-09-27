@@ -1,6 +1,7 @@
 #include "runtime.h"
 #include "window.h"
 #include "render_scale.h"
+#include "texture_replacements.h"
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx9.h"
@@ -76,15 +77,25 @@ void settingsContents() {
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextUnformatted("Rendering resolution");
-    int resolution = value.renderScale - 1;
+    int resolution = static_cast<int>(std::find(renderScales.begin(), renderScales.end(), value.renderScale) - renderScales.begin());
     ImGui::SetNextItemWidth(-1);
     if (ImGui::Combo("##resolution", &resolution,
         "1x - 640 x 480 (original)\0" "2x - 1280 x 960\0"
-        "3x - 1920 x 1440\0" "4x - 2560 x 1920\0"))
-        postWindowAction(WindowAction::renderScale, resolution + 1);
-    int active = activeRenderScale();
-    ImGui::TextDisabled("Currently rendering at %d x %d", 640 * active, 480 * active);
-    ImGui::TextWrapped("Applies after relaunch. Original artwork keeps its source detail.");
+        "1440p - 1920 x 1440\0" "4x - 2560 x 1920\0"
+        "4K - 2880 x 2160\0" "Supersampled - 3840 x 2880\0"))
+        postWindowAction(WindowAction::renderScale, resolution);
+    float active = activeRenderScale();
+    ImGui::TextDisabled("Currently rendering at %.0f x %.0f", 640 * active, 480 * active);
+    ImGui::TextWrapped("Rendering resolution applies after relaunch.");
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::TextUnformatted("Artwork");
+    if (ImGui::Checkbox("Use HD textures", &value.hdTextures))
+        postWindowAction(WindowAction::hdTextures, value.hdTextures);
+    if (texturePackCount())
+        ImGui::TextDisabled("%zu images available; %u replacements loaded", texturePackCount(), textureReplacementCount());
+    else ImGui::TextDisabled("No HD texture pack loaded");
+    ImGui::TextWrapped("Switches immediately. Images missing from the pack use their originals.");
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextUnformatted("Audio");
@@ -117,7 +128,7 @@ void panelMain() {
     float scale = ImGui_ImplWin32_GetDpiScaleForHwnd(gameWindow);
     RECT owner{};
     GetWindowRect(gameWindow, &owner);
-    int width = static_cast<int>(540 * scale), height = static_cast<int>(660 * scale);
+    int width = static_cast<int>(540 * scale), height = static_cast<int>(770 * scale);
     int x = owner.left + 40, y = owner.top + 40;
     MONITORINFO monitor{sizeof(MONITORINFO)};
     if (GetMonitorInfoW(MonitorFromWindow(gameWindow, MONITOR_DEFAULTTONEAREST), &monitor)) {

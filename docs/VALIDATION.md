@@ -1,5 +1,56 @@
 # Refactor validation
 
+## HD artwork and 4K rendering, 2026-09-27
+
+The loader now substitutes separate HD resources while keeping the native
+texture objects and logical dimensions intact. Seven verified native upload
+CALL sites are guarded before patching. Draws temporarily bind the matching
+HD texture and restore the native binding afterwards. Original PNG hashes
+ignore only archive alignment padding after IEND. Invalid/missing replacements
+fall back to the original texture. No original asset archive is rewritten.
+
+- **15/15 CTest cases passed**, including actual Direct3D8 checks under low
+  integrity. No game code, visible window, Present, focus or input control is
+  used by those graphics tests.
+- Colored/textured geometry matches the independent CPU-scaled reference at
+  all six resolutions, including **2880x2160 (4.5x)** and **3840x2880 (6x)**.
+  All twelve comparisons produced **zero RGB differences** on this machine.
+- Replacement checks cover original GetLevelDesc preservation, HD detail,
+  partial alpha, padded non-power-of-two UV crops, toggle/fallback, restored
+  native bindings and COM ownership. Managed replacement survival and two
+  complete DEFAULT-resource release/reset/reload cycles pass.
+- A separate font-shaped fixture exercises the original 18px cell layout,
+  17-texel UV spans on 16-unit glyph quads, alpha floor 1, linear filtering,
+  colored/translucent text and a shadow pass. HD substitution plus the scale
+  shader matches independently scaled/directly bound rendering with zero RGB
+  differences at both 1440p and 2160p. This validates the drawing contract;
+  it does not identify the original typeface or verify every native text effect.
+- Synthetic x86 upload calls verify the fifteen-argument stdcall adapter,
+  original return values, byte guards and rollback. Manifest tests cover
+  source/replacement hashes, containment, dimensions and corrupt files.
+- Saved v1-v3 preferences remain readable; v4 supports fractional scales.
+  Window-message tests save 4.5x and reject invalid preset indices. The ImGui
+  layout remains within its panel at 100/150/200% DPI.
+- Review found a repeated-device window-subclass recursion hazard. Window
+  initialization is now idempotent for an already adapted HWND; a regression
+  check verifies that the real native forwarding procedure remains intact.
+
+The complete native game still requires a user-run visual check. In particular,
+headless GPU tests do not establish that every screen, animated sprite or font
+effect looks correct. After launch, the log should report the active resolution,
+indexed source-image count and individual HD uploads; F10 provides an immediate
+original/HD comparison. Remaining visual review items are recorded with the
+asset pack documentation.
+
+The installed `runtime/textures-hd/pack.json` combines **503 entries covering
+443 distinct source PNGs**, with 157,610,541 bytes of replacement PNG data.
+The assembler verified every source/output hash, decode and 4x dimension;
+the native loader's read-only check verified its complete unique-image index.
+All seven original archive hashes still match the extraction manifest.
+The rebuilt executable passes PE32/asInvoker checks, and the sibling launcher's
+`Play.cmd --check` passes without starting services or the game. The prepared
+account selects 4.5x, 4:3 proportions and HD artwork; window mode is preserved.
+
 ## Higher internal resolution, 2026-09-27
 
 The user confirmed sound works after the DirectSound 8 correction and requested

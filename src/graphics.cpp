@@ -2,6 +2,7 @@
 #include "window.h"
 #include "render_scale.h"
 #include "d3d8_abi.h"
+#include "texture_replacements.h"
 #include <atomic>
 namespace tmloader {
 typedef HRESULT(WINAPI *CreateDevice8)(void *, UINT, DWORD, HWND, DWORD, Present8 *, void **);
@@ -11,7 +12,7 @@ static PresentFn originalPresent;
 using ResetFn = HRESULT(WINAPI*)(void*, Present8*);
 static ResetFn originalReset;
 static DWORD desktopFormat = 22;
-static std::atomic<int> renderingFactor{1};
+static std::atomic<float> renderingFactor{1};
 static DWORD scaleShader;
 using SetVertexShaderFn = HRESULT(WINAPI*)(void*, DWORD);
 static SetVertexShaderFn originalVertexShader;
@@ -25,7 +26,7 @@ static HRESULT WINAPI vertexBuffer(void* device, UINT size, DWORD usage, DWORD f
     return originalVertexBuffer(device, size, usage, format, pool, output);
 }
 
-int activeRenderScale() { return renderingFactor; }
+float activeRenderScale() { return renderingFactor; }
 static HRESULT WINAPI setVertexShader(void* device, DWORD format) {
     if (format == gameVertexFormat && renderingFactor > 1) {
         HRESULT hr = setScaleConstants(device, renderingFactor);
@@ -37,8 +38,8 @@ static HRESULT WINAPI setVertexShader(void* device, DWORD format) {
 
 static void windowedParameters(Present8& pp) {
     pp.windowed = TRUE;
-    pp.width = 640 * renderingFactor;
-    pp.height = 480 * renderingFactor;
+    pp.width = static_cast<UINT>(640 * renderingFactor);
+    pp.height = static_cast<UINT>(480 * renderingFactor);
     pp.format = desktopFormat;
     pp.count = 1;
     pp.multisample = 0;
@@ -67,6 +68,11 @@ static DrawUPFn realDrawUP;
 static DrawIdxFn realDrawIdx;
 static DrawIdxUPFn realDrawIdxUP;
 static TextureFn realTexture;
+template<class T> static void rememberOriginal(T& destination, void* entry, T wrapper) {
+    // Some D3D8 implementations share method tables between device instances.
+    // A later native device creation must not record our own hook as its target.
+    if (entry != reinterpret_cast<void*>(wrapper)) destination = reinterpret_cast<T>(entry);
+}
 static HRESULT countDraw(HRESULT hr)
 {
     drawCalls++;
@@ -76,19 +82,23 @@ static HRESULT countDraw(HRESULT hr)
 }
 static HRESULT WINAPI draw(void *d, DWORD t, UINT s, UINT n)
 {
+    TextureDrawBinding replacement(d, currentWindowSettings().hdTextures);
     return countDraw(realDraw(d, t, s, n));
 }
 static HRESULT WINAPI drawUP(void *d, DWORD t, UINT n, const void *data, UINT stride)
 {
+    TextureDrawBinding replacement(d, currentWindowSettings().hdTextures);
     return countDraw(realDrawUP(d, t, n, data, stride));
 }
 static HRESULT WINAPI drawIdx(void *d, DWORD t, UINT m, UINT v, UINT s, UINT n)
 {
+    TextureDrawBinding replacement(d, currentWindowSettings().hdTextures);
     return countDraw(realDrawIdx(d, t, m, v, s, n));
 }
 static HRESULT WINAPI drawIdxUP(void *d, DWORD t, UINT m, UINT v, UINT n, const void *i, DWORD f, const void *p,
                                 UINT stride)
 {
+    TextureDrawBinding replacement(d, currentWindowSettings().hdTextures);
     return countDraw(realDrawIdxUP(d, t, m, v, n, i, f, p, stride));
 }
 static HRESULT WINAPI texture(void *d, UINT w, UINT h, UINT l, DWORD u, DWORD f, DWORD pool, void **out)
@@ -174,9 +184,11 @@ static HRESULT WINAPI presentFrame(void *self, const RECT *source, const RECT *d
     }
     RECT scaledSource{};
     if (source && renderingFactor > 1) {
-        int factor = renderingFactor;
-        scaledSource = {source->left * factor, source->top * factor,
-                        source->right * factor, source->bottom * factor};
+        // Every supported scale is a multiple of 0.5; round rectangle edges
+        // consistently rather than truncating odd coordinates at 4.5x.
+        int twiceFactor = static_cast<int>(renderingFactor * 2);
+        scaledSource = {MulDiv(source->left, twiceFactor, 2), MulDiv(source->top, twiceFactor, 2),
+                        MulDiv(source->right, twiceFactor, 2), MulDiv(source->bottom, twiceFactor, 2)};
         source = &scaledSource;
     }
     if (renderingFactor > 1) dirty = nullptr; // Native Present uses a complete frame.
@@ -222,30 +234,30 @@ static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND 
     if (SUCCEEDED(hr))
     {
         void **dv = *(void ***)*device;
-        originalPresent = (PresentFn)dv[15];
-        originalReset = (ResetFn)dv[14];
-        originalVertexShader = (SetVertexShaderFn)dv[76];
-        originalVertexBuffer = (VertexBufferFn)dv[23];
-        realDraw = (DrawFn)dv[70];
-        realDrawIdx = (DrawIdxFn)dv[71];
-        realDrawUP = (DrawUPFn)dv[72];
-        realDrawIdxUP = (DrawIdxUPFn)dv[73];
-        realTexture = (TextureFn)dv[20];
+        rememberOriginal(originalPresent, dv[15], presentFrame);
+        rememberOriginal(originalReset, dv[14], resetDevice);
+        rememberOriginal(originalVertexShader, dv[76], setVertexShader);
+        rememberOriginal(originalVertexBuffer, dv[23], vertexBuffer);
+        rememberOriginal(realDraw, dv[70], draw);
+        rememberOriginal(realDrawIdx, dv[71], drawIdx);
+        rememberOriginal(realDrawUP, dv[72], drawUP);
+        rememberOriginal(realDrawIdxUP, dv[73], drawIdxUP);
+        rememberOriginal(realTexture, dv[20], texture);
         DWORD old;
         VirtualProtect(dv, 97 * 4, PAGE_READWRITE, &old);
         dv[14] = (void*)resetDevice;
         dv[15] = (void *)presentFrame;
         dv[76] = (void*)setVertexShader;
         dv[23] = (void*)vertexBuffer;
-        if (options.diagnostics) {
-            dv[20] = (void *)texture;
+        if (options.diagnostics) dv[20] = (void *)texture;
+        if (options.diagnostics || texturePackCount()) {
             dv[70] = (void *)draw;
             dv[71] = (void *)drawIdx;
             dv[72] = (void *)drawUP;
             dv[73] = (void *)drawIdxUP;
         }
         VirtualProtect(dv, 97 * 4, old, &old);
-        logf("Rendering resolution: %lux%lu (%dx)", pp->width, pp->height, activeRenderScale());
+        logf("Rendering resolution: %lux%lu (%gx)", pp->width, pp->height, activeRenderScale());
     }
     return hr;
 }
