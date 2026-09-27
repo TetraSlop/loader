@@ -20,6 +20,27 @@ different graphics backend need a concrete feature requirement first.
 | MinHook | Keep in reserve for a genuine function detour | Current import/vtable replacement and verified call-site patches are a different problem |
 | d3d8to9 | Separate optional rendering experiment | Adds a D3D9 translation backend; does not replace the scaling, texture or input adapters |
 
+For the next user-visible feature, a small **F10 diagnostics tab** is the most
+direct fit: show recent warnings, current renderer/texture-pack status and a
+copyable diagnostic summary. spdlog can provide level filtering and a bounded
+log sink while the existing ImGui panel supplies the UI. The tab and status
+summary are loader work; the library does not provide them automatically.
+Add spdlog alongside that feature, not merely to replace the current writer.
+
+For code reduction, **CLI11 is the strongest remaining candidate**. In the
+current 118-line `config.cpp`, `assign` occupies 14 lines, `readConfig` 18, the
+two argument loops 20, and `usage` 17: about 70 lines before the small trim and
+numeric-conversion helpers. Option declarations and policy checks still take
+code, so this is the affected scope rather than a promise to delete 80 lines.
+Keep the migration separate from the completed ABI/C++23 changes because INI
+parsing differences can change existing passwords and configuration behavior.
+
+For rendering, **d3d8to9 offers the largest new capability**, an optional D3D9
+compatibility backend. It has almost no direct line-saving benefit here and
+requires the separate compatibility checks described below. Its current release
+explicitly fixes Visual Studio 2026 builds. No additional dependency beyond WIL
+and Catch2 is justified as an unconditional part of this readability pass.
+
 ## WIL: resource ownership
 
 [`v1.0.260126.7`](https://github.com/microsoft/wil/releases/tag/v1.0.260126.7)
@@ -116,7 +137,7 @@ avoids a separate fmt dependency. Disable its examples/tests, keep the loader's
 static CRT setting, and verify Win32 with the exact C++23 toolchain. This review
 does not establish a local x86 build result or executable-size overhead.
 
-Adoption would touch approximately 60 ordinary log calls, preserving explicit
+Adoption would touch 59 ordinary log calls outside `log.cpp`, preserving explicit
 wide-path conversion. Start with synchronous logging: the current final
 `TerminateProcess` cannot be trusted to drain an asynchronous queue. Open the
 approved file before lowering integrity, as today. Rotation/reopen creates new
@@ -133,8 +154,8 @@ including notices for its disassembler. Its C implementation and C API can
 coexist with C++23; static integration would require enabling C in our project.
 [Build source](https://github.com/TsudaKageyu/minhook/blob/v1.3.4/CMakeLists.txt).
 
-The approximately 50 lines in `patch.cpp` edit pointers; `graphics.cpp` hooks
-COM vtables. `texture_hooks.cpp` validates seven existing relative calls and
+The 46 lines in `patch.cpp` edit pointers; `graphics.cpp` hooks
+COM vtables. The 100-line `texture_hooks.cpp` validates seven existing relative calls and
 changes their operands transactionally. `desktop.cpp` skips a known cursor
 block. MinHook's entrypoint trampolines do not directly replace these operations
 or their per-build checks. Detouring a Windows API entrypoint could also affect
