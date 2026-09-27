@@ -1,5 +1,48 @@
 # Refactor validation
 
+## Title, version, PlayOnline and cursor refinement, 2026-09-27
+
+The selected local pack is now `runtime/textures-hd-v2/pack.json`. It contains
+503 entries for 443 distinct originals, with 157,283,070 bytes of replacement
+PNGs. **14 entries changed and 489 are byte-identical to the previous HD pack**:
+five title tiles, on_title, and both aliases of cursor/friend2/friend3/friend4.
+The sixth title tile was already the same D output. All seven original game
+archive hashes still match the extraction manifest.
+
+- The six title tiles reassemble byte-for-byte to the reviewed complete D image
+  at 2560x1792. Removing the first pass's filtered-logo overlay sharpens the
+  title and subtitle; no higher-resolution original artwork is claimed.
+- `title_glyphs.py` rebuilds 35 audited text/icon regions. Original version
+  constructor `101480F0` was executed through its final sprite registrations,
+  producing the nine source/destination records for `Ver.1.06.011`. Offline
+  composition uses those records; toolbar/status previews use the original
+  sampled dimensions, including the extra border texel. Unaudited atlas pixels,
+  beta/suffix cells, unknown-count markers and neighboring sprites remain intact.
+- `cursor_art.py` reconstructs the three separate glove poses in their original
+  40x40 cells. Source aliases produce identical pixels. Curves, transparent
+  gutters and native ink bounds were inspected in the offline review.
+- All **18 focused Python tests pass**: three cursor tests, seven title/control
+  glyph tests and eight texture extraction/containment tests. The new code and
+  integration pass Ruff E4/E7/E9/F and whitespace checks. A complete repeated UI
+  build produces the same hashes for all 211 UI/portrait outputs, confirming
+  that cached reconstruction does not accumulate changes.
+- The existing deployed loader's read-only `--check` accepts all 443 indexed
+  source images, physical dimensions and file hashes. `Play.cmd --check` passes
+  with the updated INI and starts neither services nor game. No C++ code or
+  executable changed, and no new whole CTest run is claimed for this asset pass.
+
+Logs are `out/ui-refinement-{build,repeat-build,assembly,validation}.log`,
+`out/ui-refinement-loader-stdout.log` and `out/ui-refinement-local-play-check.log`.
+The detailed changed-image/archive audit is `out/ui-refinement-validation.json`.
+Manifest SHA256:
+`3e143f79cba6ae75643dce12dd8401a46a99f2ee3fc6b0fb01a21aec79f91188`.
+Reviewed before/after sheet: `out/ui-refinement-before-after.png`; complete
+version/toolbar layout: `out/texture-lab/variants/title-control-review/native-layout-comparison.png`.
+These are offline comparisons, not new game screenshots. Native visual review
+remains a user check after relaunch. Current window/rendering preferences and
+all original archives remain unchanged; no desktop or input control was used.
+See [treatment and reproduction](title-ui-refinement.md).
+
 ## C++23, Catch2 and Windows resource ownership, 2026-09-27
 
 Built in the isolated `build-modernize/` directory with CMake 4.4.2, MSVC

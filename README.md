@@ -70,10 +70,13 @@ The prepared local pack covers all 503 source images: 250 card illustrations,
 30 portraits, 42 font atlases and 181 UI/background images. Illustrated artwork
 uses the selected D (general RealESRGAN) model. Mapped Latin text, main-menu
 labels, large card digits and direction arrows have crisp vector replacements;
-other text/symbols use conservative filtering. Five backgrounds are processed
+version/copyright text, PlayOnline controls and the three glove cursors now have
+separate vector replacements too. Other text/symbols use conservative filtering. Five backgrounds are processed
 as joined images before splitting them back into their original tiles.
-The prepared INI selects `runtime/textures-hd/pack.json`; the earlier card-only
-pack remains separate. Original archives are never rewritten. See the
+The title's reviewed D pass also sharpens its baked-in logo and subtitle.
+The prepared INI selects `runtime/textures-hd-v2/pack.json`; the earlier packs
+remain separate. Original archives are never rewritten. See the
+[title/UI refinements](docs/title-ui-refinement.md),
 [remaining visual review](docs/HD_REVIEW.md), [font work](docs/ui-texture-upscaling.md)
 and [UI work](docs/ui-asset-plan.md) for coverage and limits.
 Headless GPU and native-call tests cover the new loading/drawing adapters;

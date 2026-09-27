@@ -6,6 +6,12 @@ atlases have separate workflows. Every output retains its original image
 coordinates, animation-frame placement and exactly four times its width and
 height. The original game archives are read only.
 
+The [second UI pass](title-ui-refinement.md) supersedes the first-pass treatment
+below for the title background/wordmark, version/copyright, PlayOnline controls,
+status icons/counters and glove cursor. Those now receive the reviewed complete
+D title pass or explicit vector replacements. The original descriptions below
+remain useful for the other assets and the initial comparison history.
+
 Run with the prepared local chaiNNer environment:
 
 ```powershell

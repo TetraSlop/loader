@@ -1,8 +1,8 @@
 """Build a coordinate-preserving 4x UI/portrait pack with chaiNNer.
 
-Illustrations use the selected D model. Text and functional symbols use a
-deterministic resize; they are never interpreted by a neural image model.
-Known background tiles are joined before processing and split afterwards.
+Illustrations and the reviewed title wordmark use the selected D model. Audited
+text/icons/cursors use vector reconstruction; other symbols retain filtered
+source pixels. Background tiles are joined before processing and split afterwards.
 """
 
 from __future__ import annotations
@@ -16,8 +16,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-from upscale_textures import CHAINNER_COMMIT, bleed_transparent_rgb, contained
+from cursor_art import vector_cursor
+from title_glyphs import (
+    refine_pol_atlas,
+    refine_status_counter_atlas,
+    refine_status_icons_atlas,
+    refine_title_atlas,
+)
 from ui_glyphs import MENU_LABELS, menu_labels, vector_stats
+from upscale_textures import CHAINNER_COMMIT, bleed_transparent_rgb, contained
 
 # These names were visually audited across all occurrences in the original pack.
 ILLUSTRATIONS = {
@@ -46,7 +53,8 @@ ILLUSTRATED_REGIONS = {
 }
 
 # Tile order is established by native draw rectangles and the assembled artwork.
-# Rectangles protect baked-in logos/lettering from the illustration model.
+# Board lettering keeps its original treatment. The title's complete D pass
+# was reviewed separately: its custom wordmark is much sharper with intact text.
 BACKGROUNDS = (
     ("menu", "gW101/1003", "menu_bg", "012345", 3, []),
     ("back", "gW101/1002", "back", "012345", 3, [(247, 182, 474, 252)]),
@@ -56,7 +64,7 @@ BACKGROUNDS = (
         "title_",
         "012345",
         3,
-        [(85, 150, 422, 302), (577, 14, 625, 58)],
+        [],
     ),
     ("board4", "gW101/1005", "masu_4", "abcd", 2, [(72, 184, 302, 255)]),
     ("board5", "gW101/1006", "masu_5", "abcd", 2, [(72, 184, 302, 255)]),
@@ -221,8 +229,6 @@ def build(args):
 
     for label, group, prefix, suffixes, columns, protected in BACKGROUNDS:
         parts = [lookup[f"{group}/{prefix}{suffix}"] for suffix in suffixes]
-        if all(part["sha256"] in cache for part in parts):
-            continue
         tiles = [original(part) for part in parts]
         width = sum(tile.shape[1] for tile in tiles[:columns])
         height = tiles[0].shape[0] + tiles[columns].shape[0]
@@ -234,7 +240,8 @@ def build(args):
             joined[y : y + h, x : x + w] = tile
             rectangles.append((x, y, w, h))
         print(f"Joined background {label}: {width}x{height}", flush=True)
-        # Backgrounds are the longest CPU jobs; checkpoint them individually.
+        # Validate the composed-image recipe even when all tile hashes were
+        # cached: changing protected regions must invalidate their old result.
         background_file = output / "cache" / f"{label}.png"
         background_meta = background_file.with_suffix(".json")
         expected = {
@@ -291,6 +298,9 @@ def build(args):
         "ttl_menu",
         "head",
         "on_title",
+        "friend2",
+        "friend3",
+        "friend4",
         "fac00001",
         "fac00022",
         "fac00025",
@@ -298,6 +308,14 @@ def build(args):
     }
     reviewed_hashes = set()
     stat_checks = []
+    cursor_checks = None
+    glyph_checks = {}
+    refinements = {
+        "on_title": (refine_title_atlas, (args.title_font,)),
+        "friend4": (refine_pol_atlas, (args.toolbar_font,)),
+        "friend2": (refine_status_icons_atlas, ()),
+        "friend3": (refine_status_counter_atlas, (args.counter_font,)),
+    }
     for index, entry in enumerate(selected):
         source = original(entry)
         key = entry["sha256"]
@@ -332,6 +350,15 @@ def build(args):
             methods[key] = (
                 "Deterministic source; vector direction arrows and yellow 0-9 in native sprite cells"
             )
+        if name == "cursor":
+            result, cursor_checks = vector_cursor(source)
+            cache[key] = result
+            methods[key] = "Three coordinate-preserving vector glove poses with white bevels"
+        if name in refinements:
+            refine, fonts = refinements[name]
+            result, glyph_checks[name] = refine(source, result, *fonts)
+            cache[key] = result
+            methods[key] = glyph_checks[name]["method"]
         if result.shape != (source.shape[0] * 4, source.shape[1] * 4, 4):
             raise ValueError(f"Wrong replacement shape: {entry['id']}")
         path = contained(output, entry["id"] + ".png")
@@ -369,6 +396,12 @@ def build(args):
             "menu_font_sha256": digest(args.menu_font.read_bytes()),
             "stat_font": args.stat_font.name,
             "stat_font_sha256": digest(args.stat_font.read_bytes()),
+            "title_font": args.title_font.name,
+            "title_font_sha256": digest(args.title_font.read_bytes()),
+            "toolbar_font": args.toolbar_font.name,
+            "toolbar_font_sha256": digest(args.toolbar_font.read_bytes()),
+            "counter_font": args.counter_font.name,
+            "counter_font_sha256": digest(args.counter_font.read_bytes()),
             "textures": records,
         }
         old_manifest.write_text(json.dumps(pack, indent=2) + "\n", encoding="utf-8")
@@ -382,9 +415,11 @@ def build(args):
         "font_atlases": 0,
         "menu_vector_labels": len(MENU_LABELS),
         "stat_vector_sprites": stat_checks,
+        "cursor_vector_poses": cursor_checks,
+        "title_toolbar_status_glyphs": glyph_checks,
         "pending": [
             "User inspection in game at 1440p and 4K",
-            "Handwritten scores, custom wordmarks, hand cursor poses and copper symbols retain filtered original contours",
+            "Handwritten scores, event/result wordmarks and copper symbols retain filtered original contours",
         ],
     }
     (output / "audit.json").write_text(
@@ -407,6 +442,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--stat-font", type=Path, default=Path("C:/Windows/Fonts/ariblk.ttf")
+    )
+    parser.add_argument(
+        "--title-font", type=Path, default=Path("C:/Windows/Fonts/georgiab.ttf")
+    )
+    parser.add_argument(
+        "--toolbar-font", type=Path, default=Path("C:/Windows/Fonts/arialbd.ttf")
+    )
+    parser.add_argument(
+        "--counter-font", type=Path, default=Path("C:/Windows/Fonts/arial.ttf")
     )
     parser.add_argument("--threads", type=int, choices=range(1, 33), default=4)
     build(parser.parse_args())

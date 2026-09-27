@@ -3,16 +3,17 @@
 The complete local pack covers all 503 exported images (443 unique originals).
 It combines D-upscaled card art, portraits and backgrounds with vector Latin
 text, eight main-menu labels, large yellow card digits and direction arrows.
+The second pass adds clean version/copyright glyphs, PlayOnline toolbar/status
+icons and counters, three smooth glove poses, and a sharper complete title image.
 Other assets retain their original shapes through conservative filtering.
 No game archives, native DLLs or saved-game data are rewritten.
 
-The prepared account uses **2880x2160 rendering**, HD textures enabled and
-original **4:3 proportions**. When maximized or fullscreen, this fills a 2160p
-display's height without widening cards or letters. The existing window size
-and window/fullscreen choice are preserved. The F10 selector also offers 1920x1440 and
-3840x2880 supersampling. Its active resolution is reported separately from
-the next-launch preference. The INI selects `textures-hd/pack.json` relative
-to the runtime; the earlier `textures/` pack remains available.
+The F10 selector offers **1920x1440**, **2880x2160** and **3840x2880** rendering.
+Keeping original 4:3 proportions avoids widening cards and letters. Its active
+resolution is reported separately from the next-launch preference. The second
+asset pass preserves current window/rendering preferences and selects
+`textures-hd-v2/pack.json` relative to the runtime in the local INI. Earlier packs
+remain available. Relaunch to load the newly selected pack.
 
 ## Review when convenient
 
@@ -34,9 +35,12 @@ was performed while preparing these changes.
 
 ## Known visual limits
 
-- Handwritten score digits, custom title/event/result wordmarks, the hand cursor
-  and several decorative symbols still show source pixel contours at large sizes.
+- Handwritten score digits, custom event/result wordmarks and several decorative
+  symbols still show source pixel contours at large sizes.
   Aggressive filters that changed their shapes were rejected.
+- Title lettering now uses the reviewed D output. Small title/toolbar lettering,
+  status icons and glove contours are reconstructed substitutes; their new style
+  should be checked in the native UI. See [the refinement notes](title-ui-refinement.md).
 - Japanese and other unmapped font glyphs receive cell-isolated filtering, not
   guessed character substitutions. Additional character mapping is separate work.
 - AI illustration detail is reconstructed; it is not recovered original art.
