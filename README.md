@@ -36,6 +36,11 @@ mouse mapping follows the same content rectangle and ignores black bars.
 Original card art and bitmap text retain their source detail. An unsupported
 higher-resolution device/shader falls back to 640x480 and records the reason
 in the loader log.
+
+An [offline chaiNNer texture workflow](docs/texture-upscaling.md) can extract
+the original artwork and create a small 4x sample pack for comparison.
+Replacement textures are not yet loaded by the game.
+
 Alt+Tab and Windows shortcuts remain available. The wrapper disables the
 client's legacy global keyboard hook, pointer warping and focus reclaim.
 The Windows cursor is hidden only over focused game content; settings, window
