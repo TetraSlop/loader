@@ -1,8 +1,5 @@
+#include <catch2/catch_test_macros.hpp>
 #include "abi.h"
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
-#include <cassert>
 #include <iostream>
 
 // A compiler-built mock follows the complete IPOLCoreCom method order from
@@ -48,33 +45,33 @@ private:
 };
 
 static HRESULT __stdcall mockGameStart(IUnknown* game, IUnknown* core, tmloader::abi::LaunchDescriptor* launch) {
-    assert(game && core);
-    assert(launch->size == 28 && launch->flags == 0x200);
-    assert(launch->core == tmloader::abi::coreInterface && !launch->message);
+    REQUIRE((game && core));
+    REQUIRE((launch->size == 28 && launch->flags == 0x200));
+    REQUIRE((launch->core == tmloader::abi::coreInterface && !launch->message));
     return 123;
 }
 
-int main() {
+TEST_CASE("COM dispatch preserves native signatures and slots", "[abi]") {
     using namespace tmloader;
     MockCore core;
     IUnknown* object = &core;
     char command[] = " /game DdcMLbB";
     HINSTANCE instance = reinterpret_cast<HINSTANCE>(0x12345678);
-    assert(abi::coreCall<abi::SetAreaCode>(object, 1L) == S_OK);
-    assert(core.areaCalls == 1 && core.area == 1 && core.wrongCalls == 0);
+    REQUIRE(abi::coreCall<abi::SetAreaCode>(object, 1L) == S_OK);
+    REQUIRE((core.areaCalls == 1 && core.area == 1 && core.wrongCalls == 0));
     // Signed long matches the declared ABI as well as the usual value1.
-    assert(abi::coreCall<abi::SetAreaCode>(object, -7L) == S_OK && core.area == -7);
-    assert(abi::coreCall<abi::SetParamInit>(object, instance, command) == S_OK);
-    assert(core.paramCalls == 1 && core.instance == instance && core.command == command);
+    REQUIRE((abi::coreCall<abi::SetAreaCode>(object, -7L) == S_OK && core.area == -7));
+    REQUIRE(abi::coreCall<abi::SetParamInit>(object, instance, command) == S_OK);
+    REQUIRE((core.paramCalls == 1 && core.instance == instance && core.command == command));
     Command* table = nullptr;
-    assert(abi::coreCall<abi::GetCommonTable>(object, reinterpret_cast<unsigned long**>(&table)) == S_OK);
-    assert(core.tableCalls == 1 && reinterpret_cast<unsigned long*>(table) == core.table);
-    assert(core.wrongCalls == 0);
+    REQUIRE(abi::coreCall<abi::GetCommonTable>(object, reinterpret_cast<unsigned long**>(&table)) == S_OK);
+    REQUIRE((core.tableCalls == 1 && reinterpret_cast<unsigned long*>(table) == core.table));
+    REQUIRE(core.wrongCalls == 0);
     // Demonstrate that the old erroneous slot reaches a different method.
-    assert(abi::coreCall<25>(object, static_cast<LPWSTR*>(nullptr)) == E_UNEXPECTED);
-    assert(core.wrongCalls == 1 && core.areaCalls == 2);
+    REQUIRE(abi::coreCall<25>(object, static_cast<LPWSTR*>(nullptr)) == E_UNEXPECTED);
+    REQUIRE((core.wrongCalls == 1 && core.areaCalls == 2));
     abi::LaunchDescriptor descriptor{sizeof(descriptor), 0x200, abi::coreInterface, nullptr};
     abi::GameStart start = mockGameStart;
-    assert(start(object, object, &descriptor) == 123);
+    REQUIRE(start(object, object, &descriptor) == 123);
     std::cout << "COM slot/signature and launch descriptor regression checks passed.\n";
 }

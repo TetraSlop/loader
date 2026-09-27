@@ -1,16 +1,16 @@
 #pragma once
 // Internal keyboard/mouse fallback; native DirectInput is preferred.
 // No hooks or background input capture: only reads input while our own window has focus.
-typedef bool (*LocalMouseMapper)(LONG x, LONG y, LONG *dx, LONG *dy);
-static LocalMouseMapper localMouseMapper = NULL;
-static BYTE (*localMousePresses)() = NULL;
-static bool (*localInputBlocked)() = NULL;
-static bool (*localContentRect)(RECT*) = NULL;
+using LocalMouseMapper = bool (*)(LONG x, LONG y, LONG* dx, LONG* dy);
+static LocalMouseMapper localMouseMapper = nullptr;
+static BYTE (*localMousePresses)() = nullptr;
+static bool (*localInputBlocked)() = nullptr;
+static bool (*localContentRect)(RECT*) = nullptr;
 class LocalInputDevice : public IDirectInputDevice8A
 {
     ULONG refs = 1;
     bool keyboard;
-    HWND window = NULL;
+    HWND window = nullptr;
     POINT previous = {};
     bool mouseSampleValid = false;
     LONG previousWidth = 0, previousHeight = 0;
@@ -32,14 +32,14 @@ class LocalInputDevice : public IDirectInputDevice8A
     }
     ULONG STDMETHODCALLTYPE Release() override
     {
-        ULONG n = --refs;
+        const auto n = --refs;
         if (!n)
             delete this;
         return n;
     }
     HRESULT STDMETHODCALLTYPE GetCapabilities(LPDIDEVCAPS p) override
     {
-        DWORD size = p->dwSize;
+        const auto size = p->dwSize;
         memset(p, 0, size);
         p->dwSize = size;
         p->dwFlags = DIDC_ATTACHED;
@@ -75,7 +75,7 @@ class LocalInputDevice : public IDirectInputDevice8A
         if (!output)
             return E_POINTER;
         memset(output, 0, size);
-        HWND foreground = GetForegroundWindow();
+        const auto foreground = GetForegroundWindow();
         DWORD pid = 0;
         GetWindowThreadProcessId(foreground, &pid);
         if (pid != GetCurrentProcessId() || (window && foreground != window) ||
@@ -87,11 +87,11 @@ class LocalInputDevice : public IDirectInputDevice8A
         }
         if (keyboard && size == 256)
         {
-            BYTE *keys = (BYTE *)output;
+            auto* const keys = static_cast<BYTE*>(output);
             for (UINT scan = 1; scan < 256; scan++)
             {
-                UINT code = (scan & 0x7f) | ((scan & 0x80) ? 0xe000 : 0);
-                UINT vk = MapVirtualKeyA(code, MAPVK_VSC_TO_VK_EX);
+                const UINT code = (scan & 0x7f) | ((scan & 0x80) ? 0xe000 : 0);
+                const auto vk = MapVirtualKeyA(code, MAPVK_VSC_TO_VK_EX);
                 if (vk == VK_F10 || vk == VK_F12 || (vk == VK_RETURN && (GetAsyncKeyState(VK_MENU) & 0x8000))) continue;
                 if (vk && (GetAsyncKeyState(vk) & 0x8000))
                     keys[scan] = 0x80;
@@ -112,22 +112,23 @@ class LocalInputDevice : public IDirectInputDevice8A
                 if (localMousePresses) localMousePresses();
                 return S_OK;
             }
-            LONG width = client.right - client.left, height = client.bottom - client.top;
+            const auto width = client.right - client.left;
+            const auto height = client.bottom - client.top;
             if (width <= 0 || height <= 0)
             {
                 mouseSampleValid = false;
                 return S_OK;
             }
-            DIMOUSESTATE *m = (DIMOUSESTATE *)output;
+            auto* const m = static_cast<DIMOUSESTATE*>(output);
             current.x -= client.left;
             current.y -= client.top;
-            BYTE pressed = localMousePresses ? localMousePresses() : 0;
+            const BYTE pressed = localMousePresses ? localMousePresses() : 0;
             m->rgbButtons[0] = ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) || (pressed & 1)) ? 0x80 : 0;
             m->rgbButtons[1] = ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) || (pressed & 2)) ? 0x80 : 0;
-            BYTE buttons = (m->rgbButtons[0] ? 1 : 0) | (m->rgbButtons[1] ? 2 : 0);
-            bool pointerMoved = !mouseSampleValid || current.x != previous.x || current.y != previous.y ||
+            const BYTE buttons = (m->rgbButtons[0] ? 1 : 0) | (m->rgbButtons[1] ? 2 : 0);
+            const bool pointerMoved = !mouseSampleValid || current.x != previous.x || current.y != previous.y ||
                                 width != previousWidth || height != previousHeight;
-            bool pointerClicked = !mouseSampleValid ? buttons != 0 : (buttons & ~previousButtons) != 0;
+            const bool pointerClicked = !mouseSampleValid ? buttons != 0 : (buttons & ~previousButtons) != 0;
             if (mouseSampleValid && width == previousWidth && height == previousHeight)
             {
                 m->lX = MulDiv(current.x, 640, width) - MulDiv(previous.x, 640, width);
@@ -175,7 +176,7 @@ class LocalInputDevice : public IDirectInputDevice8A
     }
     HRESULT STDMETHODCALLTYPE GetDeviceInfo(LPDIDEVICEINSTANCEA p) override
     {
-        DWORD size = p->dwSize;
+        const auto size = p->dwSize;
         memset(p, 0, size);
         p->dwSize = size;
         p->guidInstance = keyboard ? keyboardGUID : mouseGUID;
@@ -263,7 +264,7 @@ class LocalInput : public IDirectInput8A
     {
         if (iid != inputIID && iid != IID_IUnknown)
         {
-            *out = NULL;
+            *out = nullptr;
             return E_NOINTERFACE;
         }
         *out = this;
@@ -276,7 +277,7 @@ class LocalInput : public IDirectInput8A
     }
     ULONG STDMETHODCALLTYPE Release() override
     {
-        ULONG n = --refs;
+        const auto n = --refs;
         if (!n)
             delete this;
         return n;
@@ -287,7 +288,7 @@ class LocalInput : public IDirectInput8A
             return CLASS_E_NOAGGREGATION;
         if (guid != keyboardGUID && guid != mouseGUID)
         {
-            *out = NULL;
+            *out = nullptr;
             return DIERR_DEVICENOTREG;
         }
         *out = new LocalInputDevice(guid == keyboardGUID);

@@ -1,9 +1,6 @@
+#include <catch2/catch_test_macros.hpp>
 #include "texture_hooks.h"
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
 #include <array>
-#include <cassert>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -21,10 +18,10 @@ unsigned calls = 0;
 HRESULT WINAPI replacement(void* device, const void* source, UINT bytes,
     UINT width, UINT height, UINT levels, DWORD usage, DWORD format, DWORD pool,
     DWORD filter, DWORD mipFilter, DWORD key, void* info, void* palette, void** output) {
-    assert(device == reinterpret_cast<void*>(1) && source == reinterpret_cast<void*>(2));
-    assert(bytes == 3 && width == 4 && height == 5 && levels == 6 && usage == 7);
-    assert(format == 8 && pool == 9 && filter == 10 && mipFilter == 11 && key == 12);
-    assert(info == reinterpret_cast<void*>(13) && palette == reinterpret_cast<void*>(14));
+    REQUIRE((device == reinterpret_cast<void*>(1) && source == reinterpret_cast<void*>(2)));
+    REQUIRE((bytes == 3 && width == 4 && height == 5 && levels == 6 && usage == 7));
+    REQUIRE((format == 8 && pool == 9 && filter == 10 && mipFilter == 11 && key == 12));
+    REQUIRE((info == reinterpret_cast<void*>(13) && palette == reinterpret_cast<void*>(14)));
     *output = reinterpret_cast<void*>(15);
     ++calls;
     return 12345;
@@ -45,7 +42,7 @@ void initialize(BYTE* image) {
         for (BYTE offset = 0x40; offset >= 8; offset -= 4) {
             *entry++ = 0xff; *entry++ = 0x75; *entry++ = offset;
         }
-        assert(entry == image + rva);
+        REQUIRE(entry == image + rva);
         *entry++ = 0xe8;
         const DWORD relative = uploadRva - rva - 5;
         std::memcpy(entry, &relative, sizeof(relative));
@@ -57,46 +54,44 @@ void initialize(BYTE* image) {
 
 struct Image {
     BYTE* data = static_cast<BYTE*>(VirtualAlloc(nullptr, imageSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
-    Image() { assert(data); initialize(data); }
+    Image() { REQUIRE(data); initialize(data); }
     ~Image() { VirtualFree(data, 0, MEM_RELEASE); }
     void seal() {
         DWORD old{};
-        assert(VirtualProtect(data, imageSize, PAGE_EXECUTE_READ, &old));
-        assert(FlushInstructionCache(GetCurrentProcess(), data, imageSize));
+        REQUIRE(VirtualProtect(data, imageSize, PAGE_EXECUTE_READ, &old));
+        REQUIRE(FlushInstructionCache(GetCurrentProcess(), data, imageSize));
     }
 };
 
 DWORD protection(const BYTE* address) {
     MEMORY_BASIC_INFORMATION memory{};
-    assert(VirtualQuery(address, &memory, sizeof(memory)));
+    REQUIRE(VirtualQuery(address, &memory, sizeof(memory)));
     return memory.Protect;
 }
 
 template<class F> void rejected(F&& action) {
-    bool threw = false;
-    try { action(); } catch (const std::exception&) { threw = true; }
-    assert(threw);
+    REQUIRE_THROWS_AS(action(), std::exception);
 }
 
 void successfulDispatch() {
     Image image;
     image.seal();
     const auto original = installTextureCallHooks(image.data, replacement);
-    assert(original == reinterpret_cast<TextureUploadFn>(image.data + uploadRva));
+    REQUIRE(original == reinterpret_cast<TextureUploadFn>(image.data + uploadRva));
     for (DWORD rva : sites) {
-        assert(protection(image.data + rva) == PAGE_EXECUTE_READ);
+        REQUIRE(protection(image.data + rva) == PAGE_EXECUTE_READ);
         std::uint32_t displacement{};
         std::memcpy(&displacement, image.data + rva + 1, sizeof(displacement));
-        assert(reinterpret_cast<std::uintptr_t>(image.data + rva + 5) + displacement ==
+        REQUIRE(reinterpret_cast<std::uintptr_t>(image.data + rva + 5) + displacement ==
                reinterpret_cast<std::uintptr_t>(replacement));
         auto caller = reinterpret_cast<TextureUploadFn>(image.data + rva - 48);
         void* output = nullptr;
-        assert(caller(reinterpret_cast<void*>(1), reinterpret_cast<void*>(2), 3, 4, 5, 6,
+        REQUIRE(caller(reinterpret_cast<void*>(1), reinterpret_cast<void*>(2), 3, 4, 5, 6,
                       7, 8, 9, 10, 11, 12, reinterpret_cast<void*>(13),
                       reinterpret_cast<void*>(14), &output) == 12345);
-        assert(output == reinterpret_cast<void*>(15));
+        REQUIRE(output == reinterpret_cast<void*>(15));
     }
-    assert(calls == sites.size());
+    REQUIRE(calls == sites.size());
     // A second installation is rejected rather than creating recursive dispatch.
     rejected([&] { installTextureCallHooks(image.data, replacement); });
 }
@@ -110,43 +105,50 @@ void unsupportedCodeIsUntouched() {
         std::vector<BYTE> before(image.data, image.data + imageSize);
         image.seal();
         rejected([&] { installTextureCallHooks(image.data, replacement); });
-        assert(std::memcmp(image.data, before.data(), imageSize) == 0);
-        for (DWORD site : sites) assert(protection(image.data + site) == PAGE_EXECUTE_READ);
+        REQUIRE(std::memcmp(image.data, before.data(), imageSize) == 0);
+        for (DWORD site : sites) REQUIRE(protection(image.data + site) == PAGE_EXECUTE_READ);
     }
     rejected([&] { installTextureCallHooks(nullptr, replacement); });
     Image image;
     rejected([&] { installTextureCallHooks(image.data, nullptr); });
     DWORD old{};
-    assert(VirtualProtect(image.data + 0x17c000, 0x1000, PAGE_NOACCESS, &old));
+    REQUIRE(VirtualProtect(image.data + 0x17c000, 0x1000, PAGE_NOACCESS, &old));
     const std::array<BYTE, 5> originalCall{0xe8, 0x66, 0xe0, 0x03, 0x00};
     rejected([&] { installTextureCallHooks(image.data, replacement); });
-    assert(std::memcmp(image.data + sites[0], originalCall.data(), originalCall.size()) == 0);
+    REQUIRE(std::memcmp(image.data + sites[0], originalCall.data(), originalCall.size()) == 0);
 }
 
 void protectionFailureIsUntouched() {
     // This mapping supports reading/writing but not executable protection. A
     // read-only view remains readable for guards; the patch acquisition fails.
     HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, imageSize, nullptr);
-    assert(mapping);
+    REQUIRE(mapping);
     BYTE* writable = static_cast<BYTE*>(MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, imageSize));
-    assert(writable);
+    REQUIRE(writable);
     initialize(writable);
     std::vector<BYTE> before(writable, writable + imageSize);
-    assert(UnmapViewOfFile(writable));
+    REQUIRE(UnmapViewOfFile(writable));
     BYTE* readonly = static_cast<BYTE*>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, imageSize));
-    assert(readonly && protection(readonly + sites[0]) == PAGE_READONLY);
+    REQUIRE((readonly && protection(readonly + sites[0]) == PAGE_READONLY));
     rejected([&] { installTextureCallHooks(readonly, replacement); });
-    assert(std::memcmp(readonly, before.data(), imageSize) == 0);
-    for (DWORD site : sites) assert(protection(readonly + site) == PAGE_READONLY);
-    assert(UnmapViewOfFile(readonly));
-    assert(CloseHandle(mapping));
+    REQUIRE(std::memcmp(readonly, before.data(), imageSize) == 0);
+    for (DWORD site : sites) REQUIRE(protection(readonly + site) == PAGE_READONLY);
+    REQUIRE(UnmapViewOfFile(readonly));
+    REQUIRE(CloseHandle(mapping));
 }
 }
 
-int main() {
+TEST_CASE("Texture hooks preserve native stdcall dispatch", "[texture_hooks]") {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     successfulDispatch();
+}
+
+TEST_CASE("Texture hooks reject unsupported code without modifying it", "[texture_hooks]") {
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     unsupportedCodeIsUntouched();
+}
+
+TEST_CASE("Texture hooks leave read-only mappings intact", "[texture_hooks]") {
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     protectionFailureIsUntouched();
-    std::cout << "Texture hook call guards, stdcall dispatch, and protection cleanup passed.\n";
 }

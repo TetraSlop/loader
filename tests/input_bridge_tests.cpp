@@ -1,9 +1,6 @@
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
+#include <catch2/catch_test_macros.hpp>
 #include <windows.h>
 #include <dinput.h>
-#include <assert.h>
 #include <stdio.h>
 #include "window_settings.h"
 static const GUID keyboardGUID = {1};
@@ -50,10 +47,10 @@ static void sample(LocalInputDevice &mouse, LONG x, LONG y, LONG dx, LONG dy)
 {
     testPointer = {x, y};
     DIMOUSESTATE2 state = {};
-    assert(mouse.GetDeviceState(sizeof(state), &state) == S_OK);
-    assert(state.lX == dx && state.lY == dy);
+    REQUIRE(mouse.GetDeviceState(sizeof(state), &state) == S_OK);
+    REQUIRE((state.lX == dx && state.lY == dy));
 }
-int main()
+TEST_CASE("Input bridge maps focused input and preserves cursor transitions", "[input_bridge]")
 {
     LocalInputDevice mouse(false);
     mouse.SetCooperativeLevel(testWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
@@ -80,24 +77,24 @@ int main()
     // pointer stays still. Do not fight it until physical input takes over.
     virtualX = 600; virtualY = 400;
     sample(mouse, 900, 700, 0, 0);
-    assert(mappedSamples == 1 && virtualX == 600);
+    REQUIRE((mappedSamples == 1 && virtualX == 600));
     sample(mouse, 902, 702, -149, -49);
     virtualX = 100; virtualY = 100;
     testButton = static_cast<SHORT>(0x8000);
     sample(mouse, 902, 702, 351, 251);
-    assert(mappedSamples == 3);
+    REQUIRE(mappedSamples == 3);
     sample(mouse, 902, 702, 0, 0);
-    assert(mappedSamples == 3);
+    REQUIRE(mappedSamples == 3);
     testButton = 0;
     sample(mouse, 1279, 959, 188, 128);
-    assert(virtualX == 639 && virtualY == 479);
+    REQUIRE((virtualX == 639 && virtualY == 479));
     localMousePresses = fakePresses;
     latchedPresses = 1;
     DIMOUSESTATE2 state = {};
     mouse.GetDeviceState(sizeof(state), &state);
-    assert(state.rgbButtons[0] == 0x80);
+    REQUIRE(state.rgbButtons[0] == 0x80);
     mouse.GetDeviceState(sizeof(state), &state);
-    assert(state.rgbButtons[0] == 0);
+    REQUIRE(state.rgbButtons[0] == 0);
     // 16:9 client with 4:3 game content: bars do not click or shift the cursor.
     localContentRect = fakeViewport;
     localInputBlocked = fakeBlocked;
@@ -108,7 +105,7 @@ int main()
     sample(mouse, 1679, 1079, 319, 239);
     latchedPresses = 1;
     sample(mouse, 100, 500, 0, 0);
-    assert(latchedPresses == 0 && virtualX == 639);
+    REQUIRE((latchedPresses == 0 && virtualX == 639));
     sample(mouse, 960, 540, -319, -239);
     // Our settings window shares the process, but must never feed the game.
     testForeground = reinterpret_cast<HWND>(2);
@@ -117,7 +114,7 @@ int main()
     panelOpen = true;
     latchedPresses = 1;
     sample(mouse, 1200, 800, 0, 0);
-    assert(latchedPresses == 0);
+    REQUIRE(latchedPresses == 0);
     panelOpen = false;
     sample(mouse, 960, 540, 0, 0);
     LocalInputDevice keyboard(true);
@@ -125,10 +122,10 @@ int main()
     BYTE keys[256]{};
     for (int key : {VK_F10, VK_F12}) {
         pressedKey = key;
-        assert(keyboard.GetDeviceState(sizeof(keys), keys) == S_OK);
-        for (BYTE value : keys) assert(value == 0);
+        REQUIRE(keyboard.GetDeviceState(sizeof(keys), keys) == S_OK);
+        for (BYTE value : keys) REQUIRE(value == 0);
     }
     pressedKey = 'A';
-    assert(keyboard.GetDeviceState(sizeof(keys), keys) == S_OK && keys[DIK_A] == 0x80);
+    REQUIRE((keyboard.GetDeviceState(sizeof(keys), keys) == S_OK && keys[DIK_A] == 0x80));
     puts("Mouse bridge: transitions, scaling, absolute alignment, keyboard handoff and clicks passed.");
 }

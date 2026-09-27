@@ -1,5 +1,44 @@
 # Refactor validation
 
+## C++23, Catch2 and Windows resource ownership, 2026-09-27
+
+Built in the isolated `build-modernize/` directory with CMake 4.4.2, MSVC
+19.51.36248 and the x86 Windows SDK 10.0.26100. The compiler command uses
+`/std:c++23preview` and `/MT`. The deployed loader was not replaced.
+
+- **21/21 CTest cases pass**, with no skipped audio or graphics checks. All
+  15 native test executables use Catch2 3.16.0; CTest discovers named cases and
+  tags. Existing assertions remain active in RelWithDebInfo without `NDEBUG`
+  overrides. Graphics/audio absence uses Catch2 `SKIP` and CTest's matching
+  return code. The CLI help check remains a separate CTest case.
+- COM numerical dispatch, calling conventions, native synthetic call-site
+  execution, DirectInput mapping, window/input policies, guarded texture hooks,
+  rendering pixels, texture lifetime and all three settings tabs pass.
+- C++23 UTF-8 changes are handled explicitly: PNG status text remains UTF-8,
+  and JSON texture paths use `char8_t` filesystem construction. Added coverage
+  for accented/Japanese texture filenames; screenshot writes and its disposable
+  low-integrity child now use a non-ASCII fixture directory.
+- Microsoft WIL owns the CNG hash/algorithm handles, token/SID allocations and
+  temporary output-validation file handles. Cleanup uses the correct deleters;
+  error handling, path boundaries and legacy module/object lifetime are retained.
+- PE inspection confirms x86 PE32, GUI subsystem, `asInvoker` and the previous
+  DEP/ASLR compatibility flags. No game, desktop/input control, live save or
+  original asset changes are part of these checks.
+- All 21 production translation units pass the checked-in clang-tidy rules for
+  C-style casts, `NULL` and `typedef`, including project headers and excluding
+  dependency sources. The audit uses Clang's C++23-capable latest mode; the
+  shipping compiler remains MSVC. A separate `BUILD_TESTING=OFF` configuration
+  confirms that Catch2 is omitted.
+
+CMake now requires 3.29 for WIL's official integration; MSVC 19.43+ provides
+the selected C++23 preview mode. This is compiler-supported C++23, not a claim
+that MSVC has finalized the complete C++23 ABI. The original game boundaries
+remain explicitly 32-bit Windows types and calling conventions.
+
+The project sources build without warnings; the pinned Catch2 sources emit
+MSVC C4324 alignment-padding warnings. Third-party code was not edited for style.
+See [library choices](LIBRARY_REVIEW.md) and [licenses](THIRD_PARTY.md).
+
 ## Automatic resolution, independent fonts and screenshots, 2026-09-27
 
 The wrapper now chooses rendering resolution from physical monitor dimensions,

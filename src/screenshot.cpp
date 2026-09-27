@@ -186,7 +186,9 @@ void saveRequestedScreenshot(void* device) noexcept {
         ComScope com;
         auto stream = encodeBackbuffer(device);
         const auto path = writeScreenshot(stream.Get());
-        const auto message = "Screenshot saved: " + path.u8string();
+        const auto utf8 = path.u8string();
+        const auto message = "Screenshot saved: " +
+            std::string(reinterpret_cast<const char*>(utf8.data()), utf8.size());
         finishStatus(message);
         logf("%s", message.c_str());
     } catch (const std::exception& error) {

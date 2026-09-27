@@ -6,9 +6,9 @@
 #include "screenshot.h"
 #include <atomic>
 namespace tmloader {
-typedef HRESULT(WINAPI *CreateDevice8)(void *, UINT, DWORD, HWND, DWORD, Present8 *, void **);
+using CreateDevice8 = HRESULT(WINAPI*)(void *, UINT, DWORD, HWND, DWORD, Present8 *, void **);
 static CreateDevice8 originalDevice;
-typedef HRESULT(WINAPI *PresentFn)(void *, const RECT *, const RECT *, HWND, const RGNDATA *);
+using PresentFn = HRESULT(WINAPI*)(void *, const RECT *, const RECT *, HWND, const RGNDATA *);
 static PresentFn originalPresent;
 using ResetFn = HRESULT(WINAPI*)(void*, Present8*);
 static ResetFn originalReset;
@@ -30,7 +30,7 @@ static HRESULT WINAPI vertexBuffer(void* device, UINT size, DWORD usage, DWORD f
 float activeRenderScale() { return renderingFactor; }
 static HRESULT WINAPI setVertexShader(void* device, DWORD format) {
     if (format == gameVertexFormat && renderingFactor > 1) {
-        HRESULT hr = setScaleConstants(device, renderingFactor);
+        const auto hr = setScaleConstants(device, renderingFactor);
         if (FAILED(hr)) return hr;
         return originalVertexShader(device, scaleShader);
     }
@@ -59,11 +59,11 @@ static HRESULT WINAPI resetDevice(void* self, Present8* pp) {
     return hr;
 }
 static DWORD drawCalls, drawErrors, textureCalls;
-typedef HRESULT(WINAPI *DrawFn)(void *, DWORD, UINT, UINT);
-typedef HRESULT(WINAPI *DrawUPFn)(void *, DWORD, UINT, const void *, UINT);
-typedef HRESULT(WINAPI *DrawIdxFn)(void *, DWORD, UINT, UINT, UINT, UINT);
-typedef HRESULT(WINAPI *DrawIdxUPFn)(void *, DWORD, UINT, UINT, UINT, const void *, DWORD, const void *, UINT);
-typedef HRESULT(WINAPI *TextureFn)(void *, UINT, UINT, UINT, DWORD, DWORD, DWORD, void **);
+using DrawFn = HRESULT(WINAPI*)(void *, DWORD, UINT, UINT);
+using DrawUPFn = HRESULT(WINAPI*)(void *, DWORD, UINT, const void *, UINT);
+using DrawIdxFn = HRESULT(WINAPI*)(void *, DWORD, UINT, UINT, UINT, UINT);
+using DrawIdxUPFn = HRESULT(WINAPI*)(void *, DWORD, UINT, UINT, UINT, const void *, DWORD, const void *, UINT);
+using TextureFn = HRESULT(WINAPI*)(void *, UINT, UINT, UINT, DWORD, DWORD, DWORD, void **);
 static DrawFn realDraw;
 static DrawUPFn realDrawUP;
 static DrawIdxFn realDrawIdx;
@@ -108,7 +108,7 @@ static HRESULT WINAPI drawIdxUP(void *d, DWORD t, UINT m, UINT v, UINT n, const 
 }
 static HRESULT WINAPI texture(void *d, UINT w, UINT h, UINT l, DWORD u, DWORD f, DWORD pool, void **out)
 {
-    HRESULT hr = realTexture(d, w, h, l, u, f, pool, out);
+    const auto hr = realTexture(d, w, h, l, u, f, pool, out);
     if (++textureCalls <= 8 || FAILED(hr))
         logf("D3D8 texture %ux%u format=%lu hr=%08lX", w, h, f, hr);
     return hr;
@@ -116,23 +116,23 @@ static HRESULT WINAPI texture(void *d, UINT w, UINT h, UINT l, DWORD u, DWORD f,
 static void captureFrame(void *device, DWORD frame)
 {
     logf("Render counters: draws=%lu errors=%lu textures=%lu", drawCalls, drawErrors, textureCalls);
-    void **vt = *(void ***)device;
-    void *surface = NULL;
-    typedef HRESULT(WINAPI * Back)(void *, UINT, DWORD, void **);
-    HRESULT hr = ((Back)vt[16])(device, 0, 0, &surface);
+    auto* const vt = *static_cast<void***>(device);
+    void *surface = nullptr;
+    using Back = HRESULT(WINAPI*)(void *, UINT, DWORD, void **);
+    HRESULT hr = reinterpret_cast<Back>(vt[16])(device, 0, 0, &surface);
     if (FAILED(hr) || !surface)
         return;
-    void **sv = *(void ***)surface;
+    auto* const sv = *static_cast<void***>(surface);
     DWORD desc[8] = {};
-    typedef HRESULT(WINAPI * Desc)(void *, DWORD *);
-    ((Desc)sv[8])(surface, desc);
+    using Desc = HRESULT(WINAPI*)(void *, DWORD *);
+    reinterpret_cast<Desc>(sv[8])(surface, desc);
     struct Locked
     {
         INT pitch;
         void *pixels;
     } locked = {};
-    typedef HRESULT(WINAPI * Lock)(void *, Locked *, const RECT *, DWORD);
-    hr = ((Lock)sv[9])(surface, &locked, NULL, 0x10);
+    using Lock = HRESULT(WINAPI*)(void *, Locked *, const RECT *, DWORD);
+    hr = reinterpret_cast<Lock>(sv[9])(surface, &locked, nullptr, 0x10);
     if (SUCCEEDED(hr) && (desc[0] == 21 || desc[0] == 22))
     {
         char name[40];
@@ -146,7 +146,7 @@ static void captureFrame(void *device, DWORD frame)
             BITMAPINFOHEADER bi = {};
             bi.biSize = sizeof(bi);
             bi.biWidth = desc[6];
-            bi.biHeight = -(LONG)desc[7];
+            bi.biHeight = -static_cast<LONG>(desc[7]);
             bi.biPlanes = 1;
             bi.biBitCount = 32;
             bi.biSizeImage = desc[6] * desc[7] * 4;
@@ -156,18 +156,18 @@ static void captureFrame(void *device, DWORD frame)
             fwrite(&bf, sizeof(bf), 1, f);
             fwrite(&bi, sizeof(bi), 1, f);
             for (DWORD y = 0; y < desc[7]; y++)
-                fwrite((BYTE *)locked.pixels + y * locked.pitch, desc[6] * 4, 1, f);
+                fwrite(static_cast<const BYTE*>(locked.pixels) + y * locked.pitch, desc[6] * 4, 1, f);
             fclose(f);
             logf("Saved native rendered frame %lu: %s", frame, name);
         }
-        typedef HRESULT(WINAPI * Unlock)(void *);
-        ((Unlock)sv[10])(surface);
+        using Unlock = HRESULT(WINAPI*)(void *);
+        reinterpret_cast<Unlock>(sv[10])(surface);
     }
-    ((IUnknown *)surface)->Release();
+    static_cast<IUnknown*>(surface)->Release();
 }
 static HRESULT WINAPI presentFrame(void *self, const RECT *source, const RECT *dest, HWND window, const RGNDATA *dirty)
 {
-    DWORD frame = ++frames;
+    const auto frame = ++frames;
     if (frame == 1)
         logf("Initial graphics gate=%lu batch gate=%lu", gameValue(0x2ff22c), gameValue(0x2fe8ec));
     if (frame == 1)
@@ -175,7 +175,7 @@ static HRESULT WINAPI presentFrame(void *self, const RECT *source, const RECT *d
         ShowWindow(gameWindow, SW_SHOW);
         SetActiveWindow(gameWindow);
         SetFocus(gameWindow);
-        BOOL active = SetForegroundWindow(gameWindow);
+        const auto active = SetForegroundWindow(gameWindow);
         logf("Activate game window=%p result=%d foreground=%p active=%p", gameWindow, active, GetForegroundWindow(),
              GetActiveWindow());
         auto* sound = reinterpret_cast<DWORD*>(gameValue(0x2ff164));
@@ -191,16 +191,16 @@ static HRESULT WINAPI presentFrame(void *self, const RECT *source, const RECT *d
     RECT scaledSource{};
     if (source && renderingFactor > 1) {
         // Quarter-step presets include native 1080p height at 2.25x.
-        int quarters = static_cast<int>(renderingFactor * 4);
+        const auto quarters = static_cast<int>(renderingFactor * 4);
         scaledSource = {MulDiv(source->left, quarters, 4), MulDiv(source->top, quarters, 4),
                         MulDiv(source->right, quarters, 4), MulDiv(source->bottom, quarters, 4)};
         source = &scaledSource;
     }
     if (renderingFactor > 1) dirty = nullptr; // Native Present uses a complete frame.
     if (IsIconic(gameWindow)) return originalPresent(self, source, dest, window, dirty);
-    RECT target = gameContentRect();
+    const auto target = gameContentRect();
     if (target.right <= target.left || target.bottom <= target.top) return S_OK;
-    HRESULT hr = originalPresent(self, source, &target, window, dirty);
+    const auto hr = originalPresent(self, source, &target, window, dirty);
     static HRESULT lastResult = S_OK;
     if (FAILED(hr) && hr != lastResult) logf("D3D8 Present=%08lX", hr);
     lastResult = hr;
@@ -226,9 +226,9 @@ static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND 
     initializeGameWindow(window);
     gameValue(0x2ff248) = 1;
     DWORD mode[4] = {};
-    typedef HRESULT(WINAPI * DisplayMode)(void *, UINT, DWORD *);
-    void **vt = *(void ***)self;
-    HRESULT modeHr = ((DisplayMode)vt[8])(self, adapter, mode);
+    using DisplayMode = HRESULT(WINAPI*)(void *, UINT, DWORD *);
+    auto* const vt = *static_cast<void***>(self);
+    const auto modeHr = reinterpret_cast<DisplayMode>(vt[8])(self, adapter, mode);
     logf("D3D8 desktop mode=%08lX %lux%lu format=%lu", modeHr, mode[0], mode[1], mode[3]);
     desktopFormat = SUCCEEDED(modeHr) ? mode[3] : 22;
     const auto settings = currentWindowSettings();
@@ -251,7 +251,7 @@ static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND 
     logf("D3D8 windowed CreateDevice=%08lX device=%p", hr, *device);
     if (SUCCEEDED(hr))
     {
-        void **dv = *(void ***)*device;
+        auto* const dv = *static_cast<void***>(*device);
         rememberOriginal(originalPresent, dv[15], presentFrame);
         rememberOriginal(originalReset, dv[14], resetDevice);
         rememberOriginal(originalVertexShader, dv[76], setVertexShader);
@@ -263,16 +263,16 @@ static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND 
         rememberOriginal(realTexture, dv[20], texture);
         DWORD old;
         VirtualProtect(dv, 97 * 4, PAGE_READWRITE, &old);
-        dv[14] = (void*)resetDevice;
-        dv[15] = (void *)presentFrame;
-        dv[76] = (void*)setVertexShader;
-        dv[23] = (void*)vertexBuffer;
-        if (options.diagnostics) dv[20] = (void *)texture;
+        dv[14] = reinterpret_cast<void*>(resetDevice);
+        dv[15] = reinterpret_cast<void*>(presentFrame);
+        dv[76] = reinterpret_cast<void*>(setVertexShader);
+        dv[23] = reinterpret_cast<void*>(vertexBuffer);
+        if (options.diagnostics) dv[20] = reinterpret_cast<void*>(texture);
         if (options.diagnostics || texturePackCount()) {
-            dv[70] = (void *)draw;
-            dv[71] = (void *)drawIdx;
-            dv[72] = (void *)drawUP;
-            dv[73] = (void *)drawIdxUP;
+            dv[70] = reinterpret_cast<void*>(draw);
+            dv[71] = reinterpret_cast<void*>(drawIdx);
+            dv[72] = reinterpret_cast<void*>(drawUP);
+            dv[73] = reinterpret_cast<void*>(drawIdxUP);
         }
         VirtualProtect(dv, 97 * 4, old, &old);
         logf("Rendering resolution: %lux%lu (%gx)", pp->width, pp->height, activeRenderScale());
@@ -281,18 +281,18 @@ static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND 
 }
 void *WINAPI localD3D8(UINT version)
 {
-    typedef void *(WINAPI * Factory)(UINT);
-    Factory f = (Factory)GetProcAddress(LoadLibraryA("d3d8.dll"), "Direct3DCreate8");
-    void *obj = f(version);
+    using Factory = void *(WINAPI*)(UINT);
+    const auto factory = reinterpret_cast<Factory>(GetProcAddress(LoadLibraryA("d3d8.dll"), "Direct3DCreate8"));
+    auto* const obj = factory(version);
     logf("Direct3DCreate8 version=%u object=%p", version, obj);
     if (obj)
     {
-        void **old = *(void ***)obj;
-        void **vt = (void **)HeapAlloc(GetProcessHeap(), 0, 16 * sizeof(void *));
+        auto* const old = *static_cast<void***>(obj);
+        auto* const vt = static_cast<void**>(HeapAlloc(GetProcessHeap(), 0, 16 * sizeof(void*)));
         memcpy(vt, old, 16 * sizeof(void *));
-        originalDevice = (CreateDevice8)vt[15];
-        vt[15] = (void *)windowedDevice;
-        *(void ***)obj = vt;
+        originalDevice = reinterpret_cast<CreateDevice8>(vt[15]);
+        vt[15] = reinterpret_cast<void*>(windowedDevice);
+        *static_cast<void***>(obj) = vt;
     }
     return obj;
 }

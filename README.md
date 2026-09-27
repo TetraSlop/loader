@@ -92,18 +92,31 @@ game's Options menu; the loader now enables the native sound engine at startup.
 
 ## Build and headless checks
 
-Requires CMake 3.24+ and Visual Studio with the Desktop C++ workload and an x86
-Windows SDK toolchain. CMake downloads Dear ImGui 1.92.5 from an immutable
+Requires CMake 3.29+ and Visual Studio with MSVC 19.43+ (VS 2022 17.13 or newer),
+the Desktop C++ workload and an x86 Windows SDK toolchain. The project requests
+C++23 using MSVC's `/std:c++23preview`; x64 is deliberately rejected because the
+original DLL interfaces and hooks are 32-bit. CMake downloads Dear ImGui 1.92.5 from an immutable
 upstream commit and verifies its SHA256. Later builds use the cached source.
 Its official Win32/DX9 backends render the settings panel; the game retains
 its D3D8 renderer. CMake also fetches pinned nlohmann/json 3.12.0 for texture
-pack manifests. See [third-party notices](docs/THIRD_PARTY.md).
+pack manifests, Microsoft WIL for Windows resource ownership, and Catch2 3.16.0
+for tests. Each dependency archive has a pinned SHA256; none adds a runtime DLL.
+See [third-party notices](docs/THIRD_PARTY.md) and the [library review](docs/LIBRARY_REVIEW.md).
 
 ```powershell
 cmake -S . -B build -A Win32
 cmake --build build --config RelWithDebInfo
 ctest --test-dir build -C RelWithDebInfo --output-on-failure
 ```
+
+Catch2 cases are discovered individually by CTest, retain assertions in optimized
+builds, and report unavailable audio/graphics devices as skipped. For example,
+`ctest --test-dir build -C RelWithDebInfo -L texture_hooks --output-on-failure`
+runs the guarded x86 call-site tests. Use `-DBUILD_TESTING=OFF` when configuring
+a loader-only build; Catch2 is then neither downloaded nor linked. For an isolated
+build that leaves the deployed loader alone, use `-B build-modernize` in the same
+commands. The checked-in `.clang-tidy` rules reject C-style casts, `NULL` and
+`typedef` in project code; native signatures retain explicit Windows ABI types.
 
 Output: `build/RelWithDebInfo/tmloader.exe`. The executable has an explicit
 **asInvoker** manifest; it does not request administrator privileges.

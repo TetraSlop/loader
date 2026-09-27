@@ -1,6 +1,7 @@
 #include "runtime.h"
 #include <intrin.h>
 #include <sddl.h>
+#include <wil/resource.h>
 #include <cstdarg>
 #include <stdexcept>
 namespace tmloader {
@@ -21,7 +22,7 @@ LONG WINAPI crash(EXCEPTION_POINTERS *ep)
          ep->ExceptionRecord->ExceptionAddress, ep->ContextRecord->Eip, ep->ContextRecord->Esp);
     for (DWORD i = 0; i < ep->ExceptionRecord->NumberParameters; i++)
         logf("  info[%lu]=%08lX", i, ep->ExceptionRecord->ExceptionInformation[i]);
-    DWORD *stack = (DWORD *)ep->ContextRecord->Esp;
+    const auto* stack = reinterpret_cast<const DWORD*>(ep->ContextRecord->Esp);
     __try
     {
         for (int i = 0; i < 16; i++)
@@ -34,22 +35,17 @@ LONG WINAPI crash(EXCEPTION_POINTERS *ep)
 }
 bool lowerIntegrity()
 {
-    HANDLE token = NULL;
-    PSID sid = NULL;
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_DEFAULT | TOKEN_QUERY, &token))
+    wil::unique_handle token;
+    wil::unique_hlocal sid;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_DEFAULT | TOKEN_QUERY, token.put()))
         return false;
-    if (!ConvertStringSidToSidA("S-1-16-4096", &sid))
-    {
-        CloseHandle(token);
+    if (!ConvertStringSidToSidA("S-1-16-4096", sid.put()))
         return false;
-    }
     TOKEN_MANDATORY_LABEL label = {};
     label.Label.Attributes = SE_GROUP_INTEGRITY;
-    label.Label.Sid = sid;
-    BOOL result = SetTokenInformation(token, TokenIntegrityLevel, &label, sizeof(label) + GetLengthSid(sid));
-    DWORD error = GetLastError();
-    LocalFree(sid);
-    CloseHandle(token);
+    label.Label.Sid = sid.get();
+    const auto result = SetTokenInformation(token.get(), TokenIntegrityLevel, &label, sizeof(label) + GetLengthSid(sid.get()));
+    const auto error = GetLastError();
     logf("Low integrity: %d error=%lu", result, error);
     return result != FALSE;
 }

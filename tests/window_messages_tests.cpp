@@ -1,9 +1,6 @@
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
+#include <catch2/catch_test_macros.hpp>
 #include "runtime.h"
 #include "window.h"
-#include <cassert>
 #include <fstream>
 #include <mutex>
 
@@ -30,7 +27,7 @@ static LRESULT fakeLegacy(WNDPROC, HWND, UINT, WPARAM, LPARAM) { ++legacyMessage
 static LONG_PTR installedProcedure;
 static volatile bool forbidSubclass = true;
 static LONG_PTR fakeGetWindowLongPtr(HWND hwnd, int index) {
-    assert(hwnd == testWindow && index == GWLP_WNDPROC);
+    REQUIRE((hwnd == testWindow && index == GWLP_WNDPROC));
     return installedProcedure;
 }
 static LONG_PTR fakeSetWindowLongPtr(HWND, int, LONG_PTR) {
@@ -64,74 +61,74 @@ void stopSettingsPanel() { ++panelStops; }
 bool settingsPanelOpen() { return testPanelOpen; }
 void requestScreenshot() noexcept { ++screenshotRequests; }
 }
-int main() {
+TEST_CASE("Window messages preserve settings and close behavior", "[window_messages]") {
     using namespace tmloader;
     options = parseConfig({"--runtime-dir", (std::filesystem::current_path() / "window-message-fixture").string()});
-    assert(!std::filesystem::exists(options.runtimeDir));
+    REQUIRE(!std::filesystem::exists(options.runtimeDir));
     for (WPARAM command : {SC_SIZE, SC_MOVE, SC_MINIMIZE, SC_MAXIMIZE, SC_RESTORE}) {
-        assert(wrapperWindow(nullptr, WM_SYSCOMMAND, command, 0) == 123);
-        assert(defaultMessage == WM_SYSCOMMAND && defaultCommand == command);
+        REQUIRE(wrapperWindow(nullptr, WM_SYSCOMMAND, command, 0) == 123);
+        REQUIRE((defaultMessage == WM_SYSCOMMAND && defaultCommand == command));
     }
-    assert(legacyMessages == 0);
+    REQUIRE(legacyMessages == 0);
     // A lost-focus notification must not reach the native restore/foreground path.
     wrapperWindow(testWindow, 0x64, 0, 0);
-    assert(legacyMessages == 0);
+    REQUIRE(legacyMessages == 0);
     auto cursor = [&] { return wrapperWindow(testWindow, WM_SETCURSOR,
         reinterpret_cast<WPARAM>(testWindow), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE)); };
-    assert(cursor() == TRUE && shownCursor == nullptr); // Software cursor inside game.
+    REQUIRE((cursor() == TRUE && shownCursor == nullptr)); // Software cursor inside game.
     testPanelOpen = true;
-    assert(cursor() == TRUE && shownCursor != nullptr);
+    REQUIRE((cursor() == TRUE && shownCursor != nullptr));
     testPanelOpen = false;
     testForeground = reinterpret_cast<HWND>(2);
-    assert(cursor() == TRUE && shownCursor != nullptr);
+    REQUIRE((cursor() == TRUE && shownCursor != nullptr));
     testForeground = testWindow;
     testPointer = {-1, 240};
-    assert(cursor() == TRUE && shownCursor != nullptr);
-    assert(wrapperWindow(testWindow, WM_SETCURSOR, reinterpret_cast<WPARAM>(testWindow),
+    REQUIRE((cursor() == TRUE && shownCursor != nullptr));
+    REQUIRE(wrapperWindow(testWindow, WM_SETCURSOR, reinterpret_cast<WPARAM>(testWindow),
         MAKELPARAM(HTLEFT, WM_MOUSEMOVE)) == 123); // Windows still chooses resize arrows.
     wrapperWindow(nullptr, WM_SYSCOMMAND, SC_CLOSE | 2, 0);
-    assert(quitRequests == 1 && panelStops == 1);
+    REQUIRE((quitRequests == 1 && panelStops == 1));
     wrapperWindow(nullptr, WM_CLOSE, 0, 0);
-    assert(quitRequests == 2 && panelStops == 2);
+    REQUIRE((quitRequests == 2 && panelStops == 2));
     wrapperWindow(nullptr, WM_SYSKEYDOWN, VK_F4, 0);
-    assert(quitRequests == 3 && panelStops == 3);
+    REQUIRE((quitRequests == 3 && panelStops == 3));
     wrapperWindow(nullptr, WM_KEYDOWN, VK_F10, 0);
     wrapperWindow(nullptr, WM_KEYDOWN, VK_F10, 1L << 30);
     wrapperWindow(nullptr, WM_SYSKEYUP, VK_F10, 0);
-    assert(panelToggles == 1);
+    REQUIRE(panelToggles == 1);
     wrapperWindow(nullptr, WM_KEYDOWN, VK_F12, 0);
     wrapperWindow(nullptr, WM_KEYDOWN, VK_F12, 1L << 30);
     wrapperWindow(nullptr, WM_KEYUP, VK_F12, 0);
-    assert(screenshotRequests == 1 && legacyMessages == 0);
+    REQUIRE((screenshotRequests == 1 && legacyMessages == 0));
     wrapperWindow(nullptr, WM_MOUSEMOVE, 0, 0);
-    assert(legacyMessages == 1);
+    REQUIRE(legacyMessages == 1);
     wrapperWindow(nullptr, WM_LBUTTONDOWN, 0, 0);
-    assert(takeMousePresses() == 1 && takeMousePresses() == 0);
+    REQUIRE((takeMousePresses() == 1 && takeMousePresses() == 0));
     wrapperWindow(nullptr, WM_LBUTTONDOWN, 0, 0);
     wrapperWindow(nullptr, WM_KILLFOCUS, 0, 0);
-    assert(takeMousePresses() == 0);
+    REQUIRE(takeMousePresses() == 0);
     wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::renderScale), 6);
-    assert(currentWindowSettings().renderScale == 4.5f);
+    REQUIRE(currentWindowSettings().renderScale == 4.5f);
     wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::renderScale), -1);
     wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::renderScale), renderScales.size());
-    assert(currentWindowSettings().renderScale == 4.5f);
+    REQUIRE(currentWindowSettings().renderScale == 4.5f);
     std::ifstream saved(settingsFile());
-    assert(readWindowSettings(saved).renderScale == 4.5f);
+    REQUIRE(readWindowSettings(saved).renderScale == 4.5f);
     saved.close();
-    assert(!currentWindowSettings().autoResolution);
+    REQUIRE(!currentWindowSettings().autoResolution);
     wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::autoResolution), 0);
-    assert(currentWindowSettings().autoResolution && currentWindowSettings().renderScale == 4.5f);
+    REQUIRE((currentWindowSettings().autoResolution && currentWindowSettings().renderScale == 4.5f));
     wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::hdFonts), 0);
-    assert(!currentWindowSettings().hdFonts && currentWindowSettings().hdTextures);
+    REQUIRE((!currentWindowSettings().hdFonts && currentWindowSettings().hdTextures));
     std::ifstream updated(settingsFile());
     auto preferences = readWindowSettings(updated);
-    assert(preferences.autoResolution && !preferences.hdFonts && preferences.hdTextures);
+    REQUIRE((preferences.autoResolution && !preferences.hdFonts && preferences.hdTextures));
     updated.close();
     gameWindow = testWindow;
     originalWindowProc = reinterpret_cast<WNDPROC>(1234);
     installedProcedure = reinterpret_cast<LONG_PTR>(wrapperWindow);
     initializeGameWindow(testWindow);
-    assert(originalWindowProc == reinterpret_cast<WNDPROC>(1234));
-    assert(currentWindowSettings().renderScale == 4.5f);
+    REQUIRE(originalWindowProc == reinterpret_cast<WNDPROC>(1234));
+    REQUIRE(currentWindowSettings().renderScale == 4.5f);
     std::filesystem::remove_all(options.runtimeDir);
 }

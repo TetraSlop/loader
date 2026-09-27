@@ -1,10 +1,7 @@
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
+#include <catch2/catch_test_macros.hpp>
 #include "runtime.h"
 #include "window.h"
 #include "imgui_internal.h"
-#include <cassert>
 #include <cstdio>
 #include <cstring>
 #include "../src/settings_ui.cpp"
@@ -31,7 +28,7 @@ void frame() {
     ImGui::NewFrame();
     tmloader::settingsContents();
     ImGui::Render();
-    assert(ImGui::GetDrawData()->Valid && ImGui::GetDrawData()->TotalVtxCount > 0);
+    REQUIRE((ImGui::GetDrawData()->Valid && ImGui::GetDrawData()->TotalVtxCount > 0));
 }
 
 ImGuiWindow* selectTab(const char* label, ImVec2 size) {
@@ -39,41 +36,41 @@ ImGuiWindow* selectTab(const char* label, ImVec2 size) {
     io.DisplaySize = size;
     frame();
     auto* window = ImGui::FindWindowByName("Wrapper settings");
-    assert(window);
+    REQUIRE(window);
     auto* tabs = ImGui::GetCurrentContext()->TabBars.GetByKey(window->GetID("settings-tabs"));
-    assert(tabs && tabs->Tabs.Size == 3);
+    REQUIRE((tabs && tabs->Tabs.Size == 3));
     ImGuiID selected = 0;
     for (auto& tab : tabs->Tabs)
         if (std::strcmp(ImGui::TabBarGetTabName(tabs, &tab), label) == 0) selected = tab.ID;
-    assert(selected);
+    REQUIRE(selected);
     tabs->NextSelectedTabId = selected;
     ImGui::SetScrollY(window, 0);
     // Tab transitions and scrollbar visibility use previous-frame measurements.
     for (int i = 0; i < 3; ++i) frame();
-    assert(tabs->VisibleTabId == selected);
+    REQUIRE(tabs->VisibleTabId == selected);
     return window;
 }
 
 void checkWidth(ImGuiWindow* window) {
-    assert(window->ScrollMax.x == 0);
+    REQUIRE(window->ScrollMax.x == 0);
     const float available = window->InnerRect.GetWidth() - window->WindowPadding.x * 2;
     if (window->ContentSize.x > available + 1) {
         printf("Content width %.1f exceeds available %.1f\n", window->ContentSize.x, available);
-        assert(false);
+        REQUIRE(false);
     }
 }
 }
 
-int main() {
+TEST_CASE("Settings layout fits supported DPI scales", "[settings_ui]") {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     // Build the real panel's draw lists without a window, GPU, game or desktop input.
     for (float scale : {1.0f, 1.5f, 2.0f}) {
         ImGui::CreateContext();
         tmloader::configurePanel(scale);
         auto& io = ImGui::GetIO();
-        assert((io.ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) != 0);
-        assert((io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange) == 0);
-        assert(io.IniFilename == nullptr && io.LogFilename == nullptr);
+        REQUIRE((io.ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) != 0);
+        REQUIRE((io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange) == 0);
+        REQUIRE((io.IniFilename == nullptr && io.LogFilename == nullptr));
         io.DeltaTime = 1.0f / 60.0f;
         io.Fonts->AddFontDefault();
         unsigned char* pixels;
@@ -84,17 +81,17 @@ int main() {
         for (const char* tab : {"Display", "Artwork & text", "Screenshots"}) {
             auto* window = selectTab(tab, preferred);
             checkWidth(window);
-            assert(window->ScrollMax.y == 0);
+            REQUIRE(window->ScrollMax.y == 0);
         }
         testSettings.autoResolution = false;
         testSettings.renderScale = 4.5f;
         auto* window = selectTab("Display", preferred);
         checkWidth(window);
-        assert(window->ScrollMax.y == 0);
+        REQUIRE(window->ScrollMax.y == 0);
         availableImages = 0;
         window = selectTab("Artwork & text", preferred);
         checkWidth(window);
-        assert(window->ScrollMax.y == 0);
+        REQUIRE(window->ScrollMax.y == 0);
         availableImages = 503;
         for (const auto& status : {
             "Screenshot saved: C:/Users/Player/Documents/GitHub/tmloader/runtime/logs/screenshots/" +
@@ -104,22 +101,22 @@ int main() {
             captureStatus = status;
             const unsigned before = statusReads;
             window = selectTab("Screenshots", preferred);
-            assert(statusReads > before);
+            REQUIRE(statusReads > before);
             checkWidth(window);
-            assert(window->ScrollMax.y == 0);
+            REQUIRE(window->ScrollMax.y == 0);
         }
         // The native window clamps to the monitor work area. A short monitor
         // should produce vertical scrolling, never clip or widen the controls.
         for (const char* tab : {"Display", "Artwork & text", "Screenshots"}) {
             window = selectTab(tab, {524 * scale, 260 * scale});
             checkWidth(window);
-            assert(window->ScrollMax.y > 0 && window->ScrollbarY);
+            REQUIRE((window->ScrollMax.y > 0 && window->ScrollbarY));
             ImGui::SetScrollY(window, window->ScrollMax.y);
             for (int i = 0; i < 3; ++i) frame();
-            assert(window->Scroll.y >= window->ScrollMax.y - 1);
-            assert(window->DC.CursorMaxPos.y <= window->InnerRect.Max.y + 1);
+            REQUIRE(window->Scroll.y >= window->ScrollMax.y - 1);
+            REQUIRE(window->DC.CursorMaxPos.y <= window->InnerRect.Max.y + 1);
         }
-        assert(screenshotRequests == 0); // Layout must not request a capture.
+        REQUIRE(screenshotRequests == 0); // Layout must not request a capture.
         printf("PASS: all tabs and long screenshot status fit at %.0f%%; short panels scroll\n", scale * 100);
         ImGui::DestroyContext();
     }

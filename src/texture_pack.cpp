@@ -2,8 +2,10 @@
 #include "config.h"
 #include <windows.h>
 #include <bcrypt.h>
+#include <wil/resource.h>
 #include <nlohmann/json.hpp>
 #include <array>
+#include <bit>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
@@ -11,7 +13,10 @@
 namespace tmloader {
 namespace {
 unsigned bigEndian(const uint8_t* p) {
-    return (unsigned(p[0]) << 24) | (unsigned(p[1]) << 16) | (unsigned(p[2]) << 8) | p[3];
+    static_assert(std::endian::native == std::endian::little);
+    uint32_t value;
+    std::memcpy(&value, p, sizeof(value));
+    return std::byteswap(value);
 }
 std::vector<uint8_t> readBounded(const std::filesystem::path& path, size_t limit) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -61,21 +66,20 @@ PngInfo pngInfo(const void* data, size_t bytes) {
         if (length > bytes - pos - 12) return {};
         if (!std::memcmp(p + pos + 4, "IEND", 4))
             return length == 0 ? PngInfo{width, height, pos + 12} : PngInfo{};
-        pos += size_t(length) + 12;
+        pos += static_cast<size_t>(length) + 12;
     }
     return {};
 }
 
 std::string sha256Bytes(const void* data, size_t bytes) {
     if (bytes > ULONG_MAX) throw std::runtime_error("SHA256 input too large");
-    BCRYPT_ALG_HANDLE algorithm{};
-    if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
+    wil::unique_bcrypt_algorithm algorithm;
+    if (BCryptOpenAlgorithmProvider(algorithm.put(), BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
         throw std::runtime_error("Cannot initialize texture SHA256");
     std::array<uint8_t, 32> digest{};
-    const auto status = BCryptHash(algorithm, nullptr, 0,
+    const auto status = BCryptHash(algorithm.get(), nullptr, 0,
         const_cast<PUCHAR>(static_cast<const uint8_t*>(data)), static_cast<ULONG>(bytes),
         digest.data(), static_cast<ULONG>(digest.size()));
-    BCryptCloseAlgorithmProvider(algorithm, 0);
     if (status < 0) throw std::runtime_error("Cannot hash texture");
     std::string result;
     for (const auto byte : digest) {
@@ -99,7 +103,8 @@ void TexturePack::load(const std::filesystem::path& manifest) {
         asset.category = categoryFor(asset.id);
         asset.sourceHash = hashText(record.at("source_sha256").get<std::string>());
         asset.imageHash = hashText(record.at("sha256").get<std::string>());
-        const auto relative = std::filesystem::u8path(record.at("file").get<std::string>());
+        const auto file = record.at("file").get<std::string>();
+        const auto relative = std::filesystem::path(std::u8string(file.begin(), file.end()));
         if (relative.empty() || relative.is_absolute() || relative.has_root_name() ||
             relative.native().find(L':') != std::wstring::npos)
             throw std::runtime_error("Texture paths must be relative to their pack");

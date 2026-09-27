@@ -1,6 +1,7 @@
 #include "config.h"
 #include <windows.h>
 #include <bcrypt.h>
+#include <wil/resource.h>
 #include <fstream>
 #include <stdexcept>
 #include <vector>
@@ -9,24 +10,23 @@ namespace tmloader {
 std::string sha256File(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) throw std::runtime_error("Cannot read file: " + path.string());
-    BCRYPT_ALG_HANDLE alg{};
-    BCRYPT_HASH_HANDLE hash{};
-    auto fail = [&] { if (hash) BCryptDestroyHash(hash); if (alg) BCryptCloseAlgorithmProvider(alg, 0); };
-    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
+    wil::unique_bcrypt_algorithm algorithm;
+    wil::unique_bcrypt_hash hash;
+    if (BCryptOpenAlgorithmProvider(algorithm.put(), BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
         throw std::runtime_error("Cannot initialize SHA256");
-    if (BCryptCreateHash(alg, &hash, nullptr, 0, nullptr, 0, 0) < 0) { fail(); throw std::runtime_error("Cannot create SHA256"); }
+    if (BCryptCreateHash(algorithm.get(), hash.put(), nullptr, 0, nullptr, 0, 0) < 0)
+        throw std::runtime_error("Cannot create SHA256");
     char buffer[65536];
     while (file.read(buffer, sizeof(buffer)) || file.gcount())
-        if (BCryptHashData(hash, reinterpret_cast<PUCHAR>(buffer), static_cast<ULONG>(file.gcount()), 0) < 0) {
-            fail(); throw std::runtime_error("SHA256 update failed");
-        }
-    if (!file.eof()) { fail(); throw std::runtime_error("File read failed"); }
+        if (BCryptHashData(hash.get(), reinterpret_cast<PUCHAR>(buffer), static_cast<ULONG>(file.gcount()), 0) < 0)
+            throw std::runtime_error("SHA256 update failed");
+    if (!file.eof()) throw std::runtime_error("File read failed");
     BYTE digest[32];
-    if (BCryptFinishHash(hash, digest, sizeof(digest), 0) < 0) { fail(); throw std::runtime_error("SHA256 finalization failed"); }
-    fail();
+    if (BCryptFinishHash(hash.get(), digest, sizeof(digest), 0) < 0)
+        throw std::runtime_error("SHA256 finalization failed");
     std::string out;
-    const char hex[] = "0123456789ABCDEF";
-    for (BYTE b : digest) { out += hex[b >> 4]; out += hex[b & 15]; }
+    constexpr char hex[] = "0123456789ABCDEF";
+    for (const auto byte : digest) { out += hex[byte >> 4]; out += hex[byte & 15]; }
     return out;
 }
 

@@ -1,0 +1,4 @@
+Checks: '-*,google-readability-casting,modernize-use-nullptr,modernize-use-using'
+WarningsAsErrors: 'google-readability-casting,modernize-use-nullptr,modernize-use-using'
+HeaderFilterRegex: '[/\\](src|tests)[/\\]'
+ExcludeHeaderFilterRegex: '[/\\](_deps|third_party)[/\\]'

@@ -6,6 +6,8 @@ been built or exercised with the native game. Replacement estimates describe
 existing code affected, not guaranteed net line savings.
 
 The best immediate addition is **Microsoft WIL for owned Windows resources**.
+The modernization pass now implements the four initial ownership changes below
+and verifies them in the actual MSVC x86 C++23 build and 21 passing CTest cases.
 Keep the existing Dear ImGui and nlohmann/json integrations and the Catch2
 migration. CLI11 is a reasonable next step for configuration; logging and a
 different graphics backend need a concrete feature requirement first.
@@ -67,7 +69,8 @@ handling remain necessary. Keep the SDK's existing `WRL::ComPtr` for COM.
 Do not automatically release or unload game/Viewer objects on new paths:
 their teardown is an explicitly unresolved native lifecycle issue. C++23
 compatibility is expected from the header design and supported MSVC toolchain;
-the loader's actual x86 C++23 build remains the acceptance check.
+the loader's actual x86 C++23 build and headless regressions now pass. No native
+game launch was used for this verification.
 
 ## CLI11: one declaration per option
 

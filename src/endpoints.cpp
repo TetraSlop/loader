@@ -1,6 +1,7 @@
 #include "config.h"
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <wil/resource.h>
 #include <cstring>
 
 namespace tmloader {
@@ -14,9 +15,9 @@ bool isIpv4Address(const std::string& host) {
 }
 bool pathIsWithin(const std::filesystem::path& path, const std::filesystem::path& root) {
     std::error_code ec;
-    auto p = std::filesystem::weakly_canonical(path, ec);
+    const auto p = std::filesystem::weakly_canonical(path, ec);
     if (ec) return false;
-    auto r = std::filesystem::weakly_canonical(root, ec);
+    const auto r = std::filesystem::weakly_canonical(root, ec);
     if (ec) return false;
     auto i = p.begin();
     for (auto j = r.begin(); j != r.end(); ++j, ++i)
@@ -30,26 +31,25 @@ static bool localOutputAllowed(const Config& config, const std::filesystem::path
     if (!pathIsWithin(path, config.runtimeDir / directory) || !pathIsWithin(path, config.runtimeDir) ||
         pathIsWithin(path, config.runtimeDir / "data") || pathIsWithin(path, config.runtimeDir / "pub")) return false;
     std::error_code ec;
-    auto resolved = std::filesystem::weakly_canonical(path, ec);
+    const auto resolved = std::filesystem::weakly_canonical(path, ec);
     if (ec) return false;
     for (const auto& input : {config.game, config.core}) {
-        auto canonicalInput = std::filesystem::weakly_canonical(input, ec);
+        const auto canonicalInput = std::filesystem::weakly_canonical(input, ec);
         if (ec || !_wcsicmp(resolved.c_str(), canonicalInput.c_str())) return false;
     }
     // A hard link inside logs can still name a DLL or asset outside logs.
     // Refuse all multiply-linked existing output files, without writing them.
-    DWORD attributes = GetFileAttributesW(path.c_str());
+    const auto attributes = GetFileAttributesW(path.c_str());
     if (attributes == INVALID_FILE_ATTRIBUTES) {
-        DWORD error = GetLastError();
+        const auto error = GetLastError();
         return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
     }
     if (attributes & FILE_ATTRIBUTE_DIRECTORY) return false;
-    HANDLE file = CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES,
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
-    if (file == INVALID_HANDLE_VALUE) return false;
+    const wil::unique_handle file(CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr));
+    if (!file) return false;
     BY_HANDLE_FILE_INFORMATION info{};
-    BOOL ok = GetFileInformationByHandle(file, &info);
-    CloseHandle(file);
+    const auto ok = GetFileInformationByHandle(file.get(), &info);
     return ok && info.nNumberOfLinks == 1;
 }
 bool outputPathAllowed(const Config& config, const std::filesystem::path& path) {

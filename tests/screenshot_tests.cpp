@@ -1,12 +1,10 @@
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_session.hpp>
 #include "runtime.h"
 #include "screenshot.h"
 #include <sddl.h>
 #include <aclapi.h>
 #include <algorithm>
-#include <cassert>
 #include <cstring>
 #include <fstream>
 #include <set>
@@ -70,7 +68,7 @@ struct Surface {
         return self->descResult;
     }
     static HRESULT WINAPI lock(Surface* self, LockedPixels* output, const RECT* rect, DWORD flags) {
-        assert(!rect && flags == 0x10);
+        REQUIRE((!rect && flags == 0x10));
         ++self->locks;
         if (FAILED(self->lockResult)) return self->lockResult;
         output->pitch = self->pitch;
@@ -87,7 +85,7 @@ struct Device {
     HRESULT result = S_OK;
     Device() : vtable(methods.data()) { methods[16] = reinterpret_cast<void*>(backbuffer); }
     static HRESULT WINAPI backbuffer(Device* self, UINT index, DWORD type, void** output) {
-        assert(index == 0 && type == 0);
+        REQUIRE((index == 0 && type == 0));
         ++self->reads;
         if (FAILED(self->result)) return self->result;
         ++self->surface.references;
@@ -118,12 +116,12 @@ std::vector<DWORD> decode(const std::filesystem::path& path) {
         WICDecodeMetadataCacheOnLoad, &decoder), "Open captured PNG");
     GUID container{};
     check(decoder->GetContainerFormat(&container), "PNG container");
-    assert(IsEqualGUID(container, GUID_ContainerFormatPng));
+    REQUIRE(IsEqualGUID(container, GUID_ContainerFormatPng));
     ComPtr<IWICBitmapFrameDecode> frame;
     check(decoder->GetFrame(0, &frame), "PNG frame");
     UINT width = 0, height = 0;
     check(frame->GetSize(&width, &height), "PNG dimensions");
-    assert(width == 3 && height == 2);
+    REQUIRE((width == 3 && height == 2));
     ComPtr<IWICFormatConverter> converter;
     check(factory->CreateFormatConverter(&converter), "PNG converter");
     check(converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppBGRA,
@@ -137,73 +135,72 @@ void fails(Device& device, const char* expected, unsigned locks, unsigned unlock
     const auto before = files();
     requestScreenshot();
     saveRequestedScreenshot(&device);
-    assert(files() == before);
-    assert(screenshotStatus().find(expected) != std::string::npos);
-    assert(device.surface.locks == locks && device.surface.unlocks == unlocks);
-    assert(device.surface.references == 1);
+    REQUIRE(files() == before);
+    REQUIRE(screenshotStatus().find(expected) != std::string::npos);
+    REQUIRE((device.surface.locks == locks && device.surface.unlocks == unlocks));
+    REQUIRE(device.surface.references == 1);
 }
 
 void labelFixture(const std::filesystem::path& path, const wchar_t* sddl) {
-    assert(std::filesystem::create_directory(path));
+    REQUIRE(std::filesystem::create_directory(path));
     PSECURITY_DESCRIPTOR descriptor = nullptr;
-    assert(ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, SDDL_REVISION_1, &descriptor, nullptr));
+    REQUIRE(ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, SDDL_REVISION_1, &descriptor, nullptr));
     PACL label = nullptr;
     BOOL present = FALSE, defaulted = FALSE;
-    assert(GetSecurityDescriptorSacl(descriptor, &present, &label, &defaulted) && present);
+    REQUIRE((GetSecurityDescriptorSacl(descriptor, &present, &label, &defaulted) && present));
     auto mutablePath = path.wstring();
     const DWORD result = SetNamedSecurityInfoW(mutablePath.data(), SE_FILE_OBJECT,
         LABEL_SECURITY_INFORMATION, nullptr, nullptr, nullptr, label);
     LocalFree(descriptor);
-    assert(result == ERROR_SUCCESS);
+    REQUIRE(result == ERROR_SUCCESS);
 }
 
-int lowIntegrityCapture(const std::filesystem::path& fixture) {
+void lowIntegrityCapture(const std::filesystem::path& fixture) {
     // This is a disposable child process. Match the loader's token label,
     // then initialize WIC for the first time only after the label is lowered.
     HANDLE token = nullptr;
     PSID sid = nullptr;
-    assert(OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_DEFAULT | TOKEN_QUERY, &token));
-    assert(ConvertStringSidToSidW(L"S-1-16-4096", &sid));
+    REQUIRE(OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_DEFAULT | TOKEN_QUERY, &token));
+    REQUIRE(ConvertStringSidToSidW(L"S-1-16-4096", &sid));
     TOKEN_MANDATORY_LABEL label{};
     label.Label.Attributes = SE_GROUP_INTEGRITY;
     label.Label.Sid = sid;
-    assert(SetTokenInformation(token, TokenIntegrityLevel, &label, sizeof(label) + GetLengthSid(sid)));
+    REQUIRE(SetTokenInformation(token, TokenIntegrityLevel, &label, sizeof(label) + GetLengthSid(sid)));
     LocalFree(sid);
     std::array<BYTE, sizeof(TOKEN_MANDATORY_LABEL) + SECURITY_MAX_SID_SIZE> actual{};
     DWORD size = 0;
-    assert(GetTokenInformation(token, TokenIntegrityLevel, actual.data(), static_cast<DWORD>(actual.size()), &size));
+    REQUIRE(GetTokenInformation(token, TokenIntegrityLevel, actual.data(), static_cast<DWORD>(actual.size()), &size));
     const auto integrity = reinterpret_cast<TOKEN_MANDATORY_LABEL*>(actual.data())->Label.Sid;
-    assert(*GetSidSubAuthority(integrity, *GetSidSubAuthorityCount(integrity) - 1) == SECURITY_MANDATORY_LOW_RID);
+    REQUIRE(*GetSidSubAuthority(integrity, *GetSidSubAuthorityCount(integrity) - 1) == SECURITY_MANDATORY_LOW_RID);
     CloseHandle(token);
 
     // The medium-labeled control proves that low-write isolation is effective.
     HANDLE forbidden = CreateFileW((fixture / "medium/control.png").c_str(), GENERIC_WRITE,
         0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
-    assert(forbidden == INVALID_HANDLE_VALUE && GetLastError() == ERROR_ACCESS_DENIED);
+    REQUIRE((forbidden == INVALID_HANDLE_VALUE && GetLastError() == ERROR_ACCESS_DENIED));
     options.runtimeDir = fixture / "low";
     options.game = options.runtimeDir / "TM_native.dll";
     options.core = options.runtimeDir / "polcore_native.dll";
     Device device;
     requestScreenshot();
     saveRequestedScreenshot(&device);
-    assert(screenshotStatus().find("Screenshot saved:") == 0);
-    assert(files().size() == 1 && device.surface.references == 1 && device.surface.unlocks == 1);
+    REQUIRE(screenshotStatus().find("Screenshot saved:") == 0);
+    REQUIRE((files().size() == 1 && device.surface.references == 1 && device.surface.unlocks == 1));
     const std::vector<DWORD> expected{0xff112233, 0xff445566, 0xff778899,
         0xff0a20e0, 0xff203040, 0xfff1f2f3};
-    assert(decode(*files().begin()) == expected);
-    return 0;
+    REQUIRE(decode(*files().begin()) == expected);
 }
 
 void verifyLowIntegrityCapture(const std::filesystem::path& fixture) {
     labelFixture(fixture / "low", L"S:(ML;OICI;NW;;;LW)");
     labelFixture(fixture / "medium", L"S:(ML;OICI;NW;;;ME)");
     wchar_t executable[32768]{};
-    assert(GetModuleFileNameW(nullptr, executable, static_cast<DWORD>(std::size(executable))));
+    REQUIRE(GetModuleFileNameW(nullptr, executable, static_cast<DWORD>(std::size(executable))));
     std::wstring command = L"\"" + std::wstring(executable) + L"\" --low-integrity \"" + fixture.wstring() + L"\"";
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
     PROCESS_INFORMATION process{};
-    assert(CreateProcessW(executable, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+    REQUIRE(CreateProcessW(executable, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
         nullptr, nullptr, &startup, &process));
     const DWORD wait = WaitForSingleObject(process.hProcess, 30000);
     if (wait != WAIT_OBJECT_0) {
@@ -211,22 +208,21 @@ void verifyLowIntegrityCapture(const std::filesystem::path& fixture) {
         WaitForSingleObject(process.hProcess, 5000);
     }
     DWORD exitCode = 1;
-    assert(GetExitCodeProcess(process.hProcess, &exitCode));
+    REQUIRE(GetExitCodeProcess(process.hProcess, &exitCode));
     CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
-    assert(wait == WAIT_OBJECT_0 && exitCode == 0);
-    assert(!std::filesystem::exists(fixture / "medium/control.png"));
+    REQUIRE((wait == WAIT_OBJECT_0 && exitCode == 0));
+    REQUIRE(!std::filesystem::exists(fixture / "medium/control.png"));
 }
 }
 
-int wmain(int argc, wchar_t** argv) {
+TEST_CASE("Screenshots preserve pixels and safe output lifecycle", "[screenshot]") {
     using namespace tmloader;
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
-    if (argc == 3 && std::wstring(argv[1]) == L"--low-integrity") return lowIntegrityCapture(argv[2]);
     const auto parent = std::filesystem::temp_directory_path();
-    const auto root = parent / ("tmloader-screenshot-test-" + std::to_string(GetCurrentProcessId()) +
-        "-" + std::to_string(GetTickCount64()));
-    assert(std::filesystem::create_directory(root));
+    const auto root = parent / (L"tmloader-screenshot-test-\u00e9-" + std::to_wstring(GetCurrentProcessId()) +
+        L"-" + std::to_wstring(GetTickCount64()));
+    REQUIRE(std::filesystem::create_directory(root));
     options.runtimeDir = root;
     options.game = root / "TM_native.dll";
     options.core = root / "polcore_native.dll";
@@ -234,34 +230,36 @@ int wmain(int argc, wchar_t** argv) {
     Device device;
     saveRequestedScreenshot(nullptr);
     saveRequestedScreenshot(&device);
-    assert(device.reads == 0 && files().empty() && screenshotStatus().empty());
+    REQUIRE((device.reads == 0 && files().empty() && screenshotStatus().empty()));
 
     std::filesystem::create_directories(root / "logs/screenshots");
     const auto existing = requestedFileName(0);
     { std::ofstream output(existing, std::ios::binary); output << "Never replace me"; }
     requestScreenshot(); requestScreenshot();
-    assert(screenshotStatus().find("queued") != std::string::npos);
+    REQUIRE(screenshotStatus().find("queued") != std::string::npos);
     saveRequestedScreenshot(&device);
-    assert(device.reads == 1 && device.surface.references == 1);
-    assert(device.surface.locks == 1 && device.surface.unlocks == 1);
-    assert(files().size() == 2 && std::filesystem::exists(requestedFileName(1)));
+    REQUIRE((device.reads == 1 && device.surface.references == 1));
+    REQUIRE((device.surface.locks == 1 && device.surface.unlocks == 1));
+    REQUIRE((files().size() == 2 && std::filesystem::exists(requestedFileName(1))));
     { std::ifstream input(existing, std::ios::binary);
       const std::string content((std::istreambuf_iterator<char>(input)), {});
-      assert(content == "Never replace me"); }
+      REQUIRE(content == "Never replace me"); }
     const std::vector<DWORD> expected{0xff112233, 0xff445566, 0xff778899,
         0xff0a20e0, 0xff203040, 0xfff1f2f3};
-    assert(decode(requestedFileName(1)) == expected);
-    assert(screenshotStatus().find(requestedFileName(1).u8string()) != std::string::npos);
+    REQUIRE(decode(requestedFileName(1)) == expected);
+    const auto expectedPath = requestedFileName(1).u8string();
+    REQUIRE(screenshotStatus().find(std::string(reinterpret_cast<const char*>(expectedPath.data()),
+        expectedPath.size())) != std::string::npos);
     saveRequestedScreenshot(&device);
-    assert(device.reads == 1 && files().size() == 2); // A request is consumed once.
+    REQUIRE((device.reads == 1 && files().size() == 2)); // A request is consumed once.
 
     device.surface.format = 22;
     device.surface.pitch = -20;
     requestScreenshot(); saveRequestedScreenshot(&device);
     auto reversed = expected;
     std::swap_ranges(reversed.begin(), reversed.begin() + 3, reversed.begin() + 3);
-    assert(decode(requestedFileName(2)) == reversed);
-    assert(device.surface.references == 1 && device.surface.unlocks == 2);
+    REQUIRE(decode(requestedFileName(2)) == reversed);
+    REQUIRE((device.surface.references == 1 && device.surface.unlocks == 2));
 
     Device bad;
     bad.surface.format = 23;
@@ -288,33 +286,52 @@ int wmain(int argc, wchar_t** argv) {
     fails(bad, "Write screenshot file", 5, 4);
     failScreenshotWrite = false;
     requestScreenshot(); saveRequestedScreenshot(nullptr);
-    assert(screenshotStatus().find("unavailable") != std::string::npos);
+    REQUIRE(screenshotStatus().find("unavailable") != std::string::npos);
 
     // Verify an existing COM apartment is neither changed nor uninitialized.
-    assert(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)));
+    REQUIRE(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)));
     requestScreenshot(); saveRequestedScreenshot(&device);
     ULONG_PTR token = 0;
-    assert(SUCCEEDED(CoGetContextToken(&token)) && token != 0);
+    REQUIRE((SUCCEEDED(CoGetContextToken(&token)) && token != 0));
     CoUninitialize();
     // A newer request must survive completion of the in-progress screenshot.
     requestDuringWrite = true;
     unsigned reads = device.reads;
     requestScreenshot(); saveRequestedScreenshot(&device);
-    assert(device.reads == reads + 1 && screenshotStatus().find("queued") != std::string::npos);
+    REQUIRE((device.reads == reads + 1 && screenshotStatus().find("queued") != std::string::npos));
     saveRequestedScreenshot(&device);
-    assert(device.reads == reads + 2 && screenshotStatus().find("Screenshot saved:") == 0);
+    REQUIRE((device.reads == reads + 2 && screenshotStatus().find("Screenshot saved:") == 0));
     saveRequestedScreenshot(&device);
-    assert(device.reads == reads + 2);
+    REQUIRE(device.reads == reads + 2);
     // The same rule holds if the older request fails while another is queued.
     requestDuringWrite = true; failScreenshotWrite = true;
     requestScreenshot(); saveRequestedScreenshot(&device);
-    assert(screenshotStatus().find("queued") != std::string::npos);
+    REQUIRE(screenshotStatus().find("queued") != std::string::npos);
     failScreenshotWrite = false;
     saveRequestedScreenshot(&device);
-    assert(screenshotStatus().find("Screenshot saved:") == 0);
+    REQUIRE(screenshotStatus().find("Screenshot saved:") == 0);
 
     verifyLowIntegrityCapture(root);
-    assert(pathIsWithin(root, parent) && root.filename().wstring().find(L"tmloader-screenshot-test-") == 0);
+    REQUIRE((pathIsWithin(root, parent) && root.filename().wstring().find(L"tmloader-screenshot-test-") == 0));
     std::filesystem::remove_all(root);
     puts("Screenshot pixels, queue ordering, low-integrity WIC/file writes, collision and cleanup tests passed");
+}
+
+namespace {
+std::filesystem::path childFixture;
+}
+
+TEST_CASE("Low-integrity screenshot child", "[.screenshot-child]") {
+    REQUIRE_FALSE(childFixture.empty());
+    lowIntegrityCapture(childFixture);
+}
+
+int wmain(int argc, wchar_t** argv) {
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    if (argc == 3 && std::wstring_view(argv[1]) == L"--low-integrity") {
+        childFixture = argv[2];
+        const wchar_t* childArgs[]{argv[0], L"Low-integrity screenshot child"};
+        return Catch::Session().run(2, childArgs);
+    }
+    return Catch::Session().run(argc, argv);
 }

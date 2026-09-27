@@ -1,3 +1,4 @@
+#include <catch2/catch_test_macros.hpp>
 #include "runtime.h"
 #include "d3d8_abi.h"
 #include "render_scale.h"
@@ -25,13 +26,13 @@ template<class... Args> HRESULT call(void* object, int slot, Args... args) {
     return reinterpret_cast<Method>((*static_cast<void***>(object))[slot])(object, args...);
 }
 void require(bool condition, const char* message) {
-    if (!condition) throw std::runtime_error(message);
+    INFO(message);
+    REQUIRE(condition);
 }
 void check(HRESULT result, const char* operation) {
-    if (FAILED(result)) {
-        fprintf(stderr, "%s: %08lX\n", operation, result);
-        throw std::runtime_error(operation);
-    }
+    INFO(operation);
+    CAPTURE(result);
+    REQUIRE(SUCCEEDED(result));
 }
 
 DWORD sourcePixel(UINT x, UINT y, bool highResolution) {
@@ -320,78 +321,72 @@ void checkFontRendering(void* device, Present8& parameters) {
 }
 }
 
-int main() {
+TEST_CASE("Replacement textures preserve native rendering and lifecycle", "[graphics-device]") {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
-    try {
-        require(lowerIntegrity(), "Could not enter test low-integrity context");
-        const auto module = LoadLibraryW(L"d3d8.dll");
-        using Factory = IUnknown*(WINAPI*)(UINT);
-        const auto factory = module ? reinterpret_cast<Factory>(GetProcAddress(module, "Direct3DCreate8")) : nullptr;
-        if (!factory) { puts("SKIP: Direct3D 8 unavailable"); return 77; }
-        ComPtr<IUnknown> d3d;
-        d3d.Attach(factory(220));
-        if (!d3d) { puts("SKIP: Direct3D 8 unavailable"); return 77; }
-        DWORD mode[4]{};
-        check(call(d3d.Get(), 8, 0U, mode), "Get display format");
-        if (mode[3] != 21 && mode[3] != 22) { puts("SKIP: test requires 32-bit desktop format"); return 77; }
-        Present8 parameters{};
-        parameters.width = frameWidth; parameters.height = frameHeight;
-        parameters.format = mode[3]; parameters.count = 1; parameters.swap = 3;
-        // No window is created or shown; no Present, focus or input call is used.
-        parameters.window = GetDesktopWindow(); parameters.windowed = TRUE; parameters.flags = 1;
-        ComPtr<IUnknown> device;
-        check(call(d3d.Get(), 15, 0U, 1UL, parameters.window, 0x20UL, &parameters, device.GetAddressOf()), "Create offscreen device");
-        state(device.Get());
-        auto original = texture(device.Get(), false);
-        const auto originalDescription = description(original.Get());
-        auto replacement = texture(device.Get(), true);
-        const auto originalFrame = render(device.Get(), original.Get(), false, false, nullptr);
-        const auto expected = render(device.Get(), replacement.Get(), false, false, nullptr);
-        require(attachTextureReplacement(nullptr, replacement.Get()) == E_INVALIDARG, "Null original accepted");
-        require(attachTextureReplacement(original.Get(), nullptr) == E_INVALIDARG, "Null replacement accepted");
-        require(attachTextureReplacement(original.Get(), original.Get()) == E_INVALIDARG, "Self attachment accepted");
-        require(attachTextureReplacement(original.Get(), replacement.Get(), static_cast<TextureCategory>(99)) == E_INVALIDARG,
-            "Unknown replacement category accepted");
-        check(attachTextureReplacement(original.Get(), replacement.Get()), "Attach HD texture");
-        checkLogicalSize(original.Get());
-        require(description(original.Get()) == originalDescription, "Original level description changed after attachment");
-        auto* borrowedReplacement = replacement.Get();
-        replacement.Reset(); // The original's private data must keep the real HD texture alive.
-        const auto enabled = render(device.Get(), original.Get(), true, true, borrowedReplacement);
-        require(differences(enabled, expected) == 0, "Replacement rendering differs from directly bound HD texture");
-        require(differences(enabled, originalFrame) > 288U * 384U / 2, "Replacement failed to change visible detail");
-        checkAlphaAndCrop(enabled);
-        const auto disabled = render(device.Get(), original.Get(), true, false, original.Get());
-        require(differences(disabled, originalFrame) == 0, "Disabling replacements failed to restore original artwork");
-        require(differences(render(device.Get(), original.Get(), true, true, borrowedReplacement, false), expected) == 0,
-            "Disabling enhanced fonts also disabled HD artwork");
-        require(differences(render(device.Get(), original.Get(), true, false, original.Get(), false), originalFrame) == 0,
-            "Disabling both categories did not retain original artwork");
-        checkLogicalSize(original.Get());
-        require(description(original.Get()) == originalDescription, "Original level description changed after drawing");
-        auto missing = texture(device.Get(), false);
-        require(differences(render(device.Get(), missing.Get(), true, true, missing.Get()), originalFrame) == 0,
-            "Missing replacement did not retain original artwork");
-        check(call(device.Get(), 61, 0U, static_cast<void*>(nullptr)), "Unbind texture");
-        {
-            TextureDrawBinding empty(device.Get(), true);
-            checkBinding(device.Get(), nullptr);
-        }
-        missing.Reset();
-        check(call(device.Get(), 14, &parameters), "Reset device with managed replacement");
-        state(device.Get());
-        const auto afterReset = render(device.Get(), original.Get(), true, true, borrowedReplacement);
-        require(differences(afterReset, expected) == 0, "Managed replacement did not survive device Reset");
-        checkLogicalSize(original.Get());
-        check(call(device.Get(), 61, 0U, static_cast<void*>(nullptr)), "Unbind before release");
-        original.Reset();
-        checkOwnership(device.Get(), false);
-        checkDefaultPoolLifecycle(device.Get(), parameters, expected);
-        checkFontRendering(device.Get(), parameters);
-        puts("PASS: HD detail, alpha, POT crop, toggle, native binding, logical size, ownership, managed Reset and default-pool reload");
-        return 0;
-    } catch (const std::exception& error) {
-        fprintf(stderr, "FAIL: %s\n", error.what());
-        return 1;
+    require(lowerIntegrity(), "Could not enter test low-integrity context");
+    const auto module = LoadLibraryW(L"d3d8.dll");
+    using Factory = IUnknown*(WINAPI*)(UINT);
+    const auto factory = module ? reinterpret_cast<Factory>(GetProcAddress(module, "Direct3DCreate8")) : nullptr;
+    if (!factory) { SKIP("Direct3D 8 unavailable"); }
+    ComPtr<IUnknown> d3d;
+    d3d.Attach(factory(220));
+    if (!d3d) { SKIP("Direct3D 8 unavailable"); }
+    DWORD mode[4]{};
+    check(call(d3d.Get(), 8, 0U, mode), "Get display format");
+    if (mode[3] != 21 && mode[3] != 22) { SKIP("test requires 32-bit desktop format"); }
+    Present8 parameters{};
+    parameters.width = frameWidth; parameters.height = frameHeight;
+    parameters.format = mode[3]; parameters.count = 1; parameters.swap = 3;
+    // No window is created or shown; no Present, focus or input call is used.
+    parameters.window = GetDesktopWindow(); parameters.windowed = TRUE; parameters.flags = 1;
+    ComPtr<IUnknown> device;
+    check(call(d3d.Get(), 15, 0U, 1UL, parameters.window, 0x20UL, &parameters, device.GetAddressOf()), "Create offscreen device");
+    state(device.Get());
+    auto original = texture(device.Get(), false);
+    const auto originalDescription = description(original.Get());
+    auto replacement = texture(device.Get(), true);
+    const auto originalFrame = render(device.Get(), original.Get(), false, false, nullptr);
+    const auto expected = render(device.Get(), replacement.Get(), false, false, nullptr);
+    require(attachTextureReplacement(nullptr, replacement.Get()) == E_INVALIDARG, "Null original accepted");
+    require(attachTextureReplacement(original.Get(), nullptr) == E_INVALIDARG, "Null replacement accepted");
+    require(attachTextureReplacement(original.Get(), original.Get()) == E_INVALIDARG, "Self attachment accepted");
+    require(attachTextureReplacement(original.Get(), replacement.Get(), static_cast<TextureCategory>(99)) == E_INVALIDARG,
+        "Unknown replacement category accepted");
+    check(attachTextureReplacement(original.Get(), replacement.Get()), "Attach HD texture");
+    checkLogicalSize(original.Get());
+    require(description(original.Get()) == originalDescription, "Original level description changed after attachment");
+    auto* borrowedReplacement = replacement.Get();
+    replacement.Reset(); // The original's private data must keep the real HD texture alive.
+    const auto enabled = render(device.Get(), original.Get(), true, true, borrowedReplacement);
+    require(differences(enabled, expected) == 0, "Replacement rendering differs from directly bound HD texture");
+    require(differences(enabled, originalFrame) > 288U * 384U / 2, "Replacement failed to change visible detail");
+    checkAlphaAndCrop(enabled);
+    const auto disabled = render(device.Get(), original.Get(), true, false, original.Get());
+    require(differences(disabled, originalFrame) == 0, "Disabling replacements failed to restore original artwork");
+    require(differences(render(device.Get(), original.Get(), true, true, borrowedReplacement, false), expected) == 0,
+        "Disabling enhanced fonts also disabled HD artwork");
+    require(differences(render(device.Get(), original.Get(), true, false, original.Get(), false), originalFrame) == 0,
+        "Disabling both categories did not retain original artwork");
+    checkLogicalSize(original.Get());
+    require(description(original.Get()) == originalDescription, "Original level description changed after drawing");
+    auto missing = texture(device.Get(), false);
+    require(differences(render(device.Get(), missing.Get(), true, true, missing.Get()), originalFrame) == 0,
+        "Missing replacement did not retain original artwork");
+    check(call(device.Get(), 61, 0U, static_cast<void*>(nullptr)), "Unbind texture");
+    {
+        TextureDrawBinding empty(device.Get(), true);
+        checkBinding(device.Get(), nullptr);
     }
+    missing.Reset();
+    check(call(device.Get(), 14, &parameters), "Reset device with managed replacement");
+    state(device.Get());
+    const auto afterReset = render(device.Get(), original.Get(), true, true, borrowedReplacement);
+    require(differences(afterReset, expected) == 0, "Managed replacement did not survive device Reset");
+    checkLogicalSize(original.Get());
+    check(call(device.Get(), 61, 0U, static_cast<void*>(nullptr)), "Unbind before release");
+    original.Reset();
+    checkOwnership(device.Get(), false);
+    checkDefaultPoolLifecycle(device.Get(), parameters, expected);
+    checkFontRendering(device.Get(), parameters);
+    puts("PASS: HD detail, alpha, POT crop, toggle, native binding, logical size, ownership, managed Reset and default-pool reload");
 }
