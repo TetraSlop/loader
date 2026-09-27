@@ -1,14 +1,9 @@
 #include "runtime.h"
 #include "window.h"
+#include "render_scale.h"
+#include "d3d8_abi.h"
+#include <atomic>
 namespace tmloader {
-// D3D8 ABI layout, independently declared to avoid requiring the obsolete SDK.
-struct Present8
-{
-    DWORD width, height, format, count, multisample, swap;
-    HWND window;
-    BOOL windowed, depth;
-    DWORD depthFormat, flags, refresh, interval;
-};
 typedef HRESULT(WINAPI *CreateDevice8)(void *, UINT, DWORD, HWND, DWORD, Present8 *, void **);
 static CreateDevice8 originalDevice;
 typedef HRESULT(WINAPI *PresentFn)(void *, const RECT *, const RECT *, HWND, const RGNDATA *);
@@ -16,11 +11,34 @@ static PresentFn originalPresent;
 using ResetFn = HRESULT(WINAPI*)(void*, Present8*);
 static ResetFn originalReset;
 static DWORD desktopFormat = 22;
+static std::atomic<int> renderingFactor{1};
+static DWORD scaleShader;
+using SetVertexShaderFn = HRESULT(WINAPI*)(void*, DWORD);
+static SetVertexShaderFn originalVertexShader;
+using VertexBufferFn = HRESULT(WINAPI*)(void*, UINT, DWORD, DWORD, DWORD, void**);
+static VertexBufferFn originalVertexBuffer;
+
+static HRESULT WINAPI vertexBuffer(void* device, UINT size, DWORD usage, DWORD format, DWORD pool, void** output) {
+    // D3D8 treats an XYZRHW-tagged buffer as already transformed and bypasses
+    // shader input preparation. Use an untyped buffer for our explicit layout.
+    if (renderingFactor > 1 && format == gameVertexFormat) format = 0;
+    return originalVertexBuffer(device, size, usage, format, pool, output);
+}
+
+int activeRenderScale() { return renderingFactor; }
+static HRESULT WINAPI setVertexShader(void* device, DWORD format) {
+    if (format == gameVertexFormat && renderingFactor > 1) {
+        HRESULT hr = setScaleConstants(device, renderingFactor);
+        if (FAILED(hr)) return hr;
+        return originalVertexShader(device, scaleShader);
+    }
+    return originalVertexShader(device, format);
+}
 
 static void windowedParameters(Present8& pp) {
     pp.windowed = TRUE;
-    pp.width = 640;
-    pp.height = 480;
+    pp.width = 640 * renderingFactor;
+    pp.height = 480 * renderingFactor;
     pp.format = desktopFormat;
     pp.count = 1;
     pp.multisample = 0;
@@ -31,8 +49,10 @@ static void windowedParameters(Present8& pp) {
     pp.flags |= 1;
 }
 static HRESULT WINAPI resetDevice(void* self, Present8* pp) {
+    deleteScaleShader(self, scaleShader);
     windowedParameters(*pp);
     HRESULT hr = originalReset(self, pp);
+    if (SUCCEEDED(hr) && renderingFactor > 1) hr = createScaleShader(self, &scaleShader);
     logf("D3D8 windowed Reset=%08lX", hr);
     return hr;
 }
@@ -152,6 +172,14 @@ static HRESULT WINAPI presentFrame(void *self, const RECT *source, const RECT *d
              gameValue(0x306adc), gameValue(0x2ff1fc));
         captureFrame(self, frame);
     }
+    RECT scaledSource{};
+    if (source && renderingFactor > 1) {
+        int factor = renderingFactor;
+        scaledSource = {source->left * factor, source->top * factor,
+                        source->right * factor, source->bottom * factor};
+        source = &scaledSource;
+    }
+    if (renderingFactor > 1) dirty = nullptr; // Native Present uses a complete frame.
     if (IsIconic(gameWindow)) return originalPresent(self, source, dest, window, dirty);
     RECT target = gameContentRect();
     if (target.right <= target.left || target.bottom <= target.top) return S_OK;
@@ -167,6 +195,7 @@ static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND 
     logf("D3D8 CreateDevice adapter=%u type=%lu behavior=%lX window=%p %lux%lu format=%lu windowed=%d", adapter, type,
          behavior, window, pp->width, pp->height, pp->format, pp->windowed);
     initializeGameWindow(window);
+    renderingFactor = currentWindowSettings().renderScale;
     gameValue(0x2ff248) = 1;
     DWORD mode[4] = {};
     typedef HRESULT(WINAPI * DisplayMode)(void *, UINT, DWORD *);
@@ -176,12 +205,27 @@ static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND 
     desktopFormat = SUCCEEDED(modeHr) ? mode[3] : 22;
     windowedParameters(*pp);
     HRESULT hr = originalDevice(self, adapter, type, window, (behavior & ~(0x40 | 0x80 | 0x10)) | 0x20, pp, device);
+    if (SUCCEEDED(hr) && renderingFactor > 1) {
+        hr = createScaleShader(*device, &scaleShader);
+        if (FAILED(hr)) {
+            reinterpret_cast<IUnknown*>(*device)->Release();
+            *device = nullptr;
+        }
+    }
+    if (FAILED(hr) && renderingFactor > 1) {
+        logf("Higher-resolution device/shader failed: %08lX; using original resolution", hr);
+        renderingFactor = 1;
+        windowedParameters(*pp);
+        hr = originalDevice(self, adapter, type, window, (behavior & ~(0x40 | 0x80 | 0x10)) | 0x20, pp, device);
+    }
     logf("D3D8 windowed CreateDevice=%08lX device=%p", hr, *device);
     if (SUCCEEDED(hr))
     {
         void **dv = *(void ***)*device;
         originalPresent = (PresentFn)dv[15];
         originalReset = (ResetFn)dv[14];
+        originalVertexShader = (SetVertexShaderFn)dv[76];
+        originalVertexBuffer = (VertexBufferFn)dv[23];
         realDraw = (DrawFn)dv[70];
         realDrawIdx = (DrawIdxFn)dv[71];
         realDrawUP = (DrawUPFn)dv[72];
@@ -191,6 +235,8 @@ static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND 
         VirtualProtect(dv, 97 * 4, PAGE_READWRITE, &old);
         dv[14] = (void*)resetDevice;
         dv[15] = (void *)presentFrame;
+        dv[76] = (void*)setVertexShader;
+        dv[23] = (void*)vertexBuffer;
         if (options.diagnostics) {
             dv[20] = (void *)texture;
             dv[70] = (void *)draw;
@@ -199,6 +245,7 @@ static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND 
             dv[73] = (void *)drawIdxUP;
         }
         VirtualProtect(dv, 97 * 4, old, &old);
+        logf("Rendering resolution: %lux%lu (%dx)", pp->width, pp->height, activeRenderScale());
     }
     return hr;
 }

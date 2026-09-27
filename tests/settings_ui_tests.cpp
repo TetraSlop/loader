@@ -10,6 +10,7 @@ namespace tmloader {
 HWND gameWindow{};
 void logf(const char*, ...) {}
 WindowSettings currentWindowSettings() { return {}; }
+int activeRenderScale() { return 1; }
 void postWindowAction(WindowAction, LPARAM) {}
 }
 int main() {
@@ -21,7 +22,7 @@ int main() {
         assert((io.ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) != 0);
         assert((io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange) == 0);
         assert(io.IniFilename == nullptr && io.LogFilename == nullptr);
-        io.DisplaySize = ImVec2(524 * scale, 480 * scale);
+        io.DisplaySize = ImVec2(524 * scale, 620 * scale);
         io.DeltaTime = 1.0f / 60.0f;
         io.Fonts->AddFontDefault();
         unsigned char* pixels;

@@ -1,5 +1,35 @@
 # Refactor validation
 
+## Higher internal resolution, 2026-09-27
+
+The user confirmed sound works after the DirectSound 8 correction and requested
+sharper internal rendering. The new F10 setting selects 1x/2x/3x/4x rendering,
+applied at the next launch, independently of window size. Existing preferences
+retain 1x. Original textures are unchanged.
+
+- The separate Direct3D 8 graphics check draws colored and textured geometry
+  through an actual dynamic vertex buffer at all four resolutions, with varied
+  reciprocal W, depth, alpha, and partially offscreen/subpixel coordinates.
+  It compares the scale shader against independently CPU-scaled fixed-function
+  rendering. All eight comparisons produced **zero RGB differences** on this
+  machine. Back-buffer dimensions are checked before pixels are read.
+- This check creates no window, calls no Present/focus/input API, and loads no
+  game code. It runs under the same low-integrity process setting as the loader.
+  Its initial failure exposed D3D8's incompatible XYZRHW buffer tag; the
+  production CreateVertexBuffer adapter now clears that tag at higher scales.
+- Unit checks cover shader/buffer dispatch, back-buffer dimensions, reset
+  recreation, source rectangle scaling, v1 preferences and invalid scale values.
+  The full ImGui panel produces draw lists without overflow at 100/150/200% DPI.
+- **12/12 CTest cases passed**. The x86 RelWithDebInfo build completed without
+  warnings. PE/asInvoker validation and the launcher's read-only setup check
+  verify the rebuilt executable and prepared runtime.
+
+Native check: launch the updated loader, open F10, select 2x or higher, close
+normally, and relaunch. Enlarge/maximize the window and confirm title/menu,
+cursor, cards, board and transitions fill the same layout correctly. The panel
+and log should report the chosen active resolution. Full native higher-resolution
+presentation is pending this user check; the graphics test is not a game run.
+
 ## DirectSound 8 correction, 2026-09-27
 
 The user confirmed the desktop behavior works but audio remained silent. Their
@@ -23,9 +53,9 @@ factory and SDK signature preserve DirectSound 8.
   `Play.cmd --check` passed. The launcher resolves the rebuilt executable.
 - No native game was launched or controlled, and no save/assets were changed.
 
-The interface failure is reproduced and corrected; audible in-game music and
-effects still require the user's next launch. Buffer checks do not establish
-speaker output or validate the complete native decoder path.
+The interface failure was reproduced and corrected. The user subsequently
+confirmed sound works. The buffer check alone does not establish speaker output
+or validate every native decoder path.
 
 ## Desktop focus/cursor correction, 2026-09-27
 

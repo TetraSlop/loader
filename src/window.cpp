@@ -92,6 +92,12 @@ void action(HWND hwnd, WindowAction command, LPARAM value) {
         rememberSettings();
         break;
     case WindowAction::close: closeGame(); break;
+    case WindowAction::renderScale:
+        if (validRenderScale(static_cast<int>(value))) {
+            { std::lock_guard<std::mutex> lock(settingsMutex); settings.renderScale = static_cast<int>(value); }
+            rememberSettings(); // Applied on next launch; no mid-match device reset.
+        }
+        break;
     }
 }
 LRESULT CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
@@ -141,7 +147,7 @@ LRESULT CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lp
     if (message == WM_SIZE) {
         rememberWindowSize(hwnd);
         InvalidateRect(hwnd, nullptr, TRUE);
-        return 0; // The D3D back buffer stays 640x480; only presentation changes.
+        return 0; // The selected back buffer size stays fixed; only presentation changes.
     }
     if (message == WM_EXITSIZEMOVE) { rememberWindowSize(hwnd); rememberSettings(); return 0; }
     if (message == WM_ERASEBKGND) {

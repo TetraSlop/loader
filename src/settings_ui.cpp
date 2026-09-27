@@ -1,11 +1,13 @@
 #include "runtime.h"
 #include "window.h"
+#include "render_scale.h"
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx9.h"
 #include <d3d9.h>
 #include <atomic>
 #include <thread>
+#include <algorithm>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -73,6 +75,18 @@ void settingsContents() {
     ImGui::TextWrapped("You can also drag the game window's edges or maximize it.");
     ImGui::Spacing();
     ImGui::Separator();
+    ImGui::TextUnformatted("Rendering resolution");
+    int resolution = value.renderScale - 1;
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::Combo("##resolution", &resolution,
+        "1x - 640 x 480 (original)\0" "2x - 1280 x 960\0"
+        "3x - 1920 x 1440\0" "4x - 2560 x 1920\0"))
+        postWindowAction(WindowAction::renderScale, resolution + 1);
+    int active = activeRenderScale();
+    ImGui::TextDisabled("Currently rendering at %d x %d", 640 * active, 480 * active);
+    ImGui::TextWrapped("Applies after relaunch. Original artwork keeps its source detail.");
+    ImGui::Spacing();
+    ImGui::Separator();
     ImGui::TextUnformatted("Audio");
     ImGui::TextWrapped("Adjust music and sound effect levels in the game's Options menu.");
     ImGui::Spacing();
@@ -103,9 +117,19 @@ void panelMain() {
     float scale = ImGui_ImplWin32_GetDpiScaleForHwnd(gameWindow);
     RECT owner{};
     GetWindowRect(gameWindow, &owner);
+    int width = static_cast<int>(540 * scale), height = static_cast<int>(660 * scale);
+    int x = owner.left + 40, y = owner.top + 40;
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    if (GetMonitorInfoW(MonitorFromWindow(gameWindow, MONITOR_DEFAULTTONEAREST), &monitor)) {
+        const auto& work = monitor.rcWork;
+        width = (std::min)(width, static_cast<int>(work.right - work.left));
+        height = (std::min)(height, static_cast<int>(work.bottom - work.top));
+        x = std::clamp(x, static_cast<int>(work.left), static_cast<int>(work.right) - width);
+        y = std::clamp(y, static_cast<int>(work.top), static_cast<int>(work.bottom) - height);
+    }
     HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"Tetra Master settings",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, owner.left + 40, owner.top + 40,
-        static_cast<int>(540 * scale), static_cast<int>(520 * scale), gameWindow, nullptr, instance, nullptr);
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, x, y, width, height,
+        gameWindow, nullptr, instance, nullptr);
     panelWindow = hwnd;
     IDirect3D9* d3d = hwnd ? Direct3DCreate9(D3D_SDK_VERSION) : nullptr;
     IDirect3DDevice9* device = nullptr;

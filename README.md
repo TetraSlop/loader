@@ -10,11 +10,10 @@ It starts the packaged services, passes their free ports and account IDs to this
 loader, and keeps them alive until all game windows close. This machine's
 prepared working copy is in ignored `runtime/`; `tmloader.ini` points there.
 
-The user confirmed the desktop input/focus fixes work. The remaining silent
-audio was traced to the loader selecting DirectSound instead of DirectSound 8;
-the corrected build passes real Windows music/effect buffer checks without
-playing audio. Audible in-game output still needs confirmation after relaunch.
-See [validation](docs/VALIDATION.md).
+The user confirmed desktop input/focus and sound work. Optional higher internal
+rendering resolutions are now available in F10 settings. These pass actual
+Direct3D 8 pixel comparisons; the complete game still needs a user test at the
+new resolutions. See [validation](docs/VALIDATION.md).
 
 ## Window controls
 
@@ -25,8 +24,18 @@ See [validation](docs/VALIDATION.md).
   existing message loop.
 
 The panel offers 640x480, 960x720 and 1280x960 presets and a **Keep original
-4:3 proportions** toggle. Rendering remains 640x480 and scales into the window;
+4:3 proportions** toggle. A separate **Rendering resolution** selector offers
+640x480 (1x), 1280x960 (2x), 1920x1440 (3x), and 2560x1920 (4x). Choose a scale,
+close normally, and relaunch with `Play.cmd`; changing this setting does not
+reset the graphics device during a match. The panel displays the active
+resolution. Existing accounts keep 1x until a higher scale is selected.
+
+Higher scales rasterize the game's geometry at the selected resolution before
+fitting the image into the window. They preserve the original 640x480 layout;
 mouse mapping follows the same content rectangle and ignores black bars.
+Original card art and bitmap text retain their source detail. An unsupported
+higher-resolution device/shader falls back to 640x480 and records the reason
+in the loader log.
 Alt+Tab and Windows shortcuts remain available. The wrapper disables the
 client's legacy global keyboard hook, pointer warping and focus reclaim.
 The Windows cursor is hidden only over focused game content; settings, window

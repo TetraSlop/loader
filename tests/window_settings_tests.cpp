@@ -27,4 +27,18 @@ int main() {
     writeWindowSettings(stream, {1280, 960, true, false});
     auto value = readWindowSettings(stream);
     assert(value.width == 1280 && value.height == 960 && value.fullscreen && !value.preserveAspect);
+    std::istringstream legacy("tmloader-window-v1 960 720 0 1");
+    value = readWindowSettings(legacy);
+    assert(value.width == 960 && value.height == 720 && value.renderScale == 1);
+    for (int scale : {1, 2, 3, 4}) {
+        std::stringstream saved;
+        value.renderScale = scale;
+        writeWindowSettings(saved, value);
+        assert(readWindowSettings(saved).renderScale == scale);
+    }
+    for (const char* scale : {"0", "-1", "5", "999999999999999999", "oops", ""}) {
+        std::istringstream invalid(std::string("tmloader-window-v2 960 720 0 1 ") + scale);
+        value = readWindowSettings(invalid);
+        assert(value.width == 960 && value.height == 720 && value.renderScale == 1);
+    }
 }

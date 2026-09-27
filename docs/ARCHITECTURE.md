@@ -11,7 +11,7 @@ generation, hidden environment navigation switches or probe header is needed.
 | loader/abi | Direct COM factories, original GameStart descriptor, Viewer setup/order |
 | network/endpoints | Account identity, profile cipher lifetime, initial profile requests, DNS/endpoint routing |
 | files | Virtual registry, correct empty LOADDIR, runtime write boundary |
-| graphics | D3D8 windowed device/reset, scaled presentation, first-frame activation, optional captures |
+| graphics/render_scale | D3D8 device/reset, optional higher-resolution rasterization, scaled presentation, captures |
 | window/window_settings | Desktop system commands, fullscreen/resize, shared viewport, account-scoped preferences, short-click latch |
 | settings_ui | Dear ImGui panel using official Win32/DX9 backends on an owned UI thread |
 | audio | DirectSound 8 factory and diagnostics; game retains music/effect mixing |
@@ -102,11 +102,37 @@ desktop commands to DefWindowProc, handles close/Alt+F4 directly, and posts
 WM_QUIT to the native main loop (+18778E/+18798C). Shutdown is not a synthetic
 game result or an in-game save command; the server handles disconnected sessions.
 
-D3D8 uses a fixed 640x480 back buffer with D3DSWAPEFFECT_COPY, allowing an
-explicit presentation rectangle. Device Reset keeps the same windowed contract.
-The shared content rectangle drives both presentation and input. The input
+D3D8 uses a back buffer selected at startup (640x480 times 1, 2, 3 or 4), with
+D3DSWAPEFFECT_COPY allowing an explicit presentation rectangle. Device Reset
+keeps that resolution and recreates the scale shader. Resizing the window only
+changes presentation. The shared content rectangle drives presentation and input. The input
 fallback requires the game window itself to have focus and is suspended while
 settings are open; settings clicks cannot become game actions.
+
+The supported game's renderer sets FVF 0x1C4 at +18297F and creates a dynamic
+32-byte-stride vertex buffer at +1829C0. All fourteen draw sites in its rendering
+module use DrawPrimitive with this pretransformed XYZRHW/color/specular/UV
+layout. Simply enlarging the buffer would leave these coordinates unscaled.
+At 2x-4x, the wrapper substitutes a small vs.1.1 shader at SetVertexShader (slot
+76). It converts the existing screen coordinates to clip space, preserves depth
+and reciprocal W, and passes colors/UVs through. Pixel edges follow
+`(coordinate + 0.5) * factor - 0.5`; no game coordinates, input or assets change.
+
+CreateVertexBuffer (slot 23) clears only the native 0x1C4 FVF tag at higher
+scales, using an explicit shader declaration instead. D3D8's software path
+bypasses shader input preparation for an XYZRHW-tagged buffer; leaving the tag
+intact crashes on draw. Other buffer formats pass through. At 1x both hooks
+delegate unchanged. The shader bytecode is our own short program, documented
+instruction by instruction; there is no runtime shader compiler dependency.
+
+Resolution is a next-launch preference to avoid resetting the device while
+native default-pool resources and an online match are active. Failure to create
+the larger device or shader at startup retries at 1x and logs the fallback.
+Window settings v2 adds the scale, reads v1 files with 1x, and rejects scales
+outside 1-4. The ImGui panel reports the actual active scale separately.
+
+ABI references: [Direct3D 8 interfaces](https://github.com/wine-mirror/wine/blob/master/include/d3d8.h).
+Pixel alignment follows the [Direct3D rasterization convention](https://learn.microsoft.com/en-us/windows/win32/direct3d9/directly-mapping-texels-to-pixels).
 
 The settings UI uses Dear ImGui's supported Win32/DX9 backends in a separate
 owned window. Only that UI thread touches ImGui or its DX9 device. Changes are
