@@ -43,6 +43,7 @@ int launch(const Config& config) {
     if (gameVtable[9] != gameBase + 0x8210) throw std::runtime_error("Unsupported live GameStart layout");
     installFileHooks(game, true);
     installNetworkHooks(game);
+    installDesktopHooks(game);
     setSlot(game, 0x204260, reinterpret_cast<void*>(localD3D8));
     setSlot(game, 0x204014, reinterpret_cast<void*>(tracedInput));
     setSlot(game, 0x20401c, reinterpret_cast<void*>(tracedSound));

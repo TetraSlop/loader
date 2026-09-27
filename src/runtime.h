@@ -24,6 +24,7 @@ void replacePointer(HMODULE image, void* oldValue, void* newValue);
 void setSlot(HMODULE module, DWORD rva, void* function);
 void installFileHooks(HMODULE module, bool game);
 void installNetworkHooks(HMODULE module);
+void installDesktopHooks(HMODULE module);
 void initializeViewerSession(HMODULE core, Command* table);
 HRESULT WINAPI tracedInput(HINSTANCE, DWORD, REFIID, void**, IUnknown*);
 HRESULT WINAPI tracedSound(LPCGUID, LPDIRECTSOUND*, LPUNKNOWN);

@@ -16,6 +16,22 @@ std::atomic<HWND> panelWindow{nullptr};
 // Used only on the panel thread, including its window procedure.
 UINT resizedWidth = 0, resizedHeight = 0;
 
+void configurePanel(float scale) {
+    auto& io = ImGui::GetIO();
+    io.IniFilename = nullptr; // Our account-scoped preferences are separate.
+    io.LogFilename = nullptr;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    // Keep ImGui's normal cursor handling. Native cursor visibility is now
+    // isolated to the game client area by the desktop adapter.
+    ImGui::StyleColorsDark();
+    auto& style = ImGui::GetStyle();
+    style.WindowPadding = ImVec2(18, 16);
+    style.ItemSpacing = ImVec2(10, 10);
+    style.FrameRounding = 4;
+    style.ScaleAllSizes(scale);
+    style.FontScaleDpi = scale;
+}
+
 LRESULT CALLBACK panelProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
     if (message == WM_CLOSE || ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) &&
                                (wparam == VK_F10 || wparam == VK_ESCAPE) && !(lparam & (1L << 30)))) {
@@ -104,18 +120,7 @@ void panelMain() {
     if (SUCCEEDED(hr)) {
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
-        auto& io = ImGui::GetIO();
-        io.IniFilename = nullptr; // Our account-scoped preferences are separate.
-        io.LogFilename = nullptr;
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-        io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
-        ImGui::StyleColorsDark();
-        auto& style = ImGui::GetStyle();
-        style.WindowPadding = ImVec2(18, 16);
-        style.ItemSpacing = ImVec2(10, 10);
-        style.FrameRounding = 4;
-        style.ScaleAllSizes(scale);
-        style.FontScaleDpi = scale;
+        configurePanel(scale);
         platform = ImGui_ImplWin32_Init(hwnd);
         renderer = platform && ImGui_ImplDX9_Init(device);
         if (!renderer) closeRequested = true;
@@ -169,7 +174,6 @@ void panelMain() {
     panelWindow = nullptr;
     if (hwnd) DestroyWindow(hwnd);
     UnregisterClassW(wc.lpszClassName, instance);
-    if (IsWindow(gameWindow) && GetForegroundWindow() == nullptr) SetForegroundWindow(gameWindow);
     running = false;
 }
 }

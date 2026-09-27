@@ -54,7 +54,9 @@ void fullscreen(HWND hwnd, bool enabled) {
                      SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     } else {
         SetWindowLongW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
-        SetWindowPlacement(hwnd, &windowedPlacement);
+        auto placement = windowedPlacement;
+        if (settingsPanelOpen()) placement.showCmd = SW_SHOWNOACTIVATE;
+        SetWindowPlacement(hwnd, &placement);
         SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
@@ -77,7 +79,7 @@ void action(HWND hwnd, WindowAction command, LPARAM value) {
         int width = LOWORD(value), height = HIWORD(value);
         if (!validWindowSize(width, height)) break;
         fullscreen(hwnd, false);
-        ShowWindow(hwnd, SW_RESTORE);
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         resizeClient(hwnd, width, height);
         rememberWindowSize(hwnd);
         rememberSettings();
@@ -93,6 +95,21 @@ void action(HWND hwnd, WindowAction command, LPARAM value) {
     }
 }
 LRESULT CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+    // The native WM_ACTIVATEAPP handler posts 0x64 after losing foreground.
+    // Its recipient forcibly restores and foregrounds the game. A desktop
+    // host must leave focus with the window the user actually selected.
+    if (message == 0x64) return 0;
+    if (message == WM_SETCURSOR) {
+        if (reinterpret_cast<HWND>(wparam) == hwnd && LOWORD(lparam) == HTCLIENT) {
+            POINT point{};
+            RECT content = gameContentRect();
+            bool gameCursor = GetForegroundWindow() == hwnd && !settingsPanelOpen() &&
+                GetCursorPos(&point) && ScreenToClient(hwnd, &point) && PtInRect(&content, point);
+            SetCursor(gameCursor ? nullptr : LoadCursorW(nullptr, MAKEINTRESOURCEW(32512)));
+            return TRUE;
+        }
+        return DefWindowProcA(hwnd, message, wparam, lparam);
+    }
     if (message == settingsMessage) { action(hwnd, static_cast<WindowAction>(wparam), lparam); return 0; }
     if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) && wparam == VK_F10) {
         if (!(lparam & (1L << 30))) toggleSettingsPanel();

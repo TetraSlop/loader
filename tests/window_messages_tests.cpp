@@ -11,6 +11,17 @@
 static UINT defaultMessage;
 static WPARAM defaultCommand;
 static int quitRequests, panelToggles, panelStops, legacyMessages;
+static HWND testWindow = reinterpret_cast<HWND>(1);
+static HWND testForeground = testWindow;
+static bool testPanelOpen;
+static POINT testPointer{320, 240};
+static HCURSOR shownCursor = reinterpret_cast<HCURSOR>(99);
+static HCURSOR fakeSetCursor(HCURSOR cursor) { shownCursor = cursor; return nullptr; }
+static HCURSOR fakeLoadCursor(HINSTANCE, LPCWSTR) { return reinterpret_cast<HCURSOR>(1); }
+static HWND fakeForeground() { return testForeground; }
+static BOOL fakeCursorPos(POINT* point) { *point = testPointer; return TRUE; }
+static BOOL fakeToClient(HWND, POINT*) { return TRUE; }
+static BOOL fakeClientRect(HWND, RECT* rect) { *rect = {0, 0, 640, 480}; return TRUE; }
 static void fakeQuit(int) { ++quitRequests; }
 static LRESULT fakeDefault(HWND, UINT message, WPARAM command, LPARAM) {
     defaultMessage = message; defaultCommand = command; return 123;
@@ -19,6 +30,12 @@ static LRESULT fakeLegacy(WNDPROC, HWND, UINT, WPARAM, LPARAM) { ++legacyMessage
 #define PostQuitMessage fakeQuit
 #define DefWindowProcA fakeDefault
 #define CallWindowProcA fakeLegacy
+#define SetCursor fakeSetCursor
+#define LoadCursorW fakeLoadCursor
+#define GetForegroundWindow fakeForeground
+#define GetCursorPos fakeCursorPos
+#define ScreenToClient fakeToClient
+#define GetClientRect fakeClientRect
 #include "../src/window.cpp"
 #undef PostQuitMessage
 #undef DefWindowProcA
@@ -30,6 +47,7 @@ HWND gameWindow{};
 void logf(const char*, ...) {}
 void toggleSettingsPanel() { ++panelToggles; }
 void stopSettingsPanel() { ++panelStops; }
+bool settingsPanelOpen() { return testPanelOpen; }
 }
 int main() {
     using namespace tmloader;
@@ -40,6 +58,22 @@ int main() {
         assert(defaultMessage == WM_SYSCOMMAND && defaultCommand == command);
     }
     assert(legacyMessages == 0);
+    // A lost-focus notification must not reach the native restore/foreground path.
+    wrapperWindow(testWindow, 0x64, 0, 0);
+    assert(legacyMessages == 0);
+    auto cursor = [&] { return wrapperWindow(testWindow, WM_SETCURSOR,
+        reinterpret_cast<WPARAM>(testWindow), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE)); };
+    assert(cursor() == TRUE && shownCursor == nullptr); // Software cursor inside game.
+    testPanelOpen = true;
+    assert(cursor() == TRUE && shownCursor != nullptr);
+    testPanelOpen = false;
+    testForeground = reinterpret_cast<HWND>(2);
+    assert(cursor() == TRUE && shownCursor != nullptr);
+    testForeground = testWindow;
+    testPointer = {-1, 240};
+    assert(cursor() == TRUE && shownCursor != nullptr);
+    assert(wrapperWindow(testWindow, WM_SETCURSOR, reinterpret_cast<WPARAM>(testWindow),
+        MAKELPARAM(HTLEFT, WM_MOUSEMOVE)) == 123); // Windows still chooses resize arrows.
     wrapperWindow(nullptr, WM_SYSCOMMAND, SC_CLOSE | 2, 0);
     assert(quitRequests == 1 && panelStops == 1);
     wrapperWindow(nullptr, WM_CLOSE, 0, 0);

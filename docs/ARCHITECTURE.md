@@ -15,6 +15,7 @@ generation, hidden environment navigation switches or probe header is needed.
 | window/window_settings | Desktop system commands, fullscreen/resize, shared viewport, account-scoped preferences, short-click latch |
 | settings_ui | Dear ImGui panel using official Win32/DX9 backends on an owned UI thread |
 | audio | Native DirectSound factory diagnostics; game retains music/effect mixing |
+| desktop | Disable native global shortcut interception, cursor warping and forced activation |
 | input/input_bridge | Native DirectInput factory plus existing keyboard/mouse fallback |
 | patch | Process-local pointer/import replacement |
 | log/runtime | Logging, exception capture, reduced-integrity token, shared native context |
@@ -101,6 +102,22 @@ posted to the game's window thread; a mutex protects the small settings snapshot
 The panel does not replace the game's graphics device or require an unofficial
 D3D8 ImGui backend. Preferences use a dedicated runtime/settings tree with the
 same canonical path and hard-link protections as logs.
+
+The initial desktop update missed additional fullscreen behavior. GameStart
+installs a global WH_KEYBOARD_LL callback (+8030) that suppresses Windows keys,
+Alt+Tab/Alt+Escape and other shortcuts without testing which app has focus.
+The desktop adapter suppresses that installation at import +2041E4. It also
+virtualizes the game's ShowCursor loop, AttachThreadInput, SetForegroundWindow
+and SetActiveWindow imports and its animation/foreground-lock/screensaver
+setting writes. Those replacements affect only the game DLL's imports.
+
+The native renderer at +185753..+185830 warps the OS pointer and clamps the
+software cursor to unscaled client coordinates every frame. A guarded five-byte
+branch skips that block; both the DLL hash and relocated original instruction
+must match. The game file on disk is unchanged. The wrapper owns cursor shape
+through WM_SETCURSOR and hides it only within focused game content. ImGui retains
+normal cursor handling. Message 0x64, posted by the native loss-of-activation
+handler to force the game back to the foreground, is consumed by the wrapper.
 - The local xiloader checkout provided module/build/API style reference only;
   no xiloader implementation files or proprietary runtime files were copied.
   `source_provenance.json` records hashes of the supplied harness sources.

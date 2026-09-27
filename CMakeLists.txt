@@ -30,7 +30,7 @@ target_include_directories(loader_config PUBLIC src)
 target_link_libraries(loader_config PUBLIC bcrypt ws2_32)
 add_executable(tmloader WIN32 src/main.cpp src/loader.cpp src/runtime.cpp src/log.cpp
     src/patch.cpp src/files.cpp src/graphics.cpp src/input.cpp src/network.cpp
-    src/window.cpp src/settings_ui.cpp src/audio.cpp)
+    src/window.cpp src/settings_ui.cpp src/audio.cpp src/desktop.cpp)
 target_link_libraries(tmloader PRIVATE loader_config loader_imgui ole32 advapi32 user32 gdi32 ws2_32)
 # The protected original DLL executes legacy generated code; preserve the
 # confirmed process-local compatibility settings, not system DEP/UAC changes.
@@ -67,4 +67,8 @@ if(BUILD_TESTING)
     target_include_directories(settings_ui_tests PRIVATE src)
     target_link_libraries(settings_ui_tests PRIVATE loader_imgui user32 gdi32)
     add_test(NAME settings_ui_layout COMMAND settings_ui_tests)
+    add_executable(desktop_tests tests/desktop_tests.cpp)
+    target_include_directories(desktop_tests PRIVATE src)
+    target_link_libraries(desktop_tests PRIVATE user32)
+    add_test(NAME desktop_input_policy COMMAND desktop_tests)
 endif()

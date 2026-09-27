@@ -27,6 +27,10 @@ native sound, resizing, settings and shutdown still need a user test. See
 The panel offers 640x480, 960x720 and 1280x960 presets and a **Keep original
 4:3 proportions** toggle. Rendering remains 640x480 and scales into the window;
 mouse mapping follows the same content rectangle and ignores black bars.
+Alt+Tab and Windows shortcuts remain available. The wrapper disables the
+client's legacy global keyboard hook, pointer warping and focus reclaim.
+The Windows cursor is hidden only over focused game content; settings, window
+borders, black bars and other apps keep a normal cursor.
 The panel has its own window/render loop so it can work while the original
 client is inactive. It does not pause an online match.
 

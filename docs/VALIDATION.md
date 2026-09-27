@@ -1,5 +1,29 @@
 # Refactor validation
 
+## Desktop focus/cursor correction, 2026-09-27
+
+The user's next run revealed persistent foreground/input grabbing and an
+invisible settings cursor. The previous window-command checks did not cover
+the game's global keyboard hook, per-frame cursor synchronization or custom
+focus-reclaim message. Those legacy paths are now disabled in the loader.
+
+- **10/10 CTest cases pass**, including game-import policy and guarded in-memory
+  cursor patch checks. Window tests now cover the suppressed focus-reclaim
+  message, cursor visibility in settings/inactive game/outside content, and
+  delegation of border cursors to Windows. ImGui tests use the production panel
+  configuration and check that cursor updates remain enabled.
+- Eight original-code cursor cases were executed in Unicorn with fake OS APIs.
+  The old code warped or clamped the pointer; the patched block preserved the
+  software cursor and stack with no OS calls. Results are retained in ignored
+  `build/desktop-original-code-check.json`.
+- User-run log `20260927-073257-c5ea12/player-1.log` records DirectSoundCreate=0,
+  native sound initialized=1, and GameStart returned=0 after a close request.
+  These establish initialization/exit, not audible playback or full UI parity.
+
+No running game was manipulated or relaunched by the agent. The new native
+check is F10 with a visible pointer, Alt+Tab/Windows shortcuts, settings controls
+without focus theft, and pointer alignment after returning to the resized game.
+
 ## Desktop usability update, 2026-09-27
 
 The user exercised the integrated build and reported silent audio, no resizing

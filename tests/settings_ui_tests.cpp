@@ -16,20 +16,17 @@ int main() {
     // Build the real panel's draw lists without a window, GPU, game or desktop input.
     for (float scale : {1.0f, 1.5f, 2.0f}) {
         ImGui::CreateContext();
+        tmloader::configurePanel(scale);
         auto& io = ImGui::GetIO();
-        io.IniFilename = nullptr;
-        io.LogFilename = nullptr;
+        assert((io.ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) != 0);
+        assert((io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange) == 0);
+        assert(io.IniFilename == nullptr && io.LogFilename == nullptr);
         io.DisplaySize = ImVec2(524 * scale, 480 * scale);
         io.DeltaTime = 1.0f / 60.0f;
         io.Fonts->AddFontDefault();
         unsigned char* pixels;
         int width, height;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        auto& style = ImGui::GetStyle();
-        style.WindowPadding = ImVec2(18, 16);
-        style.ItemSpacing = ImVec2(10, 10);
-        style.ScaleAllSizes(scale);
-        style.FontScaleDpi = scale;
         // Two frames settle auto-measured content bounds.
         for (int frame = 0; frame < 2; ++frame) {
             ImGui::NewFrame();
