@@ -1,4 +1,5 @@
 #include "runtime.h"
+#include "window.h"
 namespace tmloader {
 // D3D8 ABI layout, independently declared to avoid requiring the obsolete SDK.
 struct Present8
@@ -12,24 +13,28 @@ typedef HRESULT(WINAPI *CreateDevice8)(void *, UINT, DWORD, HWND, DWORD, Present
 static CreateDevice8 originalDevice;
 typedef HRESULT(WINAPI *PresentFn)(void *, const RECT *, const RECT *, HWND, const RGNDATA *);
 static PresentFn originalPresent;
-static WNDPROC originalWindowProc;
-static volatile LONG pendingMousePresses;
-static LRESULT CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
-{
-    // Preserve a short press even when down/up arrive between input polls.
-    if (message == WM_LBUTTONDOWN)
-        InterlockedOr(&pendingMousePresses, 1);
-    else if (message == WM_RBUTTONDOWN)
-        InterlockedOr(&pendingMousePresses, 2);
-    else if (message == WM_KILLFOCUS || (message == WM_ACTIVATEAPP && !wparam))
-        InterlockedExchange(&pendingMousePresses, 0);
-    if (message == WM_CLOSE)
-    {
-        logf("Closing standalone game window");
-        PostQuitMessage(0);
-        return 0;
-    }
-    return CallWindowProcA(originalWindowProc, hwnd, message, wparam, lparam);
+using ResetFn = HRESULT(WINAPI*)(void*, Present8*);
+static ResetFn originalReset;
+static DWORD desktopFormat = 22;
+
+static void windowedParameters(Present8& pp) {
+    pp.windowed = TRUE;
+    pp.width = 640;
+    pp.height = 480;
+    pp.format = desktopFormat;
+    pp.count = 1;
+    pp.multisample = 0;
+    pp.swap = 3; // D3DSWAPEFFECT_COPY permits a scaled destination rectangle.
+    pp.refresh = 0;
+    pp.interval = 0;
+    pp.window = gameWindow;
+    pp.flags |= 1;
+}
+static HRESULT WINAPI resetDevice(void* self, Present8* pp) {
+    windowedParameters(*pp);
+    HRESULT hr = originalReset(self, pp);
+    logf("D3D8 windowed Reset=%08lX", hr);
+    return hr;
 }
 static DWORD drawCalls, drawErrors, textureCalls;
 typedef HRESULT(WINAPI *DrawFn)(void *, DWORD, UINT, UINT);
@@ -132,12 +137,14 @@ static HRESULT WINAPI presentFrame(void *self, const RECT *source, const RECT *d
         logf("Initial graphics gate=%lu batch gate=%lu", gameValue(0x2ff22c), gameValue(0x2fe8ec));
     if (frame == 1)
     {
-        ShowWindow(gameWindow, SW_SHOWNORMAL);
+        ShowWindow(gameWindow, SW_SHOW);
         SetActiveWindow(gameWindow);
         SetFocus(gameWindow);
         BOOL active = SetForegroundWindow(gameWindow);
         logf("Activate game window=%p result=%d foreground=%p active=%p", gameWindow, active, GetForegroundWindow(),
              GetActiveWindow());
+        auto* sound = reinterpret_cast<DWORD*>(gameValue(0x2ff164));
+        logf("Native sound engine initialized=%lu", sound ? sound[1] : 0);
     }
     if (options.diagnostics && (frame == 60 || frame == 300 || frame == 600 || frame == 900 || frame == 1200 || frame == 1440 || frame == 1500 || frame == 1800 || (frame > 1800 && frame % 600 == 0)))
     {
@@ -145,42 +152,36 @@ static HRESULT WINAPI presentFrame(void *self, const RECT *source, const RECT *d
              gameValue(0x306adc), gameValue(0x2ff1fc));
         captureFrame(self, frame);
     }
-    return originalPresent(self, source, dest, window, dirty);
+    if (IsIconic(gameWindow)) return originalPresent(self, source, dest, window, dirty);
+    RECT target = gameContentRect();
+    if (target.right <= target.left || target.bottom <= target.top) return S_OK;
+    HRESULT hr = originalPresent(self, source, &target, window, dirty);
+    static HRESULT lastResult = S_OK;
+    if (FAILED(hr) && hr != lastResult) logf("D3D8 Present=%08lX", hr);
+    lastResult = hr;
+    return hr;
 }
 static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND window, DWORD behavior, Present8 *pp,
                                      void **device)
 {
     logf("D3D8 CreateDevice adapter=%u type=%lu behavior=%lX window=%p %lux%lu format=%lu windowed=%d", adapter, type,
          behavior, window, pp->width, pp->height, pp->format, pp->windowed);
-    gameWindow = window;
+    initializeGameWindow(window);
     gameValue(0x2ff248) = 1;
-    originalWindowProc = (WNDPROC)SetWindowLongA(window, GWL_WNDPROC, (LONG)wrapperWindow);
     DWORD mode[4] = {};
     typedef HRESULT(WINAPI * DisplayMode)(void *, UINT, DWORD *);
     void **vt = *(void ***)self;
     HRESULT modeHr = ((DisplayMode)vt[8])(self, adapter, mode);
     logf("D3D8 desktop mode=%08lX %lux%lu format=%lu", modeHr, mode[0], mode[1], mode[3]);
-    pp->windowed = TRUE;
-    pp->width = 640;
-    pp->height = 480;
-    pp->format = SUCCEEDED(modeHr) ? mode[3] : 22;
-    pp->count = 1;
-    pp->multisample = 0;
-    pp->swap = 1;
-    pp->refresh = 0;
-    pp->interval = 0;
-    pp->window = window;
-    pp->flags |= 1;
-    SetWindowLongA(window, GWL_STYLE, WS_OVERLAPPEDWINDOW);
-    RECT r = {0, 0, 640, 480};
-    AdjustWindowRect(&r, WS_OVERLAPPEDWINDOW, FALSE);
-    SetWindowPos(window, NULL, 80, 80, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_FRAMECHANGED);
+    desktopFormat = SUCCEEDED(modeHr) ? mode[3] : 22;
+    windowedParameters(*pp);
     HRESULT hr = originalDevice(self, adapter, type, window, (behavior & ~(0x40 | 0x80 | 0x10)) | 0x20, pp, device);
     logf("D3D8 windowed CreateDevice=%08lX device=%p", hr, *device);
     if (SUCCEEDED(hr))
     {
         void **dv = *(void ***)*device;
         originalPresent = (PresentFn)dv[15];
+        originalReset = (ResetFn)dv[14];
         realDraw = (DrawFn)dv[70];
         realDrawIdx = (DrawIdxFn)dv[71];
         realDrawUP = (DrawUPFn)dv[72];
@@ -188,6 +189,7 @@ static HRESULT WINAPI windowedDevice(void *self, UINT adapter, DWORD type, HWND 
         realTexture = (TextureFn)dv[20];
         DWORD old;
         VirtualProtect(dv, 97 * 4, PAGE_READWRITE, &old);
+        dv[14] = (void*)resetDevice;
         dv[15] = (void *)presentFrame;
         if (options.diagnostics) {
             dv[20] = (void *)texture;
@@ -218,5 +220,4 @@ void *WINAPI localD3D8(UINT version)
     return obj;
 }
 
-BYTE takeMousePresses() { return (BYTE)InterlockedExchange(&pendingMousePresses, 0); }
 }

@@ -1,4 +1,5 @@
 #include "abi.h"
+#include "window.h"
 #include <stdexcept>
 
 namespace tmloader {
@@ -44,6 +45,7 @@ int launch(const Config& config) {
     installNetworkHooks(game);
     setSlot(game, 0x204260, reinterpret_cast<void*>(localD3D8));
     setSlot(game, 0x204014, reinterpret_cast<void*>(tracedInput));
+    setSlot(game, 0x20401c, reinterpret_cast<void*>(tracedSound));
 
     HMODULE coreModule = LoadLibraryExW(config.core.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!coreModule) throw std::runtime_error("Cannot load Viewer DLL");
@@ -68,6 +70,7 @@ int launch(const Config& config) {
     logf("Entering original online GameStart");
     HRESULT result = reinterpret_cast<abi::GameStart>(gameVtable[9])(gameObject, core, &descriptor);
     logf("GameStart returned %08lX", result);
+    stopSettingsPanel();
     gameObject->Release();
     // Preserve the working host's process-local exit until safe legacy DLL
     // teardown is verified. No watchdog, other-process termination or relaunch.

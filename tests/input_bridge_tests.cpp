@@ -5,6 +5,7 @@
 #include <dinput.h>
 #include <assert.h>
 #include <stdio.h>
+#include "window_settings.h"
 static const GUID keyboardGUID = {1};
 static const GUID mouseGUID = {2};
 static const IID inputIID = {3};
@@ -24,7 +25,14 @@ static bool fakeMapper(LONG x, LONG y, LONG *dx, LONG *dy)
     return true;
 }
 static HWND testWindow = reinterpret_cast<HWND>(1);
-static HWND fakeForeground() { return testWindow; }
+static HWND testForeground = testWindow;
+static HWND fakeForeground() { return testForeground; }
+static bool panelOpen = false;
+static bool fakeBlocked() { return panelOpen; }
+static bool fakeViewport(RECT* rect) {
+    *rect = tmloader::contentRect(testWidth, testHeight, true);
+    return true;
+}
 static DWORD fakeWindowThread(HWND, LPDWORD pid) { *pid = testFocused ? GetCurrentProcessId() : 0; return 1; }
 static BOOL fakeCursor(LPPOINT p) { *p = testPointer; return TRUE; }
 static BOOL fakeToClient(HWND, LPPOINT) { return TRUE; }
@@ -89,5 +97,27 @@ int main()
     assert(state.rgbButtons[0] == 0x80);
     mouse.GetDeviceState(sizeof(state), &state);
     assert(state.rgbButtons[0] == 0);
+    // 16:9 client with 4:3 game content: bars do not click or shift the cursor.
+    localContentRect = fakeViewport;
+    localInputBlocked = fakeBlocked;
+    testWidth = 1920; testHeight = 1080;
+    virtualX = virtualY = 0;
+    sample(mouse, 240, 0, 0, 0);
+    sample(mouse, 960, 540, 320, 240);
+    sample(mouse, 1679, 1079, 319, 239);
+    latchedPresses = 1;
+    sample(mouse, 100, 500, 0, 0);
+    assert(latchedPresses == 0 && virtualX == 639);
+    sample(mouse, 960, 540, -319, -239);
+    // Our settings window shares the process, but must never feed the game.
+    testForeground = reinterpret_cast<HWND>(2);
+    sample(mouse, 1200, 800, 0, 0);
+    testForeground = testWindow;
+    panelOpen = true;
+    latchedPresses = 1;
+    sample(mouse, 1200, 800, 0, 0);
+    assert(latchedPresses == 0);
+    panelOpen = false;
+    sample(mouse, 960, 540, 0, 0);
     puts("Mouse bridge: transitions, scaling, absolute alignment, keyboard handoff and clicks passed.");
 }

@@ -11,7 +11,10 @@ generation, hidden environment navigation switches or probe header is needed.
 | loader/abi | Direct COM factories, original GameStart descriptor, Viewer setup/order |
 | network/endpoints | Account identity, profile cipher lifetime, initial profile requests, DNS/endpoint routing |
 | files | Virtual registry, correct empty LOADDIR, runtime write boundary |
-| graphics | D3D8 windowed device, first-frame activation, close/short-click messages, optional captures |
+| graphics | D3D8 windowed device/reset, scaled presentation, first-frame activation, optional captures |
+| window/window_settings | Desktop system commands, fullscreen/resize, shared viewport, account-scoped preferences, short-click latch |
+| settings_ui | Dear ImGui panel using official Win32/DX9 backends on an owned UI thread |
+| audio | Native DirectSound factory diagnostics; game retains music/effect mixing |
 | input/input_bridge | Native DirectInput factory plus existing keyboard/mouse fallback |
 | patch | Process-local pointer/import replacement |
 | log/runtime | Logging, exception capture, reduced-integrity token, shared native context |
@@ -71,6 +74,33 @@ Remaining debt, not hidden by the module split:
 - Native message boxes retain the harness's log-and-IDOK compatibility hook.
   The full Viewer UI/status/options format and runtime ACL provisioning are
   outside this refactor. Server protocol implementation stays separate.
+
+## Desktop controls and audio
+
+The startup harness deliberately returned SOUND=0. TM's +187149 registry read
+stores this at +2369CC; +180E40 skips all sound initialization when it is zero.
+The virtual registry now supplies SOUND=1. DirectSoundCreate (+20401C import)
+and the resulting native sound-engine state are logged to distinguish disabled
+audio from an actual device initialization failure.
+
+The original window procedure at +1863D0 discards WM_SYSCOMMAND at +186838.
+That includes SC_SIZE, SC_MOVE, SC_MAXIMIZE and SC_CLOSE. The wrapper routes
+desktop commands to DefWindowProc, handles close/Alt+F4 directly, and posts
+WM_QUIT to the native main loop (+18778E/+18798C). Shutdown is not a synthetic
+game result or an in-game save command; the server handles disconnected sessions.
+
+D3D8 uses a fixed 640x480 back buffer with D3DSWAPEFFECT_COPY, allowing an
+explicit presentation rectangle. Device Reset keeps the same windowed contract.
+The shared content rectangle drives both presentation and input. The input
+fallback requires the game window itself to have focus and is suspended while
+settings are open; settings clicks cannot become game actions.
+
+The settings UI uses Dear ImGui's supported Win32/DX9 backends in a separate
+owned window. Only that UI thread touches ImGui or its DX9 device. Changes are
+posted to the game's window thread; a mutex protects the small settings snapshot.
+The panel does not replace the game's graphics device or require an unofficial
+D3D8 ImGui backend. Preferences use a dedicated runtime/settings tree with the
+same canonical path and hard-link protections as logs.
 - The local xiloader checkout provided module/build/API style reference only;
   no xiloader implementation files or proprietary runtime files were copied.
   `source_provenance.json` records hashes of the supplied harness sources.

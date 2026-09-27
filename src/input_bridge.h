@@ -4,6 +4,8 @@
 typedef bool (*LocalMouseMapper)(LONG x, LONG y, LONG *dx, LONG *dy);
 static LocalMouseMapper localMouseMapper = NULL;
 static BYTE (*localMousePresses)() = NULL;
+static bool (*localInputBlocked)() = NULL;
+static bool (*localContentRect)(RECT*) = NULL;
 class LocalInputDevice : public IDirectInputDevice8A
 {
     ULONG refs = 1;
@@ -76,9 +78,11 @@ class LocalInputDevice : public IDirectInputDevice8A
         HWND foreground = GetForegroundWindow();
         DWORD pid = 0;
         GetWindowThreadProcessId(foreground, &pid);
-        if (pid != GetCurrentProcessId())
+        if (pid != GetCurrentProcessId() || (window && foreground != window) ||
+            (localInputBlocked && localInputBlocked()))
         {
             mouseSampleValid = false;
+            if (localMousePresses) localMousePresses();
             return S_OK;
         }
         if (keyboard && size == 256)
@@ -88,6 +92,7 @@ class LocalInputDevice : public IDirectInputDevice8A
             {
                 UINT code = (scan & 0x7f) | ((scan & 0x80) ? 0xe000 : 0);
                 UINT vk = MapVirtualKeyA(code, MAPVK_VSC_TO_VK_EX);
+                if (vk == VK_F10 || (vk == VK_RETURN && (GetAsyncKeyState(VK_MENU) & 0x8000))) continue;
                 if (vk && (GetAsyncKeyState(vk) & 0x8000))
                     keys[scan] = 0x80;
             }
@@ -100,9 +105,11 @@ class LocalInputDevice : public IDirectInputDevice8A
             // Never turn desktop movement during a focus/window transition into
             // a large relative movement on the first active frame.
             if (!window || !GetCursorPos(&current) || !ScreenToClient(window, &current) ||
-                !GetClientRect(window, &client) || !PtInRect(&client, current))
+                !GetClientRect(window, &client) || (localContentRect && !localContentRect(&client)) ||
+                !PtInRect(&client, current))
             {
                 mouseSampleValid = false;
+                if (localMousePresses) localMousePresses();
                 return S_OK;
             }
             LONG width = client.right - client.left, height = client.bottom - client.top;
@@ -112,6 +119,8 @@ class LocalInputDevice : public IDirectInputDevice8A
                 return S_OK;
             }
             DIMOUSESTATE *m = (DIMOUSESTATE *)output;
+            current.x -= client.left;
+            current.y -= client.top;
             BYTE pressed = localMousePresses ? localMousePresses() : 0;
             m->rgbButtons[0] = ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) || (pressed & 1)) ? 0x80 : 0;
             m->rgbButtons[1] = ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) || (pressed & 2)) ? 0x80 : 0;

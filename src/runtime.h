@@ -3,6 +3,8 @@
 #include <windows.h>
 #include <objbase.h>
 #include <dinput.h>
+#include <mmsystem.h>
+#include <dsound.h>
 #include <cstdio>
 #include "config.h"
 
@@ -24,6 +26,7 @@ void installFileHooks(HMODULE module, bool game);
 void installNetworkHooks(HMODULE module);
 void initializeViewerSession(HMODULE core, Command* table);
 HRESULT WINAPI tracedInput(HINSTANCE, DWORD, REFIID, void**, IUnknown*);
+HRESULT WINAPI tracedSound(LPCGUID, LPDIRECTSOUND*, LPUNKNOWN);
 void* WINAPI localD3D8(UINT);
 BYTE takeMousePresses();
 int WINAPI loggedMessage(HWND, const char*, const char*, UINT);

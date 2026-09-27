@@ -1,5 +1,29 @@
 # Refactor validation
 
+## Desktop usability update, 2026-09-27
+
+The user exercised the integrated build and reported silent audio, no resizing
+and no window close. Static inspection of the decoded supported client confirmed
+the SOUND startup gate and its fullscreen window procedure's suppression of
+WM_SYSCOMMAND. The new loader enables native audio, restores desktop controls,
+scales presentation/input together, and adds an F10 Dear ImGui panel.
+
+- x86 RelWithDebInfo build passed without compiler warnings.
+- **9/9 CTest cases passed.** New checks exercise actual window-message routing
+  (including X/Alt+F4 exit requests), virtual SOUND registry semantics, D3D8
+  presentation/reset arguments, shared viewport geometry and settings parsing.
+- Existing input tests now cover letterboxing, discarded black-bar clicks and
+  isolation of the settings window from game input. Path tests cover the new
+  settings output tree and hard-linked asset aliases.
+- The real ImGui panel built nonempty draw lists without scroll overflow at
+  100%, 150% and 200% scale, without creating a window or graphics device.
+- PE/asInvoker verification and the integrated read-only setup check passed.
+
+No native game or settings window was launched by the agent. Audible output,
+actual GPU presentation, live settings interaction, and native teardown still
+need the user checks in the sibling server's NATIVE_TEST_CHECKLIST.md. A passing
+mock/regression check is not a claim that those native checks have passed.
+
 ## Integration setup, 2026-09-27
 
 The sibling `tmserver` now supplies `Play.cmd`, coordinating both loopback

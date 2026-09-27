@@ -66,13 +66,14 @@ static LSTATUS WINAPI tracedQuery(HKEY key, const char *name, LPDWORD reserved, 
         {
             if (type)
                 *type = REG_DWORD;
-            if (length && *length >= 4)
-            {
-                if (data)
-                    *(DWORD *)data = 0;
-                *length = 4;
-                return ERROR_SUCCESS;
-            }
+            if (!length) return ERROR_INVALID_PARAMETER;
+            DWORD capacity = *length;
+            *length = sizeof(DWORD);
+            if (data && capacity < sizeof(DWORD)) return ERROR_MORE_DATA;
+            // SOUND=0 was intentional in the original startup-only experiment.
+            // TM +180E40 uses zero to skip its entire native sound engine.
+            if (data) *(DWORD*)data = !strcmp(name, "SOUND") ? 1 : 0;
+            return ERROR_SUCCESS;
         }
         return ERROR_FILE_NOT_FOUND;
     }

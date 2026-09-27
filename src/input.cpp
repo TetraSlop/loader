@@ -1,9 +1,14 @@
 #include "runtime.h"
+#include "window.h"
 namespace tmloader {
 static const IID inputIID = {0xbf798030, 0x483a, 0x4da2, {0xaa, 0x99, 0x5d, 0x64, 0xed, 0x36, 0x97, 0x00}};
 static const GUID keyboardGUID = {0x6f1d2b61, 0xd5a0, 0x11cf, {0xbf, 0xc7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00}};
 static const GUID mouseGUID = {0x6f1d2b60, 0xd5a0, 0x11cf, {0xbf, 0xc7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00}};
 #include "input_bridge.h"
+static bool inputContentRect(RECT* rect) {
+    *rect = gameContentRect();
+    return rect->right > rect->left && rect->bottom > rect->top;
+}
 static bool mapTetraMouse(LONG x, LONG y, LONG *dx, LONG *dy)
 {
     if (!gameBase || !gameWindow)
@@ -30,6 +35,8 @@ HRESULT WINAPI tracedInput(HINSTANCE instance, DWORD version, REFIID iid, void *
     {
         localMouseMapper = mapTetraMouse;
         localMousePresses = takeMousePresses;
+        localInputBlocked = settingsPanelOpen;
+        localContentRect = inputContentRect;
         *output = new LocalInput();
         logf("Using local keyboard/mouse bridge");
         return S_OK;

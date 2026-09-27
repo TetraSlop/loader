@@ -62,6 +62,15 @@ int main() {
     c = parseConfig({"--runtime-dir", runtime.string(), "--diagnostics"});
     assert(outputPathAllowed(c, c.log));
     assert(outputPathAllowed(c, runtime / "logs/captures/frame_00060.bmp"));
+    assert(settingsPathAllowed(c, runtime / "settings/EEEEEEEF.window"));
+    assert(!settingsPathAllowed(c, runtime / "data/gW201.dat"));
+    assert(!settingsPathAllowed(c, runtime / "settings/../pub/home00/option.bin"));
+    assert(!outputPathAllowed(c, runtime / "settings/EEEEEEEF.window"));
+    std::filesystem::create_directories(runtime / "settings");
+    const auto settingsAlias = runtime / "settings/EEEEEEEF.window";
+    std::filesystem::create_hard_link(runtime / "pub/home00/option.bin", settingsAlias);
+    assert(!settingsPathAllowed(c, settingsAlias));
+    std::filesystem::remove(settingsAlias);
     const auto alias = runtime / "logs/captures/frame_00060.bmp";
     std::filesystem::create_hard_link(runtime / "data/gW201.dat", alias);
     assert(!outputPathAllowed(c, alias));

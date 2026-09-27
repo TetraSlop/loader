@@ -10,12 +10,28 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN DIRECTINPUT_VERSION=0x0800
     _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS)
 add_compile_options(/W4 /EHsc /utf-8)
 
+# Dear ImGui 1.92.5, pinned to an immutable upstream commit and archive hash.
+include(FetchContent)
+FetchContent_Declare(imgui
+    URL https://github.com/ocornut/imgui/archive/6d910d5487d11ca567b61c7824b0c78c569d62f0.tar.gz
+    URL_HASH SHA256=b715a3226320aaebaea79dc6af6405ae37cdcb479817fddaef12a17d8bd15a3a
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(imgui)
+add_library(loader_imgui STATIC
+    ${imgui_SOURCE_DIR}/imgui.cpp ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_dx9.cpp)
+target_include_directories(loader_imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+target_link_libraries(loader_imgui PUBLIC d3d9 dwmapi)
+
 add_library(loader_config STATIC src/config.cpp src/endpoints.cpp src/validation.cpp)
 target_include_directories(loader_config PUBLIC src)
 target_link_libraries(loader_config PUBLIC bcrypt ws2_32)
 add_executable(tmloader WIN32 src/main.cpp src/loader.cpp src/runtime.cpp src/log.cpp
-    src/patch.cpp src/files.cpp src/graphics.cpp src/input.cpp src/network.cpp)
-target_link_libraries(tmloader PRIVATE loader_config ole32 advapi32 user32 ws2_32)
+    src/patch.cpp src/files.cpp src/graphics.cpp src/input.cpp src/network.cpp
+    src/window.cpp src/settings_ui.cpp src/audio.cpp)
+target_link_libraries(tmloader PRIVATE loader_config loader_imgui ole32 advapi32 user32 gdi32 ws2_32)
 # The protected original DLL executes legacy generated code; preserve the
 # confirmed process-local compatibility settings, not system DEP/UAC changes.
 target_link_options(tmloader PRIVATE /ENTRY:mainCRTStartup /NXCOMPAT:NO /DYNAMICBASE:NO
@@ -34,4 +50,21 @@ if(BUILD_TESTING)
     target_include_directories(abi_tests PRIVATE src)
     add_test(NAME abi_dispatch COMMAND abi_tests)
     add_test(NAME cli_help COMMAND tmloader --help)
+    add_executable(window_settings_tests tests/window_settings_tests.cpp)
+    target_include_directories(window_settings_tests PRIVATE src)
+    target_link_libraries(window_settings_tests PRIVATE user32)
+    add_test(NAME window_settings COMMAND window_settings_tests)
+    add_executable(window_messages_tests tests/window_messages_tests.cpp)
+    target_link_libraries(window_messages_tests PRIVATE loader_config user32 gdi32)
+    add_test(NAME window_messages COMMAND window_messages_tests)
+    add_executable(virtual_registry_tests tests/virtual_registry_tests.cpp)
+    target_link_libraries(virtual_registry_tests PRIVATE loader_config advapi32)
+    add_test(NAME virtual_registry COMMAND virtual_registry_tests)
+    add_executable(graphics_tests tests/graphics_tests.cpp)
+    target_link_libraries(graphics_tests PRIVATE loader_config user32 ole32)
+    add_test(NAME graphics_presentation COMMAND graphics_tests)
+    add_executable(settings_ui_tests tests/settings_ui_tests.cpp)
+    target_include_directories(settings_ui_tests PRIVATE src)
+    target_link_libraries(settings_ui_tests PRIVATE loader_imgui user32 gdi32)
+    add_test(NAME settings_ui_layout COMMAND settings_ui_tests)
 endif()

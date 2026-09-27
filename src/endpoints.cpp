@@ -24,10 +24,10 @@ bool pathIsWithin(const std::filesystem::path& path, const std::filesystem::path
     return i != p.end();
 }
 
-bool outputPathAllowed(const Config& config, const std::filesystem::path& path) {
+static bool localOutputAllowed(const Config& config, const std::filesystem::path& path, const char* directory) {
     // Resolve directory junctions/file symlinks before checking boundaries.
     // The dedicated output tree must itself remain within the runtime root.
-    if (!pathIsWithin(path, config.runtimeDir / "logs") || !pathIsWithin(path, config.runtimeDir) ||
+    if (!pathIsWithin(path, config.runtimeDir / directory) || !pathIsWithin(path, config.runtimeDir) ||
         pathIsWithin(path, config.runtimeDir / "data") || pathIsWithin(path, config.runtimeDir / "pub")) return false;
     std::error_code ec;
     auto resolved = std::filesystem::weakly_canonical(path, ec);
@@ -51,5 +51,11 @@ bool outputPathAllowed(const Config& config, const std::filesystem::path& path) 
     BOOL ok = GetFileInformationByHandle(file, &info);
     CloseHandle(file);
     return ok && info.nNumberOfLinks == 1;
+}
+bool outputPathAllowed(const Config& config, const std::filesystem::path& path) {
+    return localOutputAllowed(config, path, "logs");
+}
+bool settingsPathAllowed(const Config& config, const std::filesystem::path& path) {
+    return localOutputAllowed(config, path, "settings");
 }
 }

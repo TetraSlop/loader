@@ -10,15 +10,37 @@ It starts the packaged services, passes their free ports and account IDs to this
 loader, and keeps them alive until all game windows close. This machine's
 prepared working copy is in ignored `runtime/`; `tmloader.ini` points there.
 
-This is a compiled first refactor of the working local harness. **It has not
-been launched with the game after the refactor.** The earlier harness reached
-the title, room and a completed computer match. That runtime evidence does not
-prove parity of this new executable; see [validation](docs/VALIDATION.md).
+The user has exercised the integrated loader and reported silent audio and
+unresponsive window controls. The current build addresses those reports and
+adds a Dear ImGui settings panel. These latest changes pass headless checks;
+native sound, resizing, settings and shutdown still need a user test. See
+[validation](docs/VALIDATION.md).
+
+## Window controls
+
+- **F10** opens/closes the Dear ImGui settings panel; Escape closes the panel.
+- **Alt+Enter** toggles borderless fullscreen on the current monitor.
+- Drag the edges to resize, or use the normal minimize/maximize buttons.
+- The title-bar **X**, **Alt+F4**, and **Quit game** exit through the game's
+  existing message loop.
+
+The panel offers 640x480, 960x720 and 1280x960 presets and a **Keep original
+4:3 proportions** toggle. Rendering remains 640x480 and scales into the window;
+mouse mapping follows the same content rectangle and ignores black bars.
+The panel has its own window/render loop so it can work while the original
+client is inactive. It does not pause an online match.
+
+Window size, aspect preference and fullscreen state are remembered per account
+in `runtime/settings/<POL-ID>.window`. Music and effect levels remain in the
+game's Options menu; the loader now enables the native sound engine at startup.
 
 ## Build and headless checks
 
 Requires CMake 3.24+ and Visual Studio with the Desktop C++ workload and an x86
-Windows SDK toolchain. There are no downloaded build dependencies.
+Windows SDK toolchain. CMake downloads Dear ImGui 1.92.5 from an immutable
+upstream commit and verifies its SHA256. Later builds use the cached source.
+Its official Win32/DX9 backends render the settings panel; the game retains
+its D3D8 renderer. See [third-party notices](docs/THIRD_PARTY.md).
 
 ```powershell
 cmake -S . -B build -A Win32
@@ -90,8 +112,9 @@ ignored personal config. Credentials are not logged.
   profile cipher storage survives game-connection reuse.
 - Numeric service IPv4 configuration; legacy `pp000.pol.com` through
   `pp999.pol.com` map to that server. Unknown hostnames/endpoints are rejected.
-- Process-local registry configuration, empty LOADDIR prefix, windowed640x480
-  Direct3D8 rendering, first-frame activation and normal window close.
+- Process-local registry configuration with native audio enabled, empty
+  LOADDIR prefix, scaled windowed640x480 Direct3D8 rendering, first-frame
+  activation and normal window controls.
 - Native DirectInput first, then the existing focus-aware keyboard/mouse
   fallback. Pointer alignment and short-click latch are retained.
 - The legacy process keeps the existing reduced-integrity/DEP compatibility
