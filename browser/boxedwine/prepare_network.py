@@ -49,7 +49,7 @@ const originalArt = new URLSearchParams(location.search).get('artwork') !== 'hd'
 Config.urlParams = 'root=wine-prefix-ready&overlay=TinyCore15Wine11.0&sound=false&storage=memory&app='
   + (probe ? 'socket-probe' : 'portable-client') + '&p='
   + (probe ? 'socket_probe.exe' : 'tmloader.exe') + '&args='
-  + encodeURIComponent(probe ? '' : '--config tmloader.ini' + (check ? ' --check' : '')
+  + encodeURIComponent(probe ? '' : '--config tmloader.ini --server 127.0.0.1 --game-port 51241 --profile-port 51220' + (check ? ' --check' : '')
       + (originalArt ? ' --texture-pack textures/pack.json' : ''));
 Module.websocket = {url: 'ws://', subprotocol: 'binary'};
 const wsBase = location.origin.replace(/^http/, 'ws');

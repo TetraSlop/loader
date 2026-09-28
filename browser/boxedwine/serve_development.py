@@ -1,4 +1,4 @@
-"""Run the local browser host and Python services, without opening any windows."""
+"""Opt-in development host using a separate tmserver checkout and isolated state."""
 
 import argparse
 import asyncio
@@ -12,7 +12,7 @@ from runtime_paths import runtime_root
 
 
 def default_rooms(server_dir):
-    """Support both the redistributable's server/ and a source checkout's src/."""
+    """Locate room examples in the explicitly selected external server source."""
     for root in (server_dir, server_dir.parent):
         path = root / "examples/auto_rooms.example.json"
         if path.is_file():
@@ -69,7 +69,7 @@ if __name__ == "__main__":
         "--server-dir",
         required=True,
         type=Path,
-        help="Directory containing tmserver: portable package/server or source/src",
+        help="External tmserver source directory containing tmserver/__init__.py",
     )
     parser.add_argument("--runtime-dir", type=Path, default=runtime_root())
     parser.add_argument("--state", type=Path)

@@ -2,14 +2,16 @@
 
 import asyncio
 import hashlib
+import io
 import struct
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 
 import aiohttp
 from aiohttp import web
-from network_gateway import create_app
+from network_gateway import arguments, create_app
 from tmserver.network.server import Server
 from tmserver.profiles.service import ProfileServer
 from tmserver.protocol import wire
@@ -18,6 +20,34 @@ from tmserver.protocol import wire
 P, Q = 340282366920938463463374607431768211283, 340282366920938463463374607431768211223
 N, D = P * Q, pow(65535, -1, (P - 1) * (Q - 1))
 MODULUS = N.to_bytes(32, "little")
+
+
+class GatewayArgumentTests(unittest.TestCase):
+    def test_server_endpoint_must_be_explicit(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+            arguments([])
+        self.assertEqual(error.exception.code, 2)
+        options = arguments(
+            [
+                "--server",
+                "server.example.com",
+                "--game-port",
+                "41001",
+                "--profile-port",
+                "41002",
+            ]
+        )
+        self.assertEqual(
+            (options.server, options.game_port, options.profile_port),
+            ("server.example.com", 41001, 41002),
+        )
+
+    def test_invalid_destination_port_is_rejected_before_start(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+            arguments(
+                ["--server", "127.0.0.1", "--game-port", "0", "--profile-port", "51220"]
+            )
+        self.assertEqual(error.exception.code, 2)
 
 
 class Socket:

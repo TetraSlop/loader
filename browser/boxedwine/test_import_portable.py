@@ -3,7 +3,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from import_portable import import_client, import_server
+from import_portable import import_client
 
 
 class ImportTests(unittest.TestCase):
@@ -19,6 +19,8 @@ class ImportTests(unittest.TestCase):
                 ):
                     archive.writestr("TetraMaster/client/" + path, b"test")
                 archive.writestr("TetraMaster/server/state.json", b"private")
+                archive.writestr("TetraMaster/server/tmserver/__init__.py", b"server")
+                archive.writestr("TetraMaster/python/python.exe", b"runtime")
             manifest = import_client(root / "package.zip", root / "output")
             self.assertFalse(manifest["has_originals"])
             self.assertEqual(
@@ -79,36 +81,6 @@ class ImportTests(unittest.TestCase):
                     archive.writestr("TetraMaster/client/" + name, b"test")
             self.assertFalse(
                 import_client(root / "package.zip", root / "output")["has_originals"]
-            )
-
-    def test_optional_server_import_preserves_data_but_excludes_runtime_state(self):
-        names = {
-            "tmserver/__init__.py",
-            "tmserver/cli/serve.py",
-            "examples/auto_rooms.example.json",
-            "tmserver/data/economy_catalog.json",
-            "tmserver/data/lobby_commands.tsv",
-            "tmserver/data/profile_contract.json",
-        }
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            with zipfile.ZipFile(root / "package.zip", "w") as archive:
-                for name in names | {
-                    "state.json",
-                    "logs/game.jsonl",
-                    "tmserver/data/private.json",
-                }:
-                    archive.writestr("TetraMaster/server/" + name, b"fixture")
-            self.assertEqual(
-                import_server(root / "package.zip", root / "server"), len(names)
-            )
-            self.assertEqual(
-                {
-                    p.relative_to(root / "server").as_posix()
-                    for p in (root / "server").rglob("*")
-                    if p.is_file()
-                },
-                names,
             )
 
 

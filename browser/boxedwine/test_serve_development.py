@@ -1,4 +1,4 @@
-"""Local host preserves portable Play's accounts/rooms and cleans up its services."""
+"""Opt-in development host preserves local accounts/rooms and cleans up services."""
 
 import asyncio
 import tempfile
@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from serve_online import default_rooms, run
+from serve_development import default_rooms, run
 from tmserver.cli import serve
 from tmserver.storage.json import writer_lease
 
@@ -67,7 +67,7 @@ class HostTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(OSError):
                 await asyncio.open_connection("127.0.0.1", active.game_port)
 
-    def test_default_rooms_supports_portable_and_source_layouts(self):
+    def test_default_rooms_supports_external_source_layouts(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             expected = root / "examples/auto_rooms.example.json"

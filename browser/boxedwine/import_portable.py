@@ -81,63 +81,12 @@ def import_client(package, destination):
     return manifest
 
 
-def import_server(package, destination):
-    """Optionally stage the portable Python service and its published data only."""
-    destination = Path(destination).resolve()
-    prefix = "TetraMaster/server/"
-    data_files = {
-        "examples/auto_rooms.example.json",
-        "tmserver/data/economy_catalog.json",
-        "tmserver/data/lobby_commands.tsv",
-        "tmserver/data/profile_contract.json",
-    }
-    rows, names = [], set()
-    with zipfile.ZipFile(package) as source:
-        for info in source.infolist():
-            if not info.filename.startswith(prefix) or info.is_dir():
-                continue
-            name = info.filename[len(prefix) :]
-            path = PurePosixPath(name)
-            if (
-                path.is_absolute()
-                or ".." in path.parts
-                or "\\" in name
-                or ":" in name
-                or name.casefold() in names
-            ):
-                raise ValueError("Unsafe or duplicate server archive path: " + name)
-            names.add(name.casefold())
-            if (
-                name in data_files
-                or name.startswith("tmserver/")
-                and name.endswith(".py")
-            ):
-                rows.append((name, info))
-        required = data_files | {"tmserver/__init__.py", "tmserver/cli/serve.py"}
-        if not required <= {name for name, _ in rows}:
-            raise ValueError("Package does not contain the portable tmserver service")
-        for name, info in rows:
-            target = destination / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(source.read(info))
-    return len(rows)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("package", type=Path)
     parser.add_argument("--output", type=Path, default=runtime_root() / "online")
-    parser.add_argument(
-        "--server-output",
-        type=Path,
-        help="Also stage packaged Python services in this directory; excludes saves and logs",
-    )
     args = parser.parse_args()
     result = import_client(args.package, args.output)
     print(
         f"Imported {len(result['files'])} client files; original game files: {result['has_originals']}"
     )
-    if args.server_output:
-        print(
-            f"Imported {import_server(args.package, args.server_output)} Python server files"
-        )

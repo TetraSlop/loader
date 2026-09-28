@@ -1,7 +1,11 @@
 @echo off
 setlocal
 cd /d "%~dp0..\.."
-set "TM_BROWSER_SERVER=%~1"
-if not defined TM_BROWSER_SERVER if exist "out\boxedwine\server\tmserver\__init__.py" set "TM_BROWSER_SERVER=out\boxedwine\server"
-if not defined TM_BROWSER_SERVER set "TM_BROWSER_SERVER=..\tmserver\src"
-"out\boxedwine-venv\Scripts\python.exe" -B "browser\boxedwine\serve_online.py" --server-dir "%TM_BROWSER_SERVER%"
+if "%~3"=="" goto usage
+if not "%~4"=="" goto usage
+"out\boxedwine-venv\Scripts\python.exe" -B "browser\boxedwine\network_gateway.py" --server "%~1" --game-port "%~2" --profile-port "%~3"
+exit /b %errorlevel%
+:usage
+echo Usage: start_online.cmd SERVER_HOST GAME_PORT PROFILE_PORT
+echo Connects the browser gateway to an already running, separate game server.
+exit /b 2

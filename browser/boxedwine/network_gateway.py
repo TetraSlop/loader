@@ -97,14 +97,29 @@ def create_app(static_dir, *, game=("127.0.0.1", 51241), profile=("127.0.0.1", 5
     return app
 
 
-def main():
+def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8767)
     parser.add_argument("--static-dir", type=Path, default=runtime_root() / "online")
-    parser.add_argument("--server", default="127.0.0.1")
-    parser.add_argument("--game-port", type=int, default=51241)
-    parser.add_argument("--profile-port", type=int, default=51220)
-    args = parser.parse_args()
+    parser.add_argument(
+        "--server",
+        required=True,
+        help="Separately deployed game/profile server hostname or IP address",
+    )
+    parser.add_argument("--game-port", type=int, required=True)
+    parser.add_argument("--profile-port", type=int, required=True)
+    args = parser.parse_args(argv)
+    if not args.server.strip():
+        parser.error("--server must name the separate game/profile server")
+    if not all(1 <= port <= 65535 for port in (args.game_port, args.profile_port)):
+        parser.error("game/profile ports must be between 1 and 65535")
+    if not 0 <= args.port <= 65535:
+        parser.error("browser host port must be between 0 and 65535")
+    return args
+
+
+def main():
+    args = arguments()
     web.run_app(
         create_app(
             args.static_dir,

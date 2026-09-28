@@ -2,8 +2,10 @@
 
 The maintained browser integration is in `browser/boxedwine/`. It imports the
 portable client, runs its actual `tmloader.exe` inside Wine/BoxedWine, and forwards
-its two socket connections to the actual Python tmserver. No replacement game
-protocol or browser game implementation is involved.
+its two socket connections to a separately deployed Python tmserver. The
+redistributable contains only the client: no game server or embedded Python.
+The browser gateway is separate operator tooling; it does not implement the game
+protocol or start the deployed server.
 
 ## Current result
 
@@ -21,39 +23,41 @@ errors. HD startup after the transport fix has not been validated. Sound is
 disabled in this experiment. Browser files/preferences use temporary memory;
 the Python server's account save persists separately across browser restarts.
 
-The final imported full local ZIP has SHA-256
-`bd9b81f0c8728292c700375ab6e2a751c82ce1e5ce1705b05372af1c370171a6`.
 Generated `out/boxedwine/online/client-manifest.json` records the input archive
 and every imported client file. `build-manifest.json` records the exact runtime
 and patch hashes. These generated files, binaries and captures are ignored by Git.
 
-## Run the prepared local setup
+## Connect to a separate server
 
-From the repository, run:
+From the repository, provide the deployed server's hostname and its game/profile
+TCP ports. Replace this example hostname with your actual server:
 
 ```bat
-browser\boxedwine\start_online.cmd
+browser\boxedwine\start_online.cmd server.example.com 51241 51220
 ```
 
-Then visit **http://127.0.0.1:8767/**. The launcher starts services only; it does
-not open a browser or native game window and requests no administrator access.
+Then visit **http://127.0.0.1:8767/**. This starts only the local browser page and
+WebSocket-to-TCP gateway. It does not start a game server, create accounts, own a
+server save, open a browser/native game window, or request administrator access.
+Close the launcher with Ctrl+C to stop the gateway. Account state and room/rule
+configuration belong to the separately deployed server.
+
 The page has Play/restart and Original/HD choices; technical output is collapsed
-under Diagnostics. Close the launcher with Ctrl+C to stop its services cleanly.
-Only one launcher should own this save at a time.
+under Diagnostics. Original artwork is the default. The old offline preview on
+port 8766 is separate and remains unchanged.
 
-The launcher prefers the imported Python service at `out/boxedwine/server/`,
-then the sibling tmserver checkout. To select another unpacked portable package:
+For development only, an explicit helper can start an external tmserver checkout
+with three synthetic accounts, its example rooms, and an isolated local save:
 
-```bat
-browser\boxedwine\start_online.cmd "C:\path\TetraMaster\server"
+```powershell
+out/boxedwine-venv/Scripts/python.exe -B browser/boxedwine/serve_development.py --server-dir ../tmserver/src
 ```
 
-The host uses three synthetic local accounts and the package's
-`examples/auto_rooms.example.json`, preserving the CPU room and additional
-custom/fixed-rule rooms. Its save is `out/boxedwine/play/state.json`, with logs
-beside it. This is separate from native Play saves, the original installation,
-and every disposable verification run. The old offline preview on port 8766 is
-not changed by this integration.
+This opt-in helper is never called by `start_online.cmd` or extracted from the
+client ZIP. Its save is `out/boxedwine/play/state.json`, with logs beside it;
+`--state`, `--rooms` and `--port` override those development settings. It is
+separate from native Play saves and all disposable test fixtures. Only one
+server process may own a save at a time.
 
 ## Prepare a new checkout
 
@@ -91,25 +95,26 @@ Stage the built runtime and import a portable ZIP:
 
 ```powershell
 out/boxedwine-venv/Scripts/python.exe -B browser/boxedwine/prepare_network.py --cache-dir C:/path/boxedwine-cache
-out/boxedwine-venv/Scripts/python.exe -B browser/boxedwine/import_portable.py C:/path/TetraMaster-local-full.zip --server-output out/boxedwine/server
+out/boxedwine-venv/Scripts/python.exe -B browser/boxedwine/import_portable.py C:/path/TetraMaster-local-full.zip
 ```
 
-The [default redistributable](DISTRIBUTION.md) omits Square Enix binaries/media
-and HD textures. It can be imported, but the page will explain that original
+The [default client redistributable](DISTRIBUTION.md) omits Square Enix
+binaries/media and HD textures; it also excludes the server and Python runtime.
+It can be imported, but the page will explain that original
 files are missing. A playable import requires an explicitly built local package
 with locally supplied DLLs/assets and factory Viewer defaults. The importer
-copies only the approved client paths and optional server code/data, excluding
-logs, captures, live saves and user preferences. It rejects path escapes, drive
+copies only the approved client paths, excluding server/Python subtrees, logs,
+captures, live saves and user preferences. It rejects path escapes, drive
 paths and Windows case aliases. Do not publish proprietary files without the
 necessary rights. BoxedWine and Wine retain their upstream licenses; the runtime
 patch is distributed under BoxedWine's GPL-2.0-or-later terms, with corresponding
 pinned source and build instructions above.
 
 `TM_BOXEDWINE_RUNTIME` or the scripts' output/runtime arguments can place all
-generated files outside the repository. `serve_online.py` accepts explicit
-`--state`, `--rooms` and `--port` paths/options. The local gateway restricts Host
-and WebSocket Origin, listens on loopback, and exposes only two fixed service
-routes. It is not a public hosting/authentication configuration.
+generated files outside the repository. Python is required for these separate
+browser build/gateway tools, not bundled into the client ZIP. The local gateway
+restricts Host and WebSocket Origin, listens on loopback, and exposes only two
+fixed service routes. It is not a public hosting/authentication configuration.
 
 ## Transport and verification
 
@@ -119,7 +124,9 @@ browser loop. It maintains virtual receive/send buffer values and reads the
 real Emscripten SO_ERROR for asynchronous connection outcomes. It does not force
 connections to succeed. Unknown ports are rejected. The Python gateway forwards
 binary bytes with bounded frames and TCP backpressure; tmserver retains protocol
-parsing, encryption and authoritative state.
+parsing, encryption and authoritative state. Browser launch arguments set the
+guest endpoint to loopback ports 51241/51220, independently of the imported INI.
+Gateway arguments select the actual deployed server and TCP ports.
 
 The implementation follows Emscripten's
 [WebSocket-backed POSIX socket layer](https://emscripten.org/docs/porting/networking.html#emulated-posix-tcp-sockets-over-websockets),
@@ -127,11 +134,12 @@ without the full pthread POSIX socket proxy. Original tmloader needed only a
 Wine-detection exemption for Windows mandatory integrity; native Windows keeps
 its existing low-integrity behavior.
 
-Verification helpers use disposable state and never run the executable natively:
+Verification requires a separately obtained tmserver source checkout. Helpers
+use disposable state and never run the executable natively:
 
 ```powershell
 out/boxedwine-venv/Scripts/python.exe -m pip install -r browser/boxedwine/requirements-test.txt
-$env:PYTHONPATH = (Resolve-Path out/boxedwine/server)
+$env:PYTHONPATH = (Resolve-Path ../tmserver/src)
 out/boxedwine-venv/Scripts/python.exe -B -m unittest discover -s browser/boxedwine -p 'test_*.py' -v
 browser/boxedwine/build_probe.cmd
 out/boxedwine-venv/Scripts/python.exe -B browser/boxedwine/headless_network_probe.py
