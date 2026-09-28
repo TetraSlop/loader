@@ -120,6 +120,10 @@ a loader-only build; Catch2 is then neither downloaded nor linked. For an isolat
 build that leaves the deployed loader alone, use `-B build-modernize` in the same
 commands. The checked-in `.clang-tidy` rules reject C-style casts, `NULL` and
 `typedef` in project code; native signatures retain explicit Windows ABI types.
+The loader also uses the LandSandBoat clang-format 22 rules. Run
+`py tools/run_clang_format.py --check` to verify first-party source and test
+formatting, or omit `--check` to apply it. See [C++ style](docs/CPP_STYLE.md) for
+the declaration/header layout and CMake format targets.
 
 Output: `build/RelWithDebInfo/tmloader.exe`. The executable has an explicit
 **asInvoker** manifest; it does not request administrator privileges.

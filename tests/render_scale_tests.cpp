@@ -1,33 +1,50 @@
-#include <catch2/catch_test_macros.hpp>
-#include "runtime.h"
 #include "d3d8_abi.h"
 #include "render_scale.h"
+#include "runtime.h"
 #include "window_settings.h"
-#include <unknwn.h>
-#include <wrl/client.h>
-#include <array>
-#include <vector>
 #include <algorithm>
+#include <array>
+#include <catch2/catch_test_macros.hpp>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
+#include <unknwn.h>
+#include <vector>
+#include <wrl/client.h>
 
 using Microsoft::WRL::ComPtr;
 using namespace tmloader;
-template<class... Args>
-HRESULT call(void* object, int slot, Args... args) {
+
+template <class... Args>
+HRESULT call(void* object, int slot, Args... args)
+{
     using Method = HRESULT(WINAPI*)(void*, Args...);
     return reinterpret_cast<Method>((*static_cast<void***>(object))[slot])(object, args...);
 }
-void check(HRESULT hr) {
+
+void check(HRESULT hr)
+{
     INFO("D3D8 HRESULT: " << hr);
     REQUIRE(SUCCEEDED(hr));
 }
-struct Vertex { float x, y, z, rhw; DWORD color, specular; float u, v; };
-static_assert(sizeof(Vertex) == 32);
-struct Locked { int pitch; BYTE* data; };
 
-std::vector<DWORD> pixels(void* device, float factor) {
+struct Vertex
+{
+    float x, y, z, rhw;
+    DWORD color, specular;
+    float u, v;
+};
+
+static_assert(sizeof(Vertex) == 32);
+
+struct Locked
+{
+    int   pitch;
+    BYTE* data;
+};
+
+std::vector<DWORD> pixels(void* device, float factor)
+{
     ComPtr<IUnknown> surface;
     check(call(device, 16, 0, 0, surface.GetAddressOf()));
     DWORD desc[8]{};
@@ -43,25 +60,27 @@ std::vector<DWORD> pixels(void* device, float factor) {
     return result;
 }
 
-std::vector<DWORD> render(void* device, void* buffer, DWORD shader, float factor, bool reference) {
+std::vector<DWORD> render(void* device, void* buffer, DWORD shader, float factor, bool reference)
+{
     // A clipped quad with unequal W, interpolated alpha/color and noninteger
     // positions. CPU-scaled fixed-function rendering is the independent oracle.
-    std::array<Vertex, 4> vertices{{
-        {-12.5f, 15.75f, 0.25f, 0.5f, 0xffcc88aa, 0, 0, 0},
-        {602.5f, 45.25f, 0.5f, 1.0f, 0xc088aaff, 0, 1, 0},
-        {-4.5f, 470.75f, 0.25f, 0.75f, 0x8888ffaa, 0, 0, 1},
-        {630.5f, 491.25f, 0.75f, 0.25f, 0xffffaacc, 0, 1, 1}
-    }};
-    if (reference) for (auto& v : vertices) {
-        v.x = (v.x + 0.5f) * factor - 0.5f;
-        v.y = (v.y + 0.5f) * factor - 0.5f;
-    }
+    std::array<Vertex, 4> vertices{ { { -12.5f, 15.75f, 0.25f, 0.5f, 0xffcc88aa, 0, 0, 0 },
+                                      { 602.5f, 45.25f, 0.5f, 1.0f, 0xc088aaff, 0, 1, 0 },
+                                      { -4.5f, 470.75f, 0.25f, 0.75f, 0x8888ffaa, 0, 0, 1 },
+                                      { 630.5f, 491.25f, 0.75f, 0.25f, 0xffffaacc, 0, 1, 1 } } };
+    if (reference)
+        for (auto& v : vertices)
+        {
+            v.x = (v.x + 0.5f) * factor - 0.5f;
+            v.y = (v.y + 0.5f) * factor - 0.5f;
+        }
     void* data = nullptr;
     check(call(buffer, 11, 0, sizeof(vertices), &data, 0x2000));
     std::memcpy(data, vertices.data(), sizeof(vertices));
     check(call(buffer, 12));
     check(call(device, 83, 0, buffer, sizeof(Vertex)));
-    if (!reference) check(setScaleConstants(device, factor));
+    if (!reference)
+        check(setScaleConstants(device, factor));
     check(call(device, 76, reference ? gameVertexFormat : shader));
     check(call(device, 36, 0, nullptr, 1, 0xff123456, 1.0f, 0));
     check(call(device, 34));
@@ -70,24 +89,37 @@ std::vector<DWORD> render(void* device, void* buffer, DWORD shader, float factor
     return pixels(device, factor);
 }
 
-TEST_CASE("Scaled rendering matches independently scaled geometry", "[graphics-device]") {
+TEST_CASE("Scaled rendering matches independently scaled geometry", "[graphics-device]")
+{
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     REQUIRE(tmloader::lowerIntegrity());
     // No window is created and no Present, focus or input API is called.
-    auto module = LoadLibraryW(L"d3d8.dll");
+    auto module   = LoadLibraryW(L"d3d8.dll");
     using Factory = IUnknown*(WINAPI*)(UINT);
-    auto factory = reinterpret_cast<Factory>(GetProcAddress(module, "Direct3DCreate8"));
-    if (!factory) { SKIP("Direct3D 8 unavailable"); }
+    auto factory  = reinterpret_cast<Factory>(GetProcAddress(module, "Direct3DCreate8"));
+    if (!factory)
+    {
+        SKIP("Direct3D 8 unavailable");
+    }
     ComPtr<IUnknown> d3d;
     d3d.Attach(factory(220));
-    if (!d3d) { SKIP("Direct3D 8 unavailable"); }
+    if (!d3d)
+    {
+        SKIP("Direct3D 8 unavailable");
+    }
     DWORD mode[4]{};
     check(call(d3d.Get(), 8, 0, mode));
-    for (float factor : renderScales) {
+    for (float factor : renderScales)
+    {
         Present8 pp{};
-        pp.width = static_cast<UINT>(640 * factor); pp.height = static_cast<UINT>(480 * factor);
-        pp.format = mode[3]; pp.count = 1; pp.swap = 3;
-        pp.window = GetDesktopWindow(); pp.windowed = TRUE; pp.flags = 1;
+        pp.width    = static_cast<UINT>(640 * factor);
+        pp.height   = static_cast<UINT>(480 * factor);
+        pp.format   = mode[3];
+        pp.count    = 1;
+        pp.swap     = 3;
+        pp.window   = GetDesktopWindow();
+        pp.windowed = TRUE;
+        pp.flags    = 1;
         ComPtr<IUnknown> device;
         check(call(d3d.Get(), 15, 0, 1, pp.window, 0x20, &pp, device.GetAddressOf()));
         DWORD shader = 0;
@@ -99,34 +131,46 @@ TEST_CASE("Scaled rendering matches independently scaled geometry", "[graphics-d
         check(call(device.Get(), 20, 8, 8, 1, 0, 21, 1, texture.GetAddressOf()));
         Locked locked{};
         check(call(texture.Get(), 16, 0, &locked, nullptr, 0));
-        for (int y = 0; y < 8; ++y) for (int x = 0; x < 8; ++x)
-            reinterpret_cast<DWORD*>(locked.data + y * locked.pitch)[x] =
-                ((x + y) % 2) ? 0xffdddddd : 0xff336699;
+        for (int y = 0; y < 8; ++y)
+            for (int x = 0; x < 8; ++x)
+                reinterpret_cast<DWORD*>(locked.data + y * locked.pitch)[x] =
+                    ((x + y) % 2) ? 0xffdddddd : 0xff336699;
         check(call(texture.Get(), 17, 0));
-        for (auto state : {std::pair<DWORD, DWORD>{137, 0}, {136, 0}, {22, 1}, {7, 0}, {27, 1}, {19, 5}, {20, 6}})
+        for (auto state : { std::pair<DWORD, DWORD>{ 137, 0 }, { 136, 0 }, { 22, 1 }, { 7, 0 }, { 27, 1 }, { 19, 5 }, { 20, 6 } })
             check(call(device.Get(), 50, state.first, state.second));
-        for (auto state : {std::pair<DWORD, DWORD>{1, 4}, {2, 2}, {3, 0}, {4, 4}, {5, 2}, {6, 0},
-                           {16, 2}, {17, 2}, {18, 0}, {13, 3}, {14, 3}})
+        for (auto state : { std::pair<DWORD, DWORD>{ 1, 4 }, { 2, 2 }, { 3, 0 }, { 4, 4 }, { 5, 2 }, { 6, 0 }, { 16, 2 }, { 17, 2 }, { 18, 0 }, { 13, 3 }, { 14, 3 } })
             check(call(device.Get(), 63, 0, state.first, state.second));
         check(call(device.Get(), 63, 1, 1, 1));
-        for (bool textured : {false, true}) {
+        for (bool textured : { false, true })
+        {
             check(call(device.Get(), 61, 0, textured ? texture.Get() : nullptr));
-            auto expected = render(device.Get(), buffer.Get(), shader, factor, true);
-            auto actual = render(device.Get(), buffer.Get(), shader, factor, false);
-            size_t differing = 0, painted = 0;
+            auto     expected  = render(device.Get(), buffer.Get(), shader, factor, true);
+            auto     actual    = render(device.Get(), buffer.Get(), shader, factor, false);
+            size_t   differing = 0, painted = 0;
             unsigned maxDelta = 0;
-            for (size_t i = 0; i < actual.size(); ++i) {
-                if ((expected[i] & 0xffffff) != 0x123456) ++painted;
-                for (int shift : {0, 8, 16}) {
+            for (size_t i = 0; i < actual.size(); ++i)
+            {
+                if ((expected[i] & 0xffffff) != 0x123456)
+                    ++painted;
+                for (int shift : { 0, 8, 16 })
+                {
                     unsigned delta = static_cast<unsigned>(std::abs(
                         static_cast<int>((expected[i] >> shift) & 255) -
                         static_cast<int>((actual[i] >> shift) & 255)));
-                    maxDelta = (std::max)(delta, maxDelta);
-                    if (delta > 2) { ++differing; break; }
+                    maxDelta       = (std::max)(delta, maxDelta);
+                    if (delta > 2)
+                    {
+                        ++differing;
+                        break;
+                    }
                 }
             }
             printf("%gx %s: %zu pixels, %zu differ by >2, max delta %u\n",
-                factor, textured ? "textured" : "colored", painted, differing, maxDelta);
+                   factor,
+                   textured ? "textured" : "colored",
+                   painted,
+                   differing,
+                   maxDelta);
             CAPTURE(factor, textured, painted, differing, maxDelta);
             REQUIRE(painted >= actual.size() / 2);
             REQUIRE(differing <= actual.size() / 10000);

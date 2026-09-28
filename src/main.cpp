@@ -2,14 +2,26 @@
 #include "texture_pack.h"
 #include <exception>
 
-int main(int argc, char** argv) {
-    try {
+int main(int argc, char** argv)
+{
+    try
+    {
         const auto config = tmloader::parseConfig(std::vector<std::string>(argv + 1, argv + argc));
-        if (config.help) { std::fputs(tmloader::usage(), stdout); return 0; }
-        if (config.version) { std::puts("tmloader 0.1.0"); return 0; }
+        if (config.help)
+        {
+            std::fputs(tmloader::usage(), stdout);
+            return 0;
+        }
+        if (config.version)
+        {
+            std::puts("tmloader 0.1.0");
+            return 0;
+        }
         tmloader::validateRuntime(config);
-        if (config.checkOnly) {
-            if (std::filesystem::exists(config.texturePack)) {
+        if (config.checkOnly)
+        {
+            if (std::filesystem::exists(config.texturePack))
+            {
                 tmloader::TexturePack pack;
                 pack.load(config.texturePack);
                 pack.validateFiles();
@@ -19,7 +31,9 @@ int main(int argc, char** argv) {
             return 0;
         }
         return tmloader::launch(config);
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e)
+    {
         std::fprintf(stderr, "tmloader: %s\n", e.what());
         return 2;
     }

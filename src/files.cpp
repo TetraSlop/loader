@@ -1,14 +1,18 @@
 #include "runtime.h"
-namespace tmloader {
-namespace {
+
+namespace tmloader
+{
+namespace
+{
+
 const auto virtualRegistryKey = reinterpret_cast<HKEY>(0x5a5a0001);
+
 }
 
-static HANDLE WINAPI tracedFile(const char *path, DWORD access, DWORD sharing, LPSECURITY_ATTRIBUTES sec, DWORD create,
-                                DWORD flags, HANDLE tmpl)
+static HANDLE WINAPI tracedFile(const char* path, DWORD access, DWORD sharing, LPSECURITY_ATTRIBUTES sec, DWORD create, DWORD flags, HANDLE tmpl)
 {
-    char full[MAX_PATH] = {};
-    const auto length = GetFullPathNameA(path, MAX_PATH, full, nullptr);
+    char       full[MAX_PATH] = {};
+    const auto length         = GetFullPathNameA(path, MAX_PATH, full, nullptr);
     if (!length || length >= MAX_PATH)
     {
         SetLastError(ERROR_FILENAME_EXCED_RANGE);
@@ -23,13 +27,13 @@ static HANDLE WINAPI tracedFile(const char *path, DWORD access, DWORD sharing, L
         return INVALID_HANDLE_VALUE;
     }
     const auto handle = CreateFileA(path, access, sharing, sec, create, flags, tmpl);
-    const auto error = GetLastError();
+    const auto error  = GetLastError();
     logf("CreateFileA %s -> %p error=%lu", path, handle, error);
     SetLastError(error);
     return handle;
 }
-static LSTATUS WINAPI tracedQuery(HKEY key, const char *name, LPDWORD reserved, LPDWORD type, LPBYTE data,
-                                  LPDWORD length)
+
+static LSTATUS WINAPI tracedQuery(HKEY key, const char* name, LPDWORD reserved, LPDWORD type, LPBYTE data, LPDWORD length)
 {
     if (key == virtualRegistryKey)
     {
@@ -44,7 +48,7 @@ static LSTATUS WINAPI tracedQuery(HKEY key, const char *name, LPDWORD reserved, 
             if (!length)
                 return ERROR_INVALID_PARAMETER;
             const auto capacity = *length;
-            *length = 1;
+            *length             = 1;
             if (data && capacity < 1)
                 return ERROR_MORE_DATA;
             if (data)
@@ -59,7 +63,7 @@ static LSTATUS WINAPI tracedQuery(HKEY key, const char *name, LPDWORD reserved, 
             if (!length)
                 return ERROR_INVALID_PARAMETER;
             const auto capacity = *length;
-            *length = size;
+            *length             = size;
             if (data && capacity < size)
                 return ERROR_MORE_DATA;
             if (data)
@@ -70,13 +74,16 @@ static LSTATUS WINAPI tracedQuery(HKEY key, const char *name, LPDWORD reserved, 
         {
             if (type)
                 *type = REG_DWORD;
-            if (!length) return ERROR_INVALID_PARAMETER;
+            if (!length)
+                return ERROR_INVALID_PARAMETER;
             const auto capacity = *length;
-            *length = sizeof(DWORD);
-            if (data && capacity < sizeof(DWORD)) return ERROR_MORE_DATA;
+            *length             = sizeof(DWORD);
+            if (data && capacity < sizeof(DWORD))
+                return ERROR_MORE_DATA;
             // SOUND=0 was intentional in the original startup-only experiment.
             // TM +180E40 uses zero to skip its entire native sound engine.
-            if (data) {
+            if (data)
+            {
                 const DWORD value = !strcmp(name, "SOUND") ? 1 : 0;
                 memcpy(data, &value, sizeof(value));
             }
@@ -88,8 +95,8 @@ static LSTATUS WINAPI tracedQuery(HKEY key, const char *name, LPDWORD reserved, 
     logf("RegQuery %s -> %ld bytes=%lu", name ? name : "(default)", result, length ? *length : 0);
     return result;
 }
-static LSTATUS WINAPI virtualCreate(HKEY, const char *subkey, DWORD, LPSTR, DWORD, REGSAM, const LPSECURITY_ATTRIBUTES,
-                                    PHKEY result, LPDWORD disposition)
+
+static LSTATUS WINAPI virtualCreate(HKEY, const char* subkey, DWORD, LPSTR, DWORD, REGSAM, const LPSECURITY_ATTRIBUTES, PHKEY result, LPDWORD disposition)
 {
     logf("Virtual registry create: %s", subkey ? subkey : "");
     if (result)
@@ -98,24 +105,28 @@ static LSTATUS WINAPI virtualCreate(HKEY, const char *subkey, DWORD, LPSTR, DWOR
         *disposition = REG_OPENED_EXISTING_KEY;
     return ERROR_SUCCESS;
 }
-static LSTATUS WINAPI virtualOpen(HKEY, const char *subkey, PHKEY result)
+
+static LSTATUS WINAPI virtualOpen(HKEY, const char* subkey, PHKEY result)
 {
     logf("Virtual registry open: %s", subkey ? subkey : "");
     if (result)
         *result = virtualRegistryKey;
     return ERROR_SUCCESS;
 }
+
 static LSTATUS WINAPI virtualClose(HKEY key)
 {
     return key == virtualRegistryKey ? ERROR_SUCCESS : RegCloseKey(key);
 }
 
-void installFileHooks(HMODULE module, bool game) {
+void installFileHooks(HMODULE module, bool game)
+{
     replacePointer(module, reinterpret_cast<void*>(MessageBoxA), reinterpret_cast<void*>(loggedMessage));
     replacePointer(module, reinterpret_cast<void*>(MessageBoxW), reinterpret_cast<void*>(loggedMessageW));
     replacePointer(module, reinterpret_cast<void*>(CreateFileA), reinterpret_cast<void*>(tracedFile));
     replacePointer(module, reinterpret_cast<void*>(RegQueryValueExA), reinterpret_cast<void*>(tracedQuery));
-    if (game) {
+    if (game)
+    {
         setSlot(module, 0x2041fc, reinterpret_cast<void*>(loggedMessage));
         setSlot(module, 0x204000, reinterpret_cast<void*>(virtualOpen));
         setSlot(module, 0x204004, reinterpret_cast<void*>(tracedQuery));
@@ -123,4 +134,5 @@ void installFileHooks(HMODULE module, bool game) {
         setSlot(module, 0x20400c, reinterpret_cast<void*>(virtualCreate));
     }
 }
-}
+
+} // namespace tmloader

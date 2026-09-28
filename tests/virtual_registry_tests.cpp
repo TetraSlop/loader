@@ -1,18 +1,41 @@
-#include <catch2/catch_test_macros.hpp>
-#include "runtime.h"
 #include "../src/files.cpp"
-namespace tmloader {
+#include "runtime.h"
+#include <catch2/catch_test_macros.hpp>
+
+namespace tmloader
+{
+
 Config options;
-char runtimeRoot[MAX_PATH]{};
-void logf(const char*, ...) {}
-void replacePointer(HMODULE, void*, void*) {}
-void setSlot(HMODULE, DWORD, void*) {}
-int WINAPI loggedMessage(HWND, const char*, const char*, UINT) { return IDOK; }
-int WINAPI loggedMessageW(HWND, const wchar_t*, const wchar_t*, UINT) { return IDOK; }
+char   runtimeRoot[MAX_PATH]{};
+
+void logf(const char*, ...)
+{
 }
-TEST_CASE("Virtual registry preserves native sound and value sizes", "[virtual_registry]") {
+
+void replacePointer(HMODULE, void*, void*)
+{
+}
+
+void setSlot(HMODULE, DWORD, void*)
+{
+}
+
+int WINAPI loggedMessage(HWND, const char*, const char*, UINT)
+{
+    return IDOK;
+}
+
+int WINAPI loggedMessageW(HWND, const wchar_t*, const wchar_t*, UINT)
+{
+    return IDOK;
+}
+
+} // namespace tmloader
+
+TEST_CASE("Virtual registry preserves native sound and value sizes", "[virtual_registry]")
+{
     using namespace tmloader;
-    HKEY key = reinterpret_cast<HKEY>(0x5a5a0001);
+    HKEY  key  = reinterpret_cast<HKEY>(0x5a5a0001);
     DWORD type = 0, size = 0, value = 99;
     REQUIRE(tracedQuery(key, "SOUND", nullptr, &type, nullptr, &size) == ERROR_SUCCESS);
     REQUIRE((type == REG_DWORD && size == 4));

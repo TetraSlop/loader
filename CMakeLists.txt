@@ -18,6 +18,18 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN DIRECTINPUT_VERSION=0x0800
     _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS)
 add_compile_options(/W4 /EHsc /utf-8)
 
+find_package(Python3 3.10 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_custom_target(format
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_clang_format.py"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        COMMENT "Format first-party C++ with clang-format 22")
+    add_custom_target(format-check
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_clang_format.py" --check
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        COMMENT "Check first-party C++ formatting without editing files")
+endif()
+
 # Dear ImGui 1.92.5, pinned to an immutable upstream commit and archive hash.
 include(FetchContent)
 FetchContent_Declare(imgui
@@ -54,7 +66,7 @@ add_library(loader_textures STATIC src/texture_pack.cpp src/texture_replacements
 target_include_directories(loader_textures PUBLIC src)
 target_link_libraries(loader_textures PUBLIC loader_config PRIVATE nlohmann_json::nlohmann_json)
 add_executable(tmloader WIN32 src/main.cpp src/loader.cpp src/runtime.cpp src/log.cpp
-    src/patch.cpp src/files.cpp src/graphics.cpp src/input.cpp src/network.cpp
+    src/patch.cpp src/files.cpp src/graphics.cpp src/input.cpp src/input_bridge.cpp src/network.cpp
     src/window.cpp src/settings_ui.cpp src/audio.cpp src/desktop.cpp src/render_scale.cpp src/screenshot.cpp)
 target_link_libraries(tmloader PRIVATE loader_config loader_imgui loader_textures ole32 windowscodecs advapi32 user32 gdi32 ws2_32)
 # The protected original DLL executes legacy generated code; preserve the

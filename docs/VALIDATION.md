@@ -1,5 +1,43 @@
 # Refactor validation
 
+## LSB C++ style and implementation boundaries, 2026-09-27
+
+The loader now uses the sibling LandSandBoat repository's exact clang-format
+22 configuration and the user's `lsb-cpp-style` conventions, documented in
+[C++ style](CPP_STYLE.md). The formatter covers 51 first-party source and test
+files. Class extraction separates DirectInput, texture attachment and screenshot
+resource declarations from their implementations; private constants and related
+module state have implementation-local ownership. Shared ABI constants remain
+in their declaring headers.
+
+- The isolated x86 RelWithDebInfo build in `build-modernize/` passes without
+  compiler warnings. The actual compiler log confirms `/std:c++23preview` and
+  `/MT`; the existing C++23 requirement and Windows calling conventions remain.
+- **21/21 CTest cases pass**, with no skipped cases. These include COM dispatch,
+  input transitions, graphics pixels, screenshot locking, texture reference
+  lifetimes, settings and audio initialization. Input tests configure callbacks
+  through the same interface used by the production fallback.
+- The CMake `format-check` target passes all 51 files using clang-format 22.1.4.
+  The configuration is byte-identical to LSB's `.clang-format` (SHA256
+  `26e3de9a292f8f22cfae82345cfbf59baf3aea18eba17462b3f2991671981a8f`).
+- Each extracted header compiles independently under x86 MSVC C++23 with
+  `/W4 /WX`: `input_bridge.h`, `texture_replacement.h` and
+  `screenshot_capture.h`. The Windows SDK dependency groups retain the include
+  order required by BCrypt, DirectSound and Winsock.
+- The read-only PE check passes for the isolated executable: x86 PE32, GUI
+  subsystem, `asInvoker` manifest and preserved legacy compatibility flags.
+- A review comparing both revisions after identical formatting isolates the
+  structural edits from whitespace changes. GUIDs, supported DLL hashes, shader
+  constants, COM method signatures and screenshot cleanup order are preserved.
+  The deployed executable, local INI and pre-existing IDE files retain their
+  baseline hashes.
+
+Evidence is retained in ignored `out/style-{build,ctest,format-check}.log`,
+`out/style-header-check.log` and `out/style-semantic-diff.txt`. This is a source
+cleanup and headless regression check; no game was launched and the deployed
+loader was not replaced. Formatting applies throughout first-party C++, while
+semantic style modernization is limited to the refactored boundaries.
+
 ## Title, version, PlayOnline and cursor refinement, 2026-09-27
 
 The selected local pack is now `runtime/textures-hd-v2/pack.json`. It contains
