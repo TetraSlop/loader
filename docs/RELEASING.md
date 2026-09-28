@@ -25,6 +25,9 @@ Each release supplies:
 Releases stay in draft until both archives pass checks and are attached. Build
 artifacts are also available on successful CI runs for seven days. If a release
 build or upload fails, rerun its failed jobs; do not create another tag manually.
+Creating a release and preparing its successor are separate steps. An unpublished
+draft blocks new release PRs until publication finishes, avoiding duplicate PRs
+while the Windows build is running.
 
 The flow uses the repository's automatic `GITHUB_TOKEN`, without a personal
 access token. Repository Actions settings must allow Actions to create pull
