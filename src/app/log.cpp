@@ -45,6 +45,14 @@ auto WINAPI crash(EXCEPTION_POINTERS* ep) -> LONG
 
 auto lowerIntegrity() -> bool
 {
+    const auto ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (ntdll && GetProcAddress(ntdll, "wine_get_version"))
+    {
+        // Wine has no Windows mandatory-integrity enforcement. In BoxedWine,
+        // the browser owns the process and its isolated virtual filesystem.
+        logf("Wine runtime: Windows mandatory integrity is unavailable");
+        return true;
+    }
     wil::unique_handle token;
     wil::unique_hlocal sid;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_DEFAULT | TOKEN_QUERY, token.put()))
