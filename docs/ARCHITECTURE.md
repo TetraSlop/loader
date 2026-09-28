@@ -1,232 +1,305 @@
-# Architecture and behavior ledger
+# Architecture
 
-The old online build rewrote `tm_wrapper.cpp` with Python, removed an offline
-title substitution and injected `startup_trace.h`. The new build compiles
-ordinary translation units and an explicit online bootstrap. No source
-generation, hidden environment navigation switches or probe header is needed.
+tmloader hosts the original Tetra Master client in its own process. It loads
+the game DLL (`TM_native.dll`) and the Viewer DLL (`polcore_native.dll`) as
+in-process COM servers, patches a small set of imports, vtable entries and
+call sites, and then hands control to the game's own online startup. The game
+code, its data files and the DLLs on disk are never modified.
+
+All offsets in this document are RVAs in the supported game DLL (image base
+`0x10000000`) unless stated otherwise, written as `+RVA`. They are valid only
+for the builds whose SHA256 hashes are pinned in `src/config/validation.cpp`.
+In the source, each offset is a named constant next to the hook that uses it.
+
+## Source layout
+
+Paths are relative to `src/`. Headers sit beside their sources and includes
+use the source-root path, such as `app/runtime.h`. `tests/` mirrors these
+folders.
 
 | Module | Responsibility |
 |---|---|
-| app/main, config/ | CLI and config precedence, file checks, pinned DLL SHA256, headless --check |
-| app/loader, app/abi | Direct COM factories, original GameStart descriptor, Viewer setup/order |
-| platform/network, config/endpoints | Account identity, profile cipher lifetime, initial profile requests, DNS/endpoint routing |
-| platform/files | Virtual registry, correct empty LOADDIR, runtime write boundary |
-| graphics/graphics, graphics/render_scale | D3D8 device/reset, optional higher-resolution rasterization, scaled presentation, captures |
-| graphics/screenshot | User-requested backbuffer capture, WIC PNG encoding, unique output files and status |
-| textures/ | Replacement manifests, texture ownership and guarded native texture hooks |
-| ui/window, ui/window_settings | Desktop system commands, fullscreen/resize, shared viewport, account-scoped preferences, short-click latch |
-| ui/settings_ui | Dear ImGui panel using official Win32/DX9 backends on an owned UI thread |
-| platform/audio | DirectSound 8 factory and diagnostics; game retains music/effect mixing |
-| platform/desktop | Disable native global shortcut interception, cursor warping and forced activation |
-| input/ | Native DirectInput factory plus existing keyboard/mouse fallback |
-| platform/patch | Process-local pointer/import replacement |
-| app/log, app/runtime | Logging, exception capture, reduced-integrity token, shared native context |
+| `app/main` | Entry point, `--check`, `--help` and `--version` |
+| `app/loader` | Process setup, COM factories, Viewer setup and GameStart |
+| `app/abi.h`, `app/com.h` | COM classes, launch descriptor, Viewer vtable slots, named Viewer command-table indices and `callMethod` for vtable calls |
+| `app/hooks.h` | One install function per subsystem |
+| `app/log`, `app/runtime` | `std::format` logging (`logLine`), crash logging, low-integrity token, shared native state |
+| `config/` | CLI and config parsing (CLI11), host and path policy, DLL hash validation, SHA256 |
+| `graphics/d3d8_abi.h` | Direct3D 8 vtable slots and structures, declared without the obsolete SDK |
+| `graphics/graphics` | Direct3D 8 hooks: device creation, reset, presentation, draws |
+| `graphics/render_scale` | Resolution presets, automatic selection and the scale shader |
+| `graphics/screenshot` | F12 backbuffer capture and PNG encoding |
+| `input/` | DirectInput factory hook and the mouse bridge |
+| `platform/system` | File-write boundary, virtual registry, message boxes |
+| `platform/network` | Connect/DNS redirection and the Viewer profile session |
+| `platform/desktop` | Removal of global keyboard hooks, cursor warping and focus stealing |
+| `platform/audio` | DirectSound 8 factory |
+| `platform/patch` | `replacePointer` and `setImport` |
+| `textures/` | Texture pack manifests, HD companions and native upload hooks |
+| `ui/` | Game window, per-account preferences and the ImGui settings panel |
 
-All module paths above are relative to `src/`. Headers sit beside their source;
-includes use paths relative to that root, such as `app/runtime.h`. `tests/`
-mirrors these folders and keeps Python asset-tool tests under `tests/tools/`.
-Build configuration is split between root toolchain/options,
-`cmake/Dependencies.cmake`, `src/CMakeLists.txt` and `tests/CMakeLists.txt`.
-The executable output remains `<build>/<configuration>/tmloader.exe`.
+Hook functions are named `hooked<ApiName>`, for example `hookedCreateFileA` or
+`hookedPresent`.
 
-Normal loader fixes preserved from the working harness:
+## Startup sequence
 
-1. Common854 encodes the configured POL ID; Common851 initializes the Viewer
-   account before TM caches its NN. GameIRC credentials alone are insufficient.
-2. Core INET/file/profile setup ordering remains intact. On first successful
-   GameIRC open, both the 0x68-byte cipher context and its separate0x1000-byte
-   matrix are copied into stable loader storage. Profile bootstrap calls
-   Common171/172,175/176,193/194 retain the original bounded polling behavior.
-3. The profile endpoint cache and ppNNN hostname aliases remain configured.
-   This includes pp001 used after a match. Its fix was built after the earlier
-   native match; it still needs a later native validation.
-4. Empty LOADDIR avoids the legacy archive-name parser's first-dot behavior.
-5. Graphics window flag+2FF248, windowed creation, and first-Present activation
-   remain. Probe-only room/zone/title/confirmation events are omitted; they
-   never belonged to an interactive launch without TM_PROBE flags.
-6. Mouse samples reset on focus/acquisition/window-size transitions; physical
-   movement/new clicks map into640x480 and use the original virtual cursor
-   integration. Keyboard focus animation remains while the mouse is stationary.
-   A short WM_L/RBUTTONDOWN press is latched for one input sample.
+1. `main` parses the configuration (`--config`, or `tmloader.ini` next to the
+   executable) and verifies the DLL hashes and required assets. `--check`
+   stops here without loading any DLL.
+2. The log is opened, then the process enters the runtime directory and
+   disables DEP (the game executes generated code from data pages). It labels
+   `pub/`, `logs/` and `settings/` writable at low integrity, then lowers its
+   own token to low integrity.
+3. The game DLL is loaded and its game object created through
+   `DllGetClassObject`. The live GameStart vtable entry (slot 9) must equal
+   `+8210`, otherwise startup stops.
+4. Each subsystem installs its hooks into the game DLL, and texture
+   replacements are initialized.
+5. The Viewer DLL is loaded and hooked, and its core object is configured
+   through the COM slots below. The common-function table must sit at Viewer
+   RVA `+6FBE8`. The loader sets the language, registry root and install
+   directory, then initializes the Viewer session (see [Network](#network)).
+6. GameStart (slot 9) runs with the core object and a 28-byte launch
+   descriptor. The game's own message loop runs until the player quits.
+7. When GameStart returns, the loader stops the settings panel and terminates
+   its own process without unloading the DLLs.
 
-Changes deliberately made during extraction:
+### COM ABI
 
-- Configurable external paths and numeric service endpoints replace hardcoded
-  scratch paths. Defaults retain the existing local account and ports.
-- SHA256 and live ABI checks precede compatibility patching. x86 is enforced
-  by CMake and the launch descriptor's static size assertion.
-- Diagnostic frame capture is opt-in. Automatic UI events, watchdog thread
-  suspension, timed window closure and bounded probe termination are omitted.
-- File mutation checks now include create/truncate dispositions and resolved
-  path boundaries. Log/capture destinations are confined to the dedicated
-  runtime/logs tree and reject data/pub/DLL aliases and hard-linked files.
-  Capture destinations are checked again immediately before writing. Error
-  handling rejects invalid paths before passing them on.
-- COM factory references are released after creating their objects; unused
-  generated COM declarations are replaced by a minimal independently declared
-  ABI with the observed method slots.
+All calls return `HRESULT` and use `__stdcall`. COM factories use the Windows
+SDK `IClassFactory` ABI.
 
-Remaining debt, not hidden by the module split:
+| Call | Slot | Arguments after `this` |
+|---|---:|---|
+| Viewer SetParamInit | 5 | `HINSTANCE`, mutable `LPSTR` |
+| Viewer GetCommonFunctionTable | 7 | `unsigned long**` |
+| Viewer SetAreaCode | 27 | `long` |
+| Game GameStart | 9 | core `IUnknown*`, `LaunchDescriptor*` (28 bytes) |
 
-- Fixed RVAs and broad process-local pointer scanning remain tied to the two
-  pinned DLLs. They should eventually become a reviewed per-version patch map.
-- Legacy native state is shared at module scope; this host supports one game
-  session per process. There is no generalized reconnect/account manager.
-- Startup profile polling remains synchronous for up to5seconds per request,
-  preserving behavior. Error propagation needs a future native-tested design.
-- Closing after GameStart returns still terminates **this loader process** as
-  the old host did; safe full COM/DLL teardown remains unverified. No watchdog
-  or code for terminating other processes is present.
-- The input fallback implements the exact tested immediate keyboard/mouse
-  path, not general DirectInput: joystick, buffering, force feedback and many
-  properties are unimplemented. The new short-click latch has headless evidence
-  but no native click confirmation yet.
-- Native message boxes retain the harness's log-and-IDOK compatibility hook.
-  The full Viewer UI/status/options format and runtime ACL provisioning are
-  outside this refactor. Server protocol implementation stays separate.
+Viewer slots 23/24 are the PlayOnline registry-name getters and 25/26 the
+SquareEnix ones; neither pair may be skipped when counting to SetAreaCode.
+Common-function-table entries are separate from the vtable and use the cdecl
+variadic ABI.
 
-## Desktop controls and audio
+## Configuration
 
-The startup harness deliberately returned SOUND=0. TM's +187149 registry read
-stores this at +2369CC; +180E40 skips all sound initialization when it is zero.
-The virtual registry now supplies SOUND=1. The native +20401C import is
-DirectSoundCreate8 (dsound ordinal 11), which the audio adapter must preserve.
-Both music (+1AAFCF) and effect (+1AA933) paths require IDirectSoundBuffer8;
-substituting DirectSoundCreate initializes successfully but its buffers reject
-that interface with E_NOINTERFACE, leaving playback silent. The factory now
-uses the SDK's exact DirectSoundCreate8 signature. The game's decoding, mixing
-and volume handling remain intact. Factory results and native sound-engine
-state are logged, but initialization alone does not establish audible output.
+`config/` parses the command line and `--config` file with CLI11, so every
+option has one declaration. Settings given twice are rejected. The loader adds
+its own validation on top:
 
-The audio regression check creates and locks both native buffer configurations
-on the Windows audio device, under the same low-integrity setting as the loader.
-It requires IDirectSoundBuffer8 and never starts playback or creates a window.
-CTest reports it as skipped (77) only when Windows has no audio driver.
-See Microsoft's [buffer API](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418039(v=vs.85))
+- The server must be a numeric IPv4 address. The game port cannot equal the
+  profile port, and the reserved game port 51241 cannot be used as the profile
+  port.
+- The account ID must be eight characters from the PlayOnline ID alphabet, and
+  the password must not be empty.
+- Log, screenshot, capture and settings files must stay inside
+  `runtime-dir/logs` or `runtime-dir/settings`. Paths that escape those trees,
+  point into `data/` or `pub/`, alias a DLL or are hard links are rejected.
+- The game and Viewer DLLs must match their pinned SHA256 hashes.
+
+The runtime path must fit `MAX_PATH` because the client uses ANSI file APIs.
+
+## System
+
+`platform/system` guards writes and replaces the registry.
+
+- **File writes.** `hookedCreateFileA`, installed in both DLLs, rejects
+  writes, creates and truncates outside the runtime directory. This is
+  compatibility protection, not a sandbox.
+- **Virtual registry.** Registry imports (`+204000..+20400C`) return values
+  from a process-local table. `LOADDIR` is empty, which avoids the archive-name
+  parser's first-dot behavior. `SOUND` is 1: the game reads it at `+187149`,
+  stores it at `+2369CC`, and `+180E40` skips all sound initialization when it
+  is zero. `FULLSCREEN` is 0.
+- **Message boxes.** Native message boxes are logged and answered with `IDOK`.
+
+## Network
+
+`platform/network` points the client at the configured server.
+
+- `hookedConnect` redirects the Game IRC port to `--game-port`.
+- `hookedGetHostByName` maps `pp000.pol.com` through `pp999.pol.com`, including
+  `pp001` used after a match, to the server address. Unknown hostnames are
+  rejected.
+- Before the game caches its account identity, the Viewer encodes the POL ID
+  (command 854) and sets the account (command 851). Game IRC credentials alone
+  are not enough.
+- The Viewer's native INET layer and profile endpoint are initialized with the
+  server address and `--profile-port`.
+- On the first successful Game IRC open, the 0x68-byte profile cipher context
+  and its separate 0x1000-byte matrix are copied into loader storage. Game IRC
+  slots are reused after a match, and the profile cipher must outlive them.
+- The profile bootstrap issues the load-handle, load-character and load-status
+  requests (commands 171, 175 and 193) and polls each ticket with the following
+  command, for up to five seconds per request.
+
+## Graphics
+
+`graphics/graphics` hooks `Direct3DCreate8` and then the device vtable.
+
+### Device and presentation
+
+The game creates a windowed device (window flag at `+2FF248`) and the loader
+activates the window on the first Present. The back buffer is 640x480 times a
+scale chosen at startup: 1, 1.5, 2, 2.25, 3, 4, 4.5 or 6.
+
+| Preset | Scale |
+|---|---|
+| 640x480 | 1x |
+| 960x720 | 1.5x |
+| 1280x960 | 2x |
+| 1440x1080 | 2.25x |
+| 1920x1440 | 3x |
+| 2560x1920 | 4x |
+| 2880x2160 | 4.5x |
+| 3840x2880 | 6x |
+
+`D3DSWAPEFFECT_COPY` allows an explicit presentation rectangle, so resizing the
+window only changes presentation. One shared content rectangle drives both
+presentation and input mapping. Present source rectangles use consistently
+rounded edges at fractional scales.
+
+Automatic selection reads the physical dimensions of the monitor hosting the
+window at startup, falling back to the adapter display mode, and picks the
+smallest preset whose 4:3 area covers it, capped at 4.5x. 6x is a manual
+supersampling option. The resolution is a next-launch setting: changing it
+mid-session would reset the device while native default-pool resources and an
+online match are active. If the larger device or shader cannot be created, the
+loader retries at 1x and logs why.
+
+### Scale shader
+
+The renderer sets FVF `0x1C4` at `+18297F` and creates a dynamic vertex buffer
+with a 32-byte stride at `+1829C0`. All fourteen draw sites use DrawPrimitive
+with this pretransformed XYZRHW, diffuse, specular and UV layout, so a larger
+back buffer alone would leave coordinates at 640x480.
+
+Above 1x:
+
+- `hookedSetVertexShader` (slot 76) substitutes a small `vs.1.1` shader. It
+  converts screen coordinates to clip space, preserves depth and reciprocal W,
+  and passes colors and UVs through. Pixel edges follow
+  `(coordinate + 0.5) * factor - 0.5`. The bytecode is hand-written and
+  documented instruction by instruction; there is no runtime shader compiler.
+- `hookedCreateVertexBuffer` (slot 23) clears the `0x1C4` FVF tag and uses an
+  explicit shader declaration instead. D3D8's software path bypasses shader
+  input for XYZRHW-tagged buffers, so leaving the tag crashes on draw. Other
+  buffer formats pass through.
+
+At 1x both hooks delegate unchanged. Reset keeps the resolution and recreates
+the shader.
+
+Native initialization selects linear filtering (`+1828AB`, `+1828BF`) and clamp
+addressing (`+1828D3`, `+1828E7`). A scan of the native code through `+1B0000`
+found no SetViewport (slot 40) call that would restore a 640x480 viewport after
+CreateDevice.
+
+References: [Direct3D 8 interfaces](https://github.com/wine-mirror/wine/blob/master/include/d3d8.h)
+and the [Direct3D rasterization convention](https://learn.microsoft.com/en-us/windows/win32/direct3d9/directly-mapping-texels-to-pixels).
+
+### Screenshots
+
+F12 is handled by the game window and never forwarded to the game. A queued
+request is consumed on the render thread before Present: the 32-bit back buffer
+is copied respecting row pitch, unlocked, and encoded as an opaque PNG with WIC
+(render-target alpha is unreliable). Files are created with `CREATE_NEW` under
+`logs/screenshots`, so collisions never overwrite. Without a request there is
+no readback or disk I/O.
+
+## Textures
+
+`textures/` replaces artwork without changing native texture objects. The
+game's seven PNG upload call sites are verified byte for byte and redirected;
+the original texture is always created first, and an HD companion is attached
+to it as private data. Draw hooks bind the companion and restore the original
+binding afterwards. The companion carries an artwork or font category: only
+the verified font atlas IDs are fonts, so the settings panel can toggle
+artwork and fonts independently. Missing or invalid replacements fall back to
+the original.
+
+See [texture load path](texture-load-path.md) for the upload ABI, call-site
+guards and ownership rules.
+
+## Input
+
+`input/` hooks the `DirectInput8Create` import (`+204014`) and always returns
+the loader's own focus-aware mouse bridge. The game reads only the mouse
+through DirectInput; keyboard input arrives as window messages.
+
+- Mouse positions are mapped from the content rectangle into 640x480 and fed
+  through the game's own virtual cursor integration (input state at `+2FF570`).
+  Clicks in black bars are ignored.
+- Mouse state resets on focus, acquisition and window-size transitions.
+  Keyboard cursor animation continues while the mouse is stationary.
+- A button press released before the next input sample is latched for one
+  sample, so short clicks register.
+- Input requires the game window itself to have focus and is suspended while
+  the settings panel is open. F10 and F12 are never forwarded.
+
+## Desktop
+
+`platform/desktop` and `ui/window` make the game behave like a normal window.
+
+- The window procedure at `+1863D0` discards `WM_SYSCOMMAND` at `+186838`,
+  including `SC_SIZE`, `SC_MOVE`, `SC_MAXIMIZE` and `SC_CLOSE`. The loader
+  routes these to `DefWindowProc`, handles close and Alt+F4 directly, and posts
+  `WM_QUIT` to the native main loop (`+18778E`, `+18798C`). Quitting is not a
+  game result or save; the server handles the disconnected session.
+- GameStart installs a global `WH_KEYBOARD_LL` hook (`+8030`) that suppresses
+  the Windows key, Alt+Tab and other shortcuts regardless of focus. The loader
+  suppresses it at import `+2041E4`.
+- The game's `ShowCursor` loop, `AttachThreadInput`, `SetForegroundWindow`,
+  `SetActiveWindow` and `SystemParametersInfoA` writes (animation,
+  foreground lock, screensaver) are virtualized. These replacements affect
+  only the game DLL's imports.
+- The renderer at `+185753..+185830` warps the OS pointer and clamps the
+  software cursor to unscaled client coordinates every frame. A five-byte jump
+  skips that block in memory; the DLL hash and the original instruction bytes
+  must both match before it is written.
+- Message `0x64`, posted by the loss-of-activation handler to force the game
+  back to the foreground, is discarded.
+- The loader owns the cursor through `WM_SETCURSOR`: it is hidden only over
+  focused game content, and borders, black bars and the settings panel keep a
+  normal cursor.
+
+## Audio
+
+`platform/audio` hooks the `DirectSoundCreate8` import at `+20401C` (dsound
+ordinal 11). The music (`+1AAFCF`) and effect (`+1AA933`) paths both query
+`IDirectSoundBuffer8`. Substituting `DirectSoundCreate` initializes but its
+buffers return `E_NOINTERFACE` for that interface, leaving playback silent, so
+the hook keeps the SDK's exact `DirectSoundCreate8` signature. Decoding, mixing
+and volume stay in the game.
+
+See the [buffer API](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee418039(v=vs.85))
 and [DirectSoundCreate8](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/ee416762(v=vs.85)).
 
-The original window procedure at +1863D0 discards WM_SYSCOMMAND at +186838.
-That includes SC_SIZE, SC_MOVE, SC_MAXIMIZE and SC_CLOSE. The wrapper routes
-desktop commands to DefWindowProc, handles close/Alt+F4 directly, and posts
-WM_QUIT to the native main loop (+18778E/+18798C). Shutdown is not a synthetic
-game result or an in-game save command; the server handles disconnected sessions.
+## Settings panel
 
-D3D8 uses a back buffer selected at startup (640x480 times 1, 1.5, 2, 2.25, 3, 4, 4.5 or 6), with
-D3DSWAPEFFECT_COPY allowing an explicit presentation rectangle. Device Reset
-keeps that resolution and recreates the scale shader. Resizing the window only
-changes presentation. The shared content rectangle drives presentation and input. The input
-fallback requires the game window itself to have focus and is suspended while
-settings are open; settings clicks cannot become game actions.
+`ui/settings_ui` runs Dear ImGui with its official Win32 and DirectX 9 backends
+in a separate owned window and thread, so it works while the game is inactive
+and does not pause an online match. Only that thread touches ImGui or its DX9
+device. Changes are posted to the game's window thread, and a mutex protects
+the shared settings snapshot. Both threads enable per-monitor DPI awareness
+through ImGui's helper, avoiding Windows bitmap scaling.
 
-Automatic resolution reads physical display dimensions for the game's monitor,
-falling back to the adapter's display mode. It rounds the fitted 4:3 area up to
-the next supported preset and caps automatic selection at 4.5x. The 6x setting
-remains a manual supersampling option. Account preferences v5 preserve v1-v4
-manual scales and migrate the old HD toggle to both artwork and fonts. Each
-game/settings thread enables DPI awareness through the official ImGui helper
-before creating its windows. Automatic selection uses the monitor hosting the
-window at startup; moving the window later does not trigger a device reset.
+Preferences are stored per account as JSON in
+`runtime-dir/settings/<POL-ID>.json`, with the same path and hard-link
+protections as logs. Malformed files fall back to defaults; out-of-range sizes
+and scales fall back individually. Only the eight advertised scales are accepted.
 
-F12 is handled by the game window and excluded from fallback keyboard samples.
-A queued screenshot is consumed on the render thread before Present. It copies
-the actual 32-bit backbuffer, respecting row pitch, then unlocks before WIC PNG
-encoding. Only opaque RGB is saved because render-target alpha is unreliable.
-Output remains inside the existing logs boundary; CREATE_NEW makes filename
-collisions non-destructive. No request means no readback, encoding or disk I/O.
-The settings panel displays success/failure and can queue a capture before closing.
+## Known limitations
 
-HD companions carry artwork/font metadata in the same resource-owned COM
-attachment as the retained texture. Draws select a companion according to its
-category and restore the original binding afterward. Only exact verified font
-atlas IDs are classified as fonts; mixed lettering and unknown assets remain
-artwork. Conflicting categories for the same source image hash are rejected.
-
-The supported game's renderer sets FVF 0x1C4 at +18297F and creates a dynamic
-32-byte-stride vertex buffer at +1829C0. All fourteen draw sites in its rendering
-module use DrawPrimitive with this pretransformed XYZRHW/color/specular/UV
-layout. Simply enlarging the buffer would leave these coordinates unscaled.
-Above 1x, the wrapper substitutes a small vs.1.1 shader at SetVertexShader (slot
-76). It converts the existing screen coordinates to clip space, preserves depth
-and reciprocal W, and passes colors/UVs through. Pixel edges follow
-`(coordinate + 0.5) * factor - 0.5`; no game coordinates, input or assets change.
-
-CreateVertexBuffer (slot 23) clears only the native 0x1C4 FVF tag at higher
-scales, using an explicit shader declaration instead. D3D8's software path
-bypasses shader input preparation for an XYZRHW-tagged buffer; leaving the tag
-intact crashes on draw. Other buffer formats pass through. At 1x both hooks
-delegate unchanged. The shader bytecode is our own short program, documented
-instruction by instruction; there is no runtime shader compiler dependency.
-
-Resolution is a next-launch preference to avoid resetting the device while
-native default-pool resources and an online match are active. Failure to create
-the larger device or shader at startup retries at 1x and logs the fallback.
-Window settings v5 stores a fractional manual scale, automatic selection and
-separate artwork/font toggles; v1-v4 preferences remain readable. Only the eight
-advertised manual scales are accepted.
-The 4.5x preset is 2880x2160: exact-height 4:3 content on a 4K display. Present
-source rectangles use consistently rounded edges at fractional scales. The
-ImGui panel reports the actual active resolution separately. Texture replacement
-dimensions are independent of the render scale; native UVs remain unchanged.
-
-Native initialization at +1828AB/+1828BF selects linear minification and
-magnification; +1828D3/+1828E7 selects clamp addressing. The native code scan
-through +1B0000 found no indirect SetViewport (slot40) calls that would restore
-a 640x480 viewport after CreateDevice. These are static observations; full
-native visual validation remains separate from the headless pixel checks.
-
-ABI references: [Direct3D 8 interfaces](https://github.com/wine-mirror/wine/blob/master/include/d3d8.h).
-Pixel alignment follows the [Direct3D rasterization convention](https://learn.microsoft.com/en-us/windows/win32/direct3d9/directly-mapping-texels-to-pixels).
-
-The settings UI uses Dear ImGui's supported Win32/DX9 backends in a separate
-owned window. Only that UI thread touches ImGui or its DX9 device. Changes are
-posted to the game's window thread; a mutex protects the small settings snapshot.
-The panel does not replace the game's graphics device or require an unofficial
-D3D8 ImGui backend. Preferences use a dedicated runtime/settings tree with the
-same canonical path and hard-link protections as logs.
-
-The initial desktop update missed additional fullscreen behavior. GameStart
-installs a global WH_KEYBOARD_LL callback (+8030) that suppresses Windows keys,
-Alt+Tab/Alt+Escape and other shortcuts without testing which app has focus.
-The desktop adapter suppresses that installation at import +2041E4. It also
-virtualizes the game's ShowCursor loop, AttachThreadInput, SetForegroundWindow
-and SetActiveWindow imports and its animation/foreground-lock/screensaver
-setting writes. Those replacements affect only the game DLL's imports.
-
-The native renderer at +185753..+185830 warps the OS pointer and clamps the
-software cursor to unscaled client coordinates every frame. A guarded five-byte
-branch skips that block; both the DLL hash and relocated original instruction
-must match. The game file on disk is unchanged. The wrapper owns cursor shape
-through WM_SETCURSOR and hides it only within focused game content. ImGui retains
-normal cursor handling. Message 0x64, posted by the native loss-of-activation
-handler to force the game back to the foreground, is consumed by the wrapper.
-- The local xiloader checkout provided module/build/API style reference only;
-  no xiloader implementation files or proprietary runtime files were copied.
-  `source_provenance.json` records hashes of the supplied harness sources.
-
-## COM ABI audit after review
-
-The first extraction accidentally omitted the two SquareEnix registry-name
-getters when counting the area setter. This was caught before any native run.
-The corrected mappings were checked against both C and C++ declarations in
-the supplied `polcore_interface.h` and the named calls in `tm_wrapper.cpp`:
-
-| Call | Slot | ABI arguments after this |
-|---|---:|---|
-| SetParamInit |5| HINSTANCE, mutable LPSTR |
-| GetCommonFunctionTable |7| unsigned long** |
-| SetAreaCode |27| signed long |
-| TM GameStart |9| core IUnknown*, 28-byte LaunchDescriptor* |
-
-Slots23/24 are PlayOnline registry-name getters and25/26 are SquareEnix
-registry-name getters; neither pair may be skipped. All calls above return
-HRESULT and use stdcall. COM factories use the Windows SDK IClassFactory ABI.
-The existing D3D8 slots/signatures were compared with the original wrapper
-without changes: factory CreateDevice15, display mode8, device Present15,
-back-buffer16, texture20, draw70..73; surface description8, lock9, unlock10.
-Common-function-table calls remain the original cdecl variadic ABI, separate
-from COM vtable indices.
-
-The headless mock declares the complete named Viewer method sequence through
-SetAreaCode and verifies actual dispatch, input arguments and output-table
-pointer. It explicitly demonstrates that slot25 reaches a different method;
-reintroducing the original mistaken index fails the regression check.
+- Offsets and pointer scans are tied to the two pinned DLLs. Other builds are
+  rejected rather than supported.
+- Native state is module-global, so one process hosts one game session. There
+  is no reconnect or account manager.
+- Profile bootstrap polling is synchronous, up to five seconds per request.
+- After GameStart returns, the loader terminates its own process. Full COM and
+  DLL teardown is not attempted.
+- The input bridge implements only the mouse path the game uses;
+  joysticks, buffered input and force feedback are not supported.
+- Moving the window to another monitor does not change the automatic
+  resolution; it is chosen once at startup.
+- The texture and viewport observations above come from static analysis of
+  the native code, not a runtime guarantee.

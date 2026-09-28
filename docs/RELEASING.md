@@ -1,47 +1,51 @@
-# Releases
+# Releasing
 
-The private [tmloader repository](https://github.com/sruon/tmloader) uses
-[release-please](https://github.com/googleapis/release-please-action). Push
-Conventional Commits to `main`: `fix:` for patches, `feat:` for features and
-`!` or `BREAKING CHANGE:` for incompatible changes. Release-please maintains a
-release PR with `version.txt`, its manifest and generated changelog. Merge that
-PR to create the release. CMake, `--version` and package receipts use the same
-version file.
+Releases are automated with
+[release-please](https://github.com/googleapis/release-please-action). The
+version lives in `version.txt` and is shared by CMake, `--version` and package
+manifests.
 
-The workflow builds the exact release commit on Windows with MSVC, C++23 and
-the static x86 runtime. It checks formatting, runs C++/Python tests, verifies
-the executable and tests both extracted archives. Tests requiring a real
-graphics device are excluded from hosted CI; they remain available locally.
-No CI step starts the original game or a server.
+## Flow
 
-Each release supplies:
+1. Push [Conventional Commits](https://www.conventionalcommits.org/) to `main`:
+   `fix:` for patches, `feat:` for features, and `!` or `BREAKING CHANGE:` for
+   incompatible changes.
+2. Release-please maintains a release PR that updates `version.txt`, its
+   manifest and `CHANGELOG.md`.
+3. Merging that PR creates a draft release. CI builds the release commit with
+   MSVC (C++23, static x86 runtime), checks formatting, runs the C++ and Python
+   tests, then builds both archives, checking the executable and running
+   `tmloader.exe --check` in the extracted full archive.
+4. When both archives pass, they are attached and the draft is published.
 
-- `tmloader-VERSION-windows-x86.zip`: loader, setup/import helpers and connection
-  configuration; no original DLLs, media, HD textures, Python or server.
-- `tmloader-VERSION-windows-x86-full.zip`: the same client plus the supported
-  original DLLs/media, factory settings and the HD texture pack.
-- `SHA256SUMS.txt` and `validation.json`: archive hashes and verification results.
+Tests that need a real graphics device are excluded from hosted CI. No CI step
+starts the game or a server.
 
-Releases stay in draft until both archives pass checks and are attached. Build
-artifacts are also available on successful CI runs for seven days. If a release
-build or upload fails, rerun its failed jobs; do not create another tag manually.
-Creating a release and preparing its successor are separate steps. An unpublished
-draft blocks new release PRs until publication finishes, avoiding duplicate PRs
-while the Windows build is running.
+While a draft is unpublished, no new release PR is opened. If a release build
+or upload fails, rerun the failed jobs rather than tagging manually.
 
-The flow uses the repository's automatic `GITHUB_TOKEN`, without a personal
-access token. Repository Actions settings must allow Actions to create pull
-requests. Because bot-created PRs do not trigger another PR workflow, the release
-job explicitly dispatches CI for its release branch. Publishing is part of the
-same workflow, so it does not depend on a bot-created release event.
+The workflow uses the repository's `GITHUB_TOKEN`. The repository's Actions
+settings must allow Actions to create pull requests. Because bot-created PRs
+do not trigger workflows, the release job dispatches CI for the release branch
+itself, and publishing runs in the same workflow.
 
-Build both archives locally after compiling the loader:
+## Release contents
+
+| File | Contents |
+|---|---|
+| `tmloader-VERSION-windows-x86.zip` | Loader, setup and import helpers, connection settings. No game files, HD textures, Python or server. |
+| `tmloader-VERSION-windows-x86-full.zip` | The same client plus the supported game and Viewer DLLs, original data and audio, factory Viewer settings and the HD texture pack. |
+| `SHA256SUMS.txt` | Archive hashes |
+| `validation.json` | Verification results |
+
+CI runs also upload both archives as build artifacts, kept for seven days.
+
+## Building locally
 
 ```powershell
 python tools/build_release.py --loader build/Release/tmloader.exe
 ```
 
-Output defaults to `out/release/`; existing archives are never overwritten.
-The checked-in inputs are described in [assets/README.md](../assets/README.md).
-They are isolated from personal runtime files. The [individual package
-builder](DISTRIBUTION.md) still supports each inclusion flag separately.
+Output goes to `out/release/` and existing archives are never overwritten. The
+full archive's inputs are described in [assets/README.md](../assets/README.md);
+the package layout and checks are in [distribution](distribution.md).

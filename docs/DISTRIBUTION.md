@@ -1,93 +1,57 @@
-# Client-only Windows distribution
+# Distribution
 
-`tools/package_app.py` builds an unzip-and-run tmloader client. **Neither tmserver
-nor Python is included.** The server is built/deployed separately, and Play
-only opens the client against the configured endpoint. Windows PowerShell
-handles optional asset import and setup; recipients need no developer tools.
+`tools/build_release.py` builds two unzip-and-run archives. Neither contains a
+server; the loader connects to the server named in `tmloader.ini`.
 
-GitHub CI builds both archive variants from the private repository's `assets/`
-inputs. See [release automation](RELEASING.md), or run
-`python tools/build_release.py --loader build/Release/tmloader.exe` locally.
+| Archive | Contents |
+|---|---|
+| `tmloader-VERSION-windows-x86.zip` | `tmloader.exe`, a sample `tmloader.ini` and license notices |
+| `tmloader-VERSION-windows-x86-full.zip` | The same, plus `runtime/`: the supported game and Viewer DLLs, original data and audio, factory Viewer settings and the HD texture pack |
 
-```powershell
-py -3 tools/package_app.py --loader build-browser/Release/tmloader.exe
-```
-
-Output: `out/dist/TetraMaster-portable.zip`. Existing output files are never
-overwritten. Use `--output` for another filename. The build needs Python 3.13+
-and a compiled x86 loader, but no tmserver checkout or downloaded interpreter.
-
-Connection defaults can be selected when packaging:
-
-```powershell
-py -3 tools/package_app.py --loader build-browser/Release/tmloader.exe `
-  --server-address 203.0.113.10 --game-port 51241 --profile-port 51220 `
-  --output out/dist/TetraMaster-client.zip
-```
-
-The address above is a documentation example. Use the deployed server's numeric
-IPv4 address; the loader currently does not accept DNS names. Without these
-options the INI has loopback/test defaults. Recipients use **Connection
-Settings.cmd** to edit their endpoint and operator-provided credentials.
-Passwords/current personal INIs are not taken from the build machine.
-
-## Optional assets
-
-Original client DLLs, original media and HD replacements are independently
-opt-in. Supplying a runtime path alone includes nothing:
-
-```powershell
-py -3 tools/package_app.py --loader build-browser/Release/tmloader.exe `
-  --output out/dist/TetraMaster-local-full.zip `
-  --runtime runtime --include-dlls --include-originals `
-  --viewer-defaults 'C:/Program Files (x86)/PlayOnline/SquareEnix/PlayOnlineViewer/default/pub/home/option.bin' `
-  --include-upgraded runtime/textures-hd-v2/pack.json
-```
-
-- `--include-dlls`: exactly the two supported, hash-pinned game/Viewer DLLs.
-- `--include-originals`: known data tables, graphics archives, audio and Viewer
-  environment data, plus the hash-pinned factory Viewer option template.
-- `--include-upgraded PACK_JSON`: referenced PNGs and engine manifest fields.
-  Private build paths and unused authoring files are stripped.
-
-Even the full bundle is client-only. No accounts, server catalogue/protocol data,
-server executable/code, server startup script or Python runtime are selected.
-Saves, logs, private preferences and AI models are omitted. Optional bundles do
-not grant permission to redistribute proprietary assets.
-
-## Layout and first run
+## Layout
 
 ```text
 TetraMaster/
-  Play.cmd, Check Setup.cmd, Import Game Files.cmd, Connection Settings.cmd
-  client/tmloader.exe, tmloader.ini, runtime/ (optional client assets)
-  app/client.ps1, assets.ps1, asset-policy.json
-  licenses/
-  package-manifest.json
+  tmloader.exe
+  tmloader.ini                 read automatically from the executable's folder
+  LICENSE.txt                  GPL-3.0
+  THIRD_PARTY_NOTICES.txt      CLI11, Dear ImGui, nlohmann/json, WIL
+  runtime/                     full archive only
+    TM_native.dll, polcore_native.dll
+    data/                      original tables, graphics and audio
+    pub/home00/option.bin      factory Viewer settings
+    textures/                  HD texture pack (toggled in F10)
 ```
 
-Import local assets if needed, enter connection details, check setup, then Play.
-See [the packaged instructions](PORTABLE_README.txt). Check Setup is read-only;
-Play adjusts only this app's writable runtime directories before opening the
-game. No script starts a server. Script execution policy is limited to the
-helper process and does not alter Windows policy settings.
+Edit `tmloader.ini` with the server address, ports and account from the server
+operator, then run `tmloader.exe`. `tmloader.exe --check` validates the setup
+without starting the game.
 
-The importer uses the builder's exported hash/selection policy, checks the
-complete selection before writes, validates staged originals/textures with
-tmloader, and refuses changed destination files or linked paths. It imports
-factory Viewer defaults rather than private account preferences.
+With the minimal archive, create `runtime/` with the same layout from an
+original install: `TM.dll` from the game folder renamed to `TM_native.dll`,
+the game's `data\` folder, `viewer\com\polcore.dll` from the PlayOnline Viewer
+renamed to `polcore_native.dll`, the Viewer's `data\utf\env.dat`, and its
+`default\pub\home\option.bin` as `pub\home00\option.bin`. `--check` verifies
+the DLL hashes and required files.
 
-## Validation
+The game runs at low integrity. On launch the loader labels `runtime/pub`,
+`runtime/logs` and `runtime/settings` as writable at that level; everything
+else stays read-only to the game.
+
+## Building
 
 ```powershell
-py -3 -m unittest tests.tools.test_distribution
-py -3 tools/check_portable.py --root 'out/extracted/TetraMaster'
+python tools/build_release.py --loader build/Release/tmloader.exe
 ```
 
-The checker verifies the exact manifest, rejects server/Python/save payloads,
-and runs the native read-only setup check when originals are included. It
-does not open the game, contact services or start a backend. File hashes are
-authoritative even when a checkout has uncommitted edits.
+Output goes to `out/release/` (`--output` for another folder); existing
+archives are never overwritten. The script:
 
-The [browser integration](BROWSER.md) consumes this same client subtree. Its
-WebSocket gateway connects to an explicitly separate tmserver deployment.
+1. Checks the loader is a PE32 x86 GUI executable linked without ASLR and DEP,
+   with an `asInvoker` manifest.
+2. Writes both archives with fixed timestamps.
+3. Extracts the full archive and runs its `tmloader.exe --check`, failing if
+   the check fails or changes any extracted file.
+4. Writes `SHA256SUMS.txt` and `validation.json`.
+
+Including game files does not grant permission to redistribute them.

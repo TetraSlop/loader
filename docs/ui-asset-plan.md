@@ -1,72 +1,67 @@
-# UI and portrait texture pack
+# UI asset plan
 
-`tools/build_ui_pack.py` handles the **181 UI/background textures and 30
-portraits** in the original exports. Card illustrations and the 42 font
-atlases have separate workflows. Every output retains its original image
-coordinates, animation-frame placement and exactly four times its width and
-height. The original game archives are read only.
+`tools/build_ui_pack.py` builds replacements for the **181 UI and background
+textures and 30 portraits**. Card illustrations and the 42 font atlases have
+their own workflows. Every output keeps its original image coordinates and
+animation-frame placement at exactly 4x size, and the game archives are only
+read.
 
-The [second UI pass](title-ui-refinement.md) supersedes the first-pass treatment
-below for the title background/wordmark, version/copyright, PlayOnline controls,
-status icons/counters and glove cursor. Those now receive the reviewed complete
-D title pass or explicit vector replacements. The original descriptions below
-remain useful for the other assets and the initial comparison history.
+The title background and wordmark, version and copyright text, PlayOnline
+controls, status icons and counters, and the glove cursor are handled by a
+later pass described in [title and UI refinement](title-ui-refinement.md).
 
-Run with the prepared local chaiNNer environment:
+## Building
 
 ```powershell
-out/hd-work/venv/Scripts/python.exe -m pip install chainner_ext==0.3.10
 out/hd-work/venv/Scripts/python.exe tools/build_ui_pack.py
 ```
 
-The extension is chaiNNer's own standard resize backend, pinned to the version
-requested by this checkout. It stays in the offline environment. Python 3.13
-may build its wheel locally if no compatible published wheel is available.
+It needs `chainner_ext`, chaiNNer's resize backend, which
+`tools/texture_requirements.txt` pins to the version the checkout requests;
+Python 3.13 may build the wheel locally. An interrupted run resumes from the
+outputs whose hashes still match.
 
-The separate output is `out/texture-lab/variants/ui-complete/`. Its `pack.json`
-uses the runtime replacement manifest format: source and output SHA256 hashes,
-image ID, relative output path, original dimensions and physical dimensions.
-Per-image method descriptions distinguish reconstructed illustrations from
-faithfully resized lettering. Duplicate originals receive identical outputs,
-which is required by the runtime's source-image hash matching.
+The output is `out/texture-lab/variants/ui-complete/`. Its `pack.json` uses the
+runtime manifest format: source and output SHA256, image ID, output path, and
+logical and physical dimensions. Per-image method notes distinguish
+reconstructed illustrations from resized lettering. Duplicate originals get
+identical outputs, as the runtime's hash matching requires.
 
 ## Treatment by asset
 
 | Content | Treatment |
-| --- | --- |
-| All 30 illustrated portraits | User-selected D: RealESRGAN x4plus through chaiNNer's inference backend. |
-| Card frames, parchment panels, decorative arrows, moogle, illustrated effects | D for RGB; original alpha coverage enlarged separately. |
-| Stat digits, P/M/X/A, control symbols, cursor poses, results/event lettering | chaiNNer Lanczos RGB with mild 20% sharpening; Catmull-Rom enlargement of the source alpha. No neural interpretation of characters. |
-| Eight main-menu labels | Recreated with locally installed Arial Bold Italic, fitted to original ink bounds, with a gold gradient and shadow. Exact original wording and atlas positions retained. |
-| Eight direction arrows and yellow 0–9 stat digits | Reviewed vector triangles and Arial Black digits, fitted to original ink bounds and palette inside native sprite cells. |
-| Title-menu horse illustration and portrait-frame decoration | D on the explicitly audited decorative rectangles; deterministic treatment elsewhere. |
-| Main-menu room background | Join all six original tiles, apply D once, split back into original tile positions. |
-| Title, game background, four/five-row game boards | Same joined processing, with original baked-in logos/lettering protected from D. |
+|---|---|
+| All 30 portraits | D (RealESRGAN x4plus) through chaiNNer's backend |
+| Card frames, parchment panels, decorative arrows, moogle, illustrated effects | D for RGB; original alpha enlarged separately |
+| Stat digits, P/M/X/A, control symbols, cursor poses, result and event lettering | chaiNNer Lanczos RGB with 20% sharpening and Catmull-Rom alpha; no neural processing of characters |
+| Eight main-menu labels | Arial Bold Italic, fitted to the original ink bounds, with a gold gradient and shadow |
+| Eight direction arrows and yellow 0-9 stat digits | Vector triangles and Arial Black digits fitted to the original ink bounds and palette |
+| Title-menu horse and portrait-frame decoration | D on audited decorative rectangles; deterministic treatment elsewhere |
+| Main-menu room background | All six tiles joined, D applied once, split back into tiles |
+| Title, game background, four- and five-row boards | Same joined processing, with baked-in logos and lettering protected from D |
 
-The deterministic treatment preserves existing glyph shapes and wording. It
-does not recover vector outlines or claim new font detail. The main-menu
-labels are a separately reviewed exception: Play, VS. COM, Card Shop, Auction,
-Player Data, Rankings, Options and Back use vector glyphs. Their label and
-shadow bounds are checked, and the builder verifies that no pixels outside
-the eight audited rectangles change. The system font is read locally and its
-hash is recorded; no font file is copied into the pack. `--menu-font` selects
-an explicit alternative, although its appearance would need separate review.
-The three cursor poses retain their coordinates and original silhouettes; the noisy AI cursor
-sample is not selected. Partial-opacity symbols retain their original alpha
-range, including the unusual status symbols whose maximum coverage is below
-255. Alpha is processed separately from RGB to avoid dark transparent fringes.
+The deterministic treatment preserves existing glyph shapes and wording; it
+does not recover vector outlines. The menu labels (Play, VS. COM, Card Shop,
+Auction, Player Data, Rankings, Options, Back) are the exception. The builder
+checks their label and shadow bounds and verifies that no pixel outside the
+eight audited rectangles changes. System fonts are read locally and their
+hashes recorded; no font file is copied into the pack. The files are listed
+in the builder's `FONTS` table and read from `--fonts` (`C:/Windows/Fonts`).
 
-## Main-menu native rectangles
+Partial-opacity symbols keep their original alpha range, including status
+symbols whose maximum coverage is below 255. Alpha is processed separately
+from RGB to avoid dark fringes.
+
+## Main-menu label rectangles
 
 The main-menu constructor at `+14899D..+148B69` initializes seven 20-byte
-records on the stack. `+148E14..+148EA0` passes each to `+18EB40`, which copies
-the source X/Y from record offsets `+10/+12` into object fields `+E0/+E2`.
-Both native label draws (`+18EDD4` and `+18EEF2`) use the same source rectangle
-of 120 by 24 pixels. The CPU menu title at `+BD25D..+BD286` samples VS. COM
-from X=0, Y=72, with the same dimensions.
+records. `+148E14..+148EA0` passes each to `+18EB40`, which copies the source
+X/Y from record offsets `+10`/`+12` into object fields `+E0`/`+E2`. Both label
+draws (`+18EDD4`, `+18EEF2`) use a 120x24 source rectangle. The CPU menu title
+at `+BD25D..+BD286` samples VS. COM from (0, 72) with the same size.
 
-| Label | Native source rectangle (left, top, right, bottom) |
-| --- | --- |
+| Label | Source rectangle (left, top, right, bottom) |
+|---|---|
 | Play | 120, 48, 240, 72 |
 | VS. COM | 0, 72, 120, 96 |
 | Card Shop | 120, 72, 240, 96 |
@@ -76,74 +71,65 @@ from X=0, Y=72, with the same dimensions.
 | Options | 120, 192, 240, 216 |
 | Back | 120, 216, 240, 240 |
 
-Reconstruction changes only those rectangles. The original gold ink bounds
-determine each new label's size and position; its one-source-pixel shadow must
-fit with at least a one-source-pixel gutter inside the native rectangle.
-The native code still controls input, destination geometry, enabled state,
-color modulation and hover animation. In the alternate draw branch it uses
-the same UVs but reduces the destination and RGB multiplier from 128 to 80;
-no separately baked hover/disabled glyphs exist in these rectangles.
+Only these rectangles change. Each label's size and position follow the
+original gold ink bounds, and its one-pixel shadow must leave at least a
+one-pixel gutter inside the rectangle. The game still controls input,
+destination geometry, enabled state, color modulation and hover animation. Its
+alternate draw branch uses the same UVs with a smaller destination and an RGB
+multiplier of 80 instead of 128; there are no separate hover or disabled
+glyphs.
 
-## Stat digit and direction-arrow rectangles
+## Stat digits and direction arrows
 
-`tools/ui_glyphs.py` contains both reviewed vector passes. In `on_card1`,
-the eight arrows are N, NE, E, SE, S, SW, W, NW. Native code at
-`+B4F58..+B4FC0` samples `(16*direction + 1, 89)` with dimensions 16 × 16.
-That one-pixel origin offset is intentional. Native yellow digits use
-`(24*digit, 104)` with dimensions 24 × 24, confirmed by the hundreds and
-tens draws at `+B5CEA..+B5D3C` and `+B5E67..+B5EB9`.
+`tools/ui_glyphs.py` draws both. In `on_card1`, the arrows are N, NE, E, SE, S,
+SW, W, NW. Native code at `+B4F58..+B4FC0` samples `(16*direction + 1, 89)`
+at 16x16; the one-pixel X offset is intentional. Yellow digits are sampled at
+`(24*digit, 104)` at 24x24, confirmed by the hundreds and tens draws at
+`+B5CEA..+B5D3C` and `+B5E67..+B5EB9`.
 
-The builder uses exact original palette colors: arrows RGB(232,159,25),
-bevel (192,95,1), outline (11,11,11); yellow digits (246,217,57), dark
-outline (20,10,3). All 18 reconstructed sprites retain their original ink
-positions. Visible outlines stay inside each native rectangle with a gutter;
-the audit lists their bounds. Pixels outside the 18 rectangles are checked
-against the baseline, and regeneration was verified to be idempotent. The
-small white stat characters, handwritten score digits, and COMBO mark are
-not modified by this pass.
+| Sprite | Fill | Bevel | Outline |
+|---|---|---|---|
+| Arrows | RGB(232,159,25) | RGB(192,95,1) | RGB(11,11,11) |
+| Yellow digits | RGB(246,217,57) | | RGB(20,10,3) |
 
-The yellow digits use the locally installed `ariblk.ttf` (Arial Black), with
-its SHA256 recorded as `stat_font_sha256`; `--stat-font` can explicitly select
-another font. No font files are bundled. The original ink coordinates and
-individual digit widths remain authoritative, so font advances cannot alter
-TM's numerical layout.
+All 18 sprites keep their original ink positions, visible outlines stay inside
+their rectangles with a gutter, pixels outside the 18 rectangles are checked
+against the original, and regeneration is idempotent. Small white stat
+characters, handwritten score digits and the COMBO mark are not changed.
 
-## Verified background arrangement
+Digits use the installed `ariblk.ttf` (Arial Black), with its SHA256 recorded
+as `stat_font_sha256`. The original ink
+coordinates and digit widths are authoritative, so font advances cannot change
+the game's number layout.
 
-The menu, title and game backgrounds form a **640 × 448** image: columns of
-256, 256 and 128 pixels; rows of 256 and 192 pixels. Their names end in 0–5
-in row order. Native `back0` drawing begins at TM `+D3DD4`; the rectangles at
-`+D3DF9`, `+D3E5D`, `+D3EC3` and following calls confirm this arrangement.
-`menu_bg0` starts the corresponding sequence at `+D419C`.
+## Background arrangement
 
-The two boards form **360 × 448** images, with 256/104-pixel columns and
-256/192-pixel rows. Native table `+233A74` selects `masu_4a` through `masu_4d`
-or `masu_5a` through `masu_5d`; drawing at `+D44A0..+D4752` confirms the grid.
-Their on-screen origin is X=171. Native quirks are retained: the top-right
-board tile starts sampling at source X=1, and some title/menu draws sample
-194 rows from a 192-row PNG plus the original GPU padding. Replacement loading
-must continue scaling the entire original GPU allocation, including padding.
+Menu, title and game backgrounds form a **640x448** image: columns of 256, 256
+and 128 pixels and rows of 256 and 192 pixels, with names ending 0-5 in row
+order. `back0` drawing starts at `+D3DD4`; the rectangles at `+D3DF9`,
+`+D3E5D`, `+D3EC3` and following calls confirm the arrangement. `menu_bg0`
+starts at `+D419C`.
 
-Tile files are split from one processed image, not upscaled independently.
-The tool reconstructs every group and checks byte-for-byte equality with that
-single result, including the split boundaries. The game/title/board logos use
-audited source rectangles and an outside feather; the protected lettering
-itself uses only the deterministic method. Native atlas rectangles are unchanged.
+The boards form **360x448** images with 256/104-pixel columns and 256/192-pixel
+rows. Table `+233A74` selects `masu_4a` to `masu_4d` or `masu_5a` to `masu_5d`,
+and drawing at `+D44A0..+D4752` confirms the grid, with the on-screen origin at
+X=171. Two native quirks are kept: the top-right board tile samples from source
+X=1, and some title and menu draws sample 194 rows from a 192-row PNG plus GPU
+padding. Replacements must therefore scale the whole original GPU allocation,
+including padding.
 
-## Review and remaining limits
+Tiles are split from one processed image and the builder checks byte-for-byte
+equality with that image, including the split boundaries. Logos use audited
+source rectangles with an outside feather, and the protected lettering uses
+only the deterministic method.
 
-`review/` contains before/after sheets for the five joined backgrounds,
-representative portraits, title-menu labels, stat digits, cursor, control
-atlases and copyright lettering. `audit.json` records coverage and review
-items. The originals were visually audited as contact sheets under
-`out/texture-lab/ui-audit/`.
+## Review output and limits
 
-Actual in-game appearance at 1440p and 4K still needs user inspection. These
-are offline texture comparisons; no game window, mouse or keyboard was
-controlled. The font-atlas work is separate. Handwritten scores, custom title
-and event wordmarks, the hand cursor and the three copper combat symbols
-still retain filtered original contours. They are covered by the pack but
-can remain visibly pixelated at large sizes. Experimental copper-symbol
-tracing was rejected because it distorted shapes or retained wobbly edges.
-Those assets would need a separate matched reconstruction pass to become
-fully smooth; the installed pack does not claim that work is finished.
+`review/` contains before and after sheets for the joined backgrounds,
+representative portraits, menu labels, stat digits, cursor, control atlases
+and copyright text, and `audit.json` records coverage and review items.
+
+Handwritten scores, custom title and event wordmarks and the three copper
+combat symbols keep filtered original contours and can look pixelated at large
+sizes. Tracing the copper symbols distorted their shapes and was rejected;
+smoothing them needs a separate reconstruction pass.
