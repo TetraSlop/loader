@@ -17,6 +17,18 @@ add_library(loader_textures STATIC
 target_include_directories(loader_textures PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(loader_textures PUBLIC loader_config PRIVATE nlohmann_json::nlohmann_json)
 
+add_library(loader_hosted STATIC
+    hosted/auth.cpp
+    hosted/auth.h
+    hosted/http.cpp
+    hosted/http.h
+    hosted/session.cpp
+    hosted/session.h
+    hosted/tunnel.cpp
+    hosted/tunnel.h)
+target_include_directories(loader_hosted PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(loader_hosted PUBLIC loader_config winhttp crypt32 ws2_32 PRIVATE nlohmann_json::nlohmann_json)
+
 add_executable(tmloader WIN32
     app/abi.h
     app/com.h
@@ -42,20 +54,24 @@ add_executable(tmloader WIN32
     platform/patch.cpp
     platform/patch.h
     platform/system.cpp
+    ui/imgui_window.cpp
+    ui/imgui_window.h
+    ui/launcher.cpp
+    ui/launcher.h
     ui/settings_ui.cpp
     ui/window.cpp
     ui/window.h
     ui/window_settings.h)
 target_link_libraries(tmloader PRIVATE
-    loader_config loader_imgui loader_textures nlohmann_json::nlohmann_json
-    ole32 windowscodecs advapi32 user32 gdi32 ws2_32)
+    loader_config loader_hosted loader_imgui loader_textures nlohmann_json::nlohmann_json
+    ole32 windowscodecs advapi32 user32 gdi32 shell32 ws2_32)
 # Keep tmloader.exe at <build>/<config>/ rather than under src/.
 set_target_properties(tmloader PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 # The game DLL executes generated code and expects fixed addresses.
 target_link_options(tmloader PRIVATE /ENTRY:mainCRTStartup /NXCOMPAT:NO /DYNAMICBASE:NO
     /MANIFEST:EMBED "/MANIFESTUAC:level='asInvoker' uiAccess='false'")
 
-foreach(target IN ITEMS loader_config loader_textures tmloader)
+foreach(target IN ITEMS loader_config loader_hosted loader_textures tmloader)
     get_target_property(sources ${target} SOURCES)
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${sources})
 endforeach()

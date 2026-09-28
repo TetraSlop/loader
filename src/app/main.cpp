@@ -1,5 +1,7 @@
+#include "app/log.h"
 #include "app/runtime.h"
 #include "textures/texture_pack.h"
+#include "ui/launcher.h"
 #include <algorithm>
 #include <cstdio>
 #include <exception>
@@ -41,6 +43,47 @@ auto withDefaultConfig(std::vector<std::string> args) -> std::vector<std::string
     return args;
 }
 
+// Double-clicked GUI processes have no console, so errors also get a message box.
+void report(const char* error)
+{
+    std::fprintf(stderr, "tmloader: %s\n", error);
+    if (!GetStdHandle(STD_ERROR_HANDLE))
+    {
+        MessageBoxA(nullptr, error, "Tetra Master", MB_OK | MB_ICONERROR);
+    }
+}
+
+auto play(const tmloader::Config& config) -> int
+{
+    auto session = std::unique_ptr<tmloader::hosted::HostedSession>{};
+    if (!config.hostedServer.empty())
+    {
+        session = tmloader::runLauncher(config);
+        if (!session)
+        {
+            return 0;
+        }
+    }
+
+    const auto exitCode = [&]
+    {
+        if (session)
+        {
+            return tmloader::launch(session->gameConfig(config));
+        }
+
+        return tmloader::launch(config);
+    }();
+    if (session)
+    {
+        session->endPlay();
+    }
+
+    // Legacy DLL teardown is unverified; exit without unloading them.
+    TerminateProcess(GetCurrentProcess(), static_cast<UINT>(exitCode));
+    return exitCode;
+}
+
 } // namespace
 
 auto main(int argc, char** argv) -> int
@@ -66,11 +109,14 @@ auto main(int argc, char** argv) -> int
         }
 
         tmloader::validateRuntime(config);
-        return tmloader::launch(config);
+        tmloader::options = config;
+        // Open the log before lowering integrity; the low-integrity token cannot create it.
+        tmloader::openLog(config.log);
+        return play(config);
     }
     catch (const std::exception& e)
     {
-        std::fprintf(stderr, "tmloader: %s\n", e.what());
+        report(e.what());
         return 2;
     }
 }

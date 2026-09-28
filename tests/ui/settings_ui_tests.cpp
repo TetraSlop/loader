@@ -125,7 +125,7 @@ TEST_CASE("Settings layout fits supported DPI scales", "[settings_ui]")
     for (const float scale : { 1.0f, 1.5f, 2.0f })
     {
         ImGui::CreateContext();
-        tmloader::configurePanel(scale);
+        tmloader::applyImGuiStyle(scale);
         auto& io = ImGui::GetIO();
         REQUIRE((io.ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) != 0);
         REQUIRE((io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange) == 0);

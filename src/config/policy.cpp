@@ -22,6 +22,13 @@ auto isIpv4Address(const std::string& host) -> bool
     return InetPtonA(AF_INET, host.c_str(), &address) == 1 && address.s_addr != INADDR_NONE && address.s_addr != INADDR_ANY;
 }
 
+auto isAllowedOrigin(const std::string& origin, bool insecureLoopback) -> bool
+{
+    static const auto secure   = std::regex(R"(https://[A-Za-z0-9.-]+(:\d{1,5})?)");
+    static const auto loopback = std::regex(R"(http://127\.0\.0\.1:\d{1,5})");
+    return std::regex_match(origin, secure) || (insecureLoopback && std::regex_match(origin, loopback));
+}
+
 auto pathIsWithin(const std::filesystem::path& path, const std::filesystem::path& root) -> bool
 {
     auto       error     = std::error_code{};

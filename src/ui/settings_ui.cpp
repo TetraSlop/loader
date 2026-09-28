@@ -3,17 +3,12 @@
 #include "graphics/render_scale.h"
 #include "graphics/screenshot.h"
 #include "imgui.h"
-#include "imgui_impl_dx9.h"
-#include "imgui_impl_win32.h"
 #include "textures/texture_replacements.h"
+#include "ui/imgui_window.h"
 #include "ui/window.h"
 #include <algorithm>
 #include <atomic>
-#include <d3d9.h>
 #include <thread>
-#include <wrl/client.h>
-
-extern IMGUI_IMPL_API auto ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM) -> LRESULT;
 
 namespace tmloader
 {
@@ -23,53 +18,6 @@ namespace
 std::atomic<bool> running{ false };
 std::atomic<bool> closeRequested{ false };
 std::atomic<HWND> panelWindow{ nullptr };
-// Used only on the panel thread, including its window procedure.
-UINT resizedWidth  = 0;
-UINT resizedHeight = 0;
-
-void configurePanel(const float scale)
-{
-    auto& io       = ImGui::GetIO();
-    io.IniFilename = nullptr; // Our account-scoped preferences are separate.
-    io.LogFilename = nullptr;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    ImGui::StyleColorsDark();
-    auto& style         = ImGui::GetStyle();
-    style.WindowPadding = ImVec2(18, 16);
-    style.ItemSpacing   = ImVec2(10, 10);
-    style.FrameRounding = 4;
-    style.ScaleAllSizes(scale);
-    style.FontScaleDpi = scale;
-}
-
-auto CALLBACK panelProc(const HWND hwnd, const UINT message, const WPARAM wparam, const LPARAM lparam) -> LRESULT
-{
-    if (message == WM_CLOSE || ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) &&
-                                (wparam == VK_F10 || wparam == VK_ESCAPE) && !(lparam & (1L << 30))))
-    {
-        closeRequested = true;
-        return 0;
-    }
-
-    if (ImGui_ImplWin32_WndProcHandler(hwnd, message, wparam, lparam))
-    {
-        return 1;
-    }
-
-    if (message == WM_SIZE && wparam != SIZE_MINIMIZED)
-    {
-        resizedWidth  = LOWORD(lparam);
-        resizedHeight = HIWORD(lparam);
-        return 0;
-    }
-
-    if (message == WM_SYSCOMMAND && (wparam & 0xfff0) == SC_KEYMENU)
-    {
-        return 0;
-    }
-
-    return DefWindowProcW(hwnd, message, wparam, lparam);
-}
 
 void displaySettings(WindowSettings value)
 {
@@ -249,166 +197,27 @@ void settingsContents()
     ImGui::End();
 }
 
-void runPanel(const HWND hwnd, const float scale)
+auto panelFrame() -> bool
 {
-    Microsoft::WRL::ComPtr<IDirect3D9> d3d;
-    if (hwnd)
-    {
-        d3d.Attach(Direct3DCreate9(D3D_SDK_VERSION));
-    }
-
-    Microsoft::WRL::ComPtr<IDirect3DDevice9> device;
-    auto                                     pp = D3DPRESENT_PARAMETERS{};
-    pp.Windowed                                 = TRUE;
-    pp.SwapEffect                               = D3DSWAPEFFECT_DISCARD;
-    pp.BackBufferFormat                         = D3DFMT_UNKNOWN;
-    pp.PresentationInterval                     = D3DPRESENT_INTERVAL_ONE;
-    auto hr                                     = HRESULT{ E_FAIL };
-    if (d3d)
-    {
-        hr = d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &pp, device.GetAddressOf());
-    }
-
-    if (FAILED(hr))
-    {
-        logLine("Settings panel graphics initialization failed: {:08X}", hex(hr));
-        return;
-    }
-
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    configurePanel(scale);
-    const auto platform = ImGui_ImplWin32_Init(hwnd);
-    const auto renderer = platform && ImGui_ImplDX9_Init(device.Get());
-    if (!renderer)
+    settingsContents();
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsKeyPressed(ImGuiKey_F10, false))
     {
         closeRequested = true;
     }
 
-    if (!closeRequested)
-    {
-        ShowWindow(hwnd, SW_SHOW);
-        SetForegroundWindow(hwnd);
-        SetFocus(hwnd);
-    }
-
-    bool lost = false;
-    while (!closeRequested && IsWindow(gameWindow))
-    {
-        MSG message{};
-        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE))
-        {
-            TranslateMessage(&message);
-            DispatchMessageW(&message);
-        }
-
-        if (closeRequested)
-        {
-            break;
-        }
-
-        if (lost)
-        {
-            hr = device->TestCooperativeLevel();
-            if (hr == D3DERR_DEVICELOST)
-            {
-                Sleep(20);
-                continue;
-            }
-        }
-
-        if (resizedWidth || hr == D3DERR_DEVICENOTRESET)
-        {
-            if (resizedWidth)
-            {
-                pp.BackBufferWidth  = resizedWidth;
-                pp.BackBufferHeight = resizedHeight;
-            }
-
-            ImGui_ImplDX9_InvalidateDeviceObjects();
-            hr = device->Reset(&pp);
-            if (FAILED(hr))
-            {
-                lost = true;
-                Sleep(20);
-                continue;
-            }
-
-            ImGui_ImplDX9_CreateDeviceObjects();
-            resizedWidth  = 0;
-            resizedHeight = 0;
-            lost          = false;
-        }
-
-        ImGui_ImplDX9_NewFrame();
-        ImGui_ImplWin32_NewFrame();
-        ImGui::NewFrame();
-        settingsContents();
-        ImGui::Render();
-        device->Clear(0, nullptr, D3DCLEAR_TARGET, D3DCOLOR_XRGB(24, 26, 32), 1.0f, 0);
-        if (SUCCEEDED(device->BeginScene()))
-        {
-            ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
-            device->EndScene();
-        }
-
-        hr   = device->Present(nullptr, nullptr, nullptr, nullptr);
-        lost = hr == D3DERR_DEVICELOST;
-    }
-
-    if (renderer)
-    {
-        ImGui_ImplDX9_Shutdown();
-    }
-
-    if (platform)
-    {
-        ImGui_ImplWin32_Shutdown();
-    }
-
-    ImGui::DestroyContext();
+    return !closeRequested && IsWindow(gameWindow);
 }
 
+// A separate window keeps the panel responsive while the game is inactive.
 void panelMain()
 {
-    // A separate D3D9 window keeps the panel responsive while the game is inactive.
-    ImGui_ImplWin32_EnableDpiAwareness();
-    const auto  instance = GetModuleHandleW(nullptr);
-    WNDCLASSEXW wc{ sizeof(WNDCLASSEXW) };
-    wc.style         = CS_CLASSDC;
-    wc.lpfnWndProc   = panelProc;
-    wc.hInstance     = instance;
-    wc.hCursor       = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512)); // IDC_ARROW
-    wc.lpszClassName = L"TMLoaderSettings";
-    RegisterClassExW(&wc);
-    const auto scale = ImGui_ImplWin32_GetDpiScaleForHwnd(gameWindow);
-    RECT       owner{};
-    GetWindowRect(gameWindow, &owner);
-    auto        width  = static_cast<int>(540 * scale);
-    auto        height = static_cast<int>(770 * scale);
-    auto        x      = int{ owner.left + 40 };
-    auto        y      = int{ owner.top + 40 };
-    MONITORINFO monitor{ sizeof(MONITORINFO) };
-    if (GetMonitorInfoW(MonitorFromWindow(gameWindow, MONITOR_DEFAULTTONEAREST), &monitor))
-    {
-        const auto& work = monitor.rcWork;
-        width            = std::min(width, static_cast<int>(work.right - work.left));
-        height           = std::min(height, static_cast<int>(work.bottom - work.top));
-        x                = std::clamp(x, static_cast<int>(work.left), static_cast<int>(work.right) - width);
-        y                = std::clamp(y, static_cast<int>(work.top), static_cast<int>(work.bottom) - height);
-    }
-
-    const auto hwnd = CreateWindowExW(0, wc.lpszClassName, L"Tetra Master settings", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, x, y, width, height, gameWindow, nullptr, instance, nullptr);
-    panelWindow     = hwnd;
-    runPanel(hwnd, scale);
+    const auto spec = ImGuiWindowSpec{ L"Tetra Master settings", 540, 770, gameWindow };
+    runImGuiWindow(spec, panelFrame, [](HWND hwnd)
+                   {
+                       panelWindow = hwnd;
+                   });
     panelWindow = nullptr;
-    if (hwnd)
-    {
-        DestroyWindow(hwnd);
-    }
-
-    UnregisterClassW(wc.lpszClassName, instance);
-    running = false;
+    running     = false;
 }
 
 } // namespace

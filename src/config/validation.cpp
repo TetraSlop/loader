@@ -20,27 +20,26 @@ constexpr auto coreHash = "73B1864BF522D3AA6EC28E9F4BB226FCEE956F7F4848A238C9C2D
 
 } // namespace
 
-auto sha256Bytes(const void* data, size_t bytes) -> std::string
+auto sha256(const void* data, size_t bytes) -> std::array<std::uint8_t, 32>
 {
     if (bytes > ULONG_MAX)
     {
         throw std::runtime_error("SHA256 input too large");
     }
 
-    wil::unique_bcrypt_algorithm algorithm;
-    if (BCryptOpenAlgorithmProvider(algorithm.put(), BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
-    {
-        throw std::runtime_error("Cannot initialize SHA256");
-    }
-
-    auto digest = std::array<BYTE, 32>{};
-    if (BCryptHash(algorithm.get(), nullptr, 0, static_cast<PUCHAR>(const_cast<void*>(data)), static_cast<ULONG>(bytes), digest.data(), static_cast<ULONG>(digest.size())) < 0)
+    auto digest = std::array<std::uint8_t, 32>{};
+    if (BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, static_cast<PUCHAR>(const_cast<void*>(data)), static_cast<ULONG>(bytes), digest.data(), static_cast<ULONG>(digest.size())) < 0)
     {
         throw std::runtime_error("SHA256 failed");
     }
 
+    return digest;
+}
+
+auto sha256Bytes(const void* data, size_t bytes) -> std::string
+{
     auto text = std::string{};
-    for (const auto byte : digest)
+    for (const auto byte : sha256(data, bytes))
     {
         text += std::format("{:02X}", byte);
     }

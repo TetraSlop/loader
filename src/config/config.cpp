@@ -26,6 +26,8 @@ void defineOptions(CLI::App& app, Config& config)
     app.add_option("--profile-port", config.profilePort, "Profile port")->type_name("PORT")->capture_default_str()->check(CLI::Range(1, 65535).description(""));
     app.add_option("--pol-id", config.polId, "Account ID")->type_name("ID")->capture_default_str();
     app.add_option("--password", config.password, "Account password")->type_name("TEXT")->capture_default_str();
+    app.add_option("--hosted-server", config.hostedServer, "Sign in to this hosted server instead of --server")->type_name("URL");
+    app.add_flag("--hosted-insecure-loopback", config.insecureLoopback, "Development only: allow http://127.0.0.1 hosted endpoints");
     app.add_option("--texture-pack", config.texturePack, "HD texture pack manifest")->type_name("FILE")->default_str("textures/pack.json");
     app.add_flag("--diagnostics", config.diagnostics, "Extra logging and periodic screenshots");
     app.add_flag("--check", config.checkOnly, "Verify files, hashes and settings without launching")->configurable(false);
@@ -53,6 +55,11 @@ void resolve(std::filesystem::path& path, const std::filesystem::path& root, con
 
 void validate(const Config& config)
 {
+    if (!config.hostedServer.empty() && !isAllowedOrigin(config.hostedServer, config.insecureLoopback))
+    {
+        throw std::runtime_error("--hosted-server must be an https:// origin without a path");
+    }
+
     if (!isIpv4Address(config.server))
     {
         throw std::runtime_error("--server must be a numeric IPv4 address");

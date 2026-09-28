@@ -134,8 +134,6 @@ auto loadViewer(const Config& config) -> IUnknown*
 auto launch(const Config& config) -> int
 {
     options = config;
-    // Open the log before lowering integrity; the low-integrity token cannot create it.
-    openLog(config.log);
     initializeProcess(config);
     auto* const game = loadGame(config);
     auto* const core = loadViewer(config);
@@ -147,11 +145,7 @@ auto launch(const Config& config) -> int
     logLine("GameStart returned {:08X}", hex(result));
     stopSettingsPanel();
     game->Release();
-
-    // Legacy DLL teardown is unverified; exit without unloading them.
-    const auto exitCode = static_cast<UINT>(FAILED(result));
-    TerminateProcess(GetCurrentProcess(), exitCode);
-    return static_cast<int>(exitCode);
+    return static_cast<int>(FAILED(result));
 }
 
 } // namespace tmloader

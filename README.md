@@ -80,6 +80,7 @@ Paths are relative to `runtime-dir` unless absolute, and a relative
 | `--profile-port PORT` | `51220` | Profile port |
 | `--pol-id ID` | `EEEEEEEF` | Eight-character account ID |
 | `--password TEXT` | `tm-local-test` | Account password |
+| `--hosted-server URL` | | Sign in to a hosted server with Discord instead of `--server` (see [hosted play](docs/hosted.md)) |
 | `--texture-pack FILE` | `textures/pack.json` | Texture pack manifest |
 | `--diagnostics` | off | Extra logging and periodic screenshots |
 | `--check` | | Validate settings, DLL hashes and assets, then exit |
@@ -142,6 +143,7 @@ minimal archive excludes them.
 
 | Document | Description |
 |---|---|
+| [Hosted play](docs/hosted.md) | Discord sign-in, play sessions and the WebSocket tunnel for hosted servers |
 | [Architecture](docs/architecture.md) | Startup sequence, hooks per subsystem and reverse-engineered offsets |
 | [Testing](docs/testing.md) | Automated test coverage and manual in-game checks |
 | [C++ style](docs/cpp-style.md) | Formatting and coding conventions |

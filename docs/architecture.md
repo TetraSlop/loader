@@ -29,6 +29,7 @@ folders.
 | `graphics/graphics` | Direct3D 8 hooks: device creation, reset, presentation, draws |
 | `graphics/render_scale` | Resolution presets, automatic selection and the scale shader |
 | `graphics/screenshot` | F12 backbuffer capture and PNG encoding |
+| `hosted/` | Hosted play: WinHTTP client and WebSockets, Supabase PKCE sign-in, Credential Manager, play sessions and the loopback tunnel (see [hosted play](hosted.md)) |
 | `input/` | DirectInput factory hook and the mouse bridge |
 | `platform/system` | File-write boundary, virtual registry, message boxes |
 | `platform/network` | Connect/DNS redirection and the Viewer profile session |
@@ -36,7 +37,7 @@ folders.
 | `platform/audio` | DirectSound 8 factory |
 | `platform/patch` | `replacePointer` and `setImport` |
 | `textures/` | Texture pack manifests, HD companions and native upload hooks |
-| `ui/` | Game window, per-account preferences and the ImGui settings panel |
+| `ui/` | Game window, per-account preferences, the shared ImGui window host, the settings panel and the hosted launcher |
 
 Hook functions are named `hooked<ApiName>`, for example `hookedCreateFileA` or
 `hookedPresent`.
@@ -45,7 +46,9 @@ Hook functions are named `hooked<ApiName>`, for example `hookedCreateFileA` or
 
 1. `main` parses the configuration (`--config`, or `tmloader.ini` next to the
    executable) and verifies the DLL hashes and required assets. `--check`
-   stops here without loading any DLL.
+   stops here without loading any DLL. In hosted mode the launcher then signs
+   in, creates the play session and starts the loopback tunnel; the game is
+   configured with the tunnel ports and the account the server returned.
 2. The log is opened, then the process enters the runtime directory and
    disables DEP (the game executes generated code from data pages). It labels
    `pub/`, `logs/` and `settings/` writable at low integrity, then lowers its
