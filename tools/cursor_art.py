@@ -1,12 +1,9 @@
-"""Reconstruct the three native glove poses as smooth, coordinate-stable curves.
+"""Redraw the three native glove cursor poses from hand-authored vector outlines.
 
-The paths are in the original 40x40 sprite-cell coordinates. No source pixel
-contours are enlarged or automatically traced. Only this offline builder uses
-Pillow/NumPy/OpenCV; the loader continues to see an ordinary replacement PNG.
+Paths are in the native 40x40 sprite-cell coordinates, so the output keeps the original layout at any scale.
 """
 
-from __future__ import annotations
-
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -14,9 +11,8 @@ CELL_SIZE = 40
 SOURCE_SIZE = (120, 40)
 INK_BOUNDS = ((4, 4, 30, 36), (3, 6, 31, 35), (2, 9, 32, 33))
 
-# Each path starts at the fingertip. Subsequent tuples hold the two controls
-# and endpoint of a cubic Bezier segment. These are three distinct poses, not
-# rotations of a shared icon: the native thumb/cuff silhouettes differ.
+# Each path starts at the fingertip; each following tuple is a cubic Bezier segment (control 1, control 2, end).
+# The poses are drawn separately because the native thumb/cuff silhouettes differ.
 OUTLINES = (
     (
         (9.4, 4.1),
@@ -88,27 +84,20 @@ CREASES = (
 )
 
 
-def _points(path, scale):
-    """Flatten editable cubic curves to subpixel-accurate drawing coordinates."""
+def _points(path: tuple, scale: int) -> list[tuple[float, float]]:
+    """Flatten cubic Bezier segments into scaled polygon points."""
     start = np.asarray(path[0], dtype=float)
     result = [tuple(start * scale)]
     t = np.linspace(0, 1, 33)[1:, None]
     for segment in path[1:]:
         first, second, end = np.asarray(segment, dtype=float).reshape(3, 2)
-        curve = (
-            (1 - t) ** 3 * start
-            + 3 * (1 - t) ** 2 * t * first
-            + 3 * (1 - t) * t**2 * second
-            + t**3 * end
-        )
+        curve = (1 - t) ** 3 * start + 3 * (1 - t) ** 2 * t * first + 3 * (1 - t) * t**2 * second + t**3 * end
         result.extend(map(tuple, curve * scale))
         start = end
     return result
 
 
-def _pose(index, scale):
-    import cv2
-
+def _pose(index: int, scale: int) -> Image.Image:
     working_scale = scale * 4
     size = CELL_SIZE * working_scale
     mask = Image.new("L", (size, size))
@@ -117,8 +106,7 @@ def _pose(index, scale):
     distance = cv2.distanceTransform(coverage, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
     distance /= working_scale
 
-    # A narrow charcoal contour and rounded white bevel match the glove's
-    # original material. Lighting changes smoothly; it is not a pixel filter.
+    # Narrow charcoal rim around a smoothly lit white bevel, matching the native glove.
     bevel = np.clip((distance - 0.6) / 1.5, 0, 1)
     height = cv2.GaussianBlur(bevel, (0, 0), working_scale * 0.2)
     dx = cv2.Sobel(height, cv2.CV_32F, 1, 0) * working_scale / 8
@@ -130,16 +118,13 @@ def _pose(index, scale):
     folds = Image.new("L", (size, size))
     draw = ImageDraw.Draw(folds)
     for crease in CREASES[index]:
-        draw.line(
-            _points(crease, working_scale), fill=255, width=round(0.4 * working_scale)
-        )
+        draw.line(_points(crease, working_scale), fill=255, width=round(0.4 * working_scale))
     folds = folds.filter(ImageFilter.GaussianBlur(working_scale * 0.32))
     brightness -= np.asarray(folds, dtype=np.float32) * 0.21
     rgb = np.clip(brightness, 0, 255).astype(np.uint8)
     image = Image.fromarray(np.dstack((rgb, rgb, rgb, coverage)))
     result = np.array(image.resize((CELL_SIZE * scale,) * 2, Image.Resampling.LANCZOS))
-    # Lanczos can leave faint ringing beyond a shape. Keep even that coverage
-    # inside the original ink rectangle so native UV gutters stay transparent.
+    # Clip Lanczos ringing to the native ink rectangle so UV gutters stay transparent.
     left, top, right, bottom = (value * scale for value in INK_BOUNDS[index])
     result[:top] = 0
     result[bottom:] = 0
@@ -148,11 +133,10 @@ def _pose(index, scale):
     return Image.fromarray(result)
 
 
-def vector_cursor(source, scale=4):
-    """Return (RGBA atlas, audit) for either audited 120x40 native cursor PNG.
+def vector_cursor(source: np.ndarray, scale: int = 4) -> tuple[np.ndarray, dict]:
+    """Return (RGBA atlas, audit) for the native 120x40 cursor atlas.
 
-    Source pixels only verify the layout. All visible replacement geometry is
-    defined above, so duplicate source atlases always receive identical output.
+    Source pixels only verify the layout; the output depends solely on the outlines above.
     """
     if not isinstance(scale, int) or isinstance(scale, bool) or scale < 1 or scale > 8:
         raise ValueError("Cursor scale must be an integer in 1..8")

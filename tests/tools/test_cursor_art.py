@@ -35,9 +35,7 @@ class CursorArtTests(unittest.TestCase):
                         audit["poses"][pose]["output_bounds"],
                         [left, top, right, bottom],
                     )
-                    self.assertGreater(
-                        np.count_nonzero(cell[:, :, 3] == 255), 200 * scale**2
-                    )
+                    self.assertGreater(np.count_nonzero(cell[:, :, 3] == 255), 200 * scale**2)
                 self.assertTrue(np.array_equal(source, native_layout()))
 
     def test_duplicate_atlases_generate_identical_pixels(self):

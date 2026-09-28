@@ -45,12 +45,8 @@ class TitleGlyphTests(unittest.TestCase):
         np.testing.assert_array_equal(source, source_before)
         np.testing.assert_array_equal(baseline, baseline_before)
         np.testing.assert_array_equal(result[64 * 4 :], baseline[64 * 4 :])
-        np.testing.assert_array_equal(
-            result[48 * 4 : 64 * 4, 186 * 4 :], baseline[48 * 4 : 64 * 4, 186 * 4 :]
-        )
-        np.testing.assert_array_equal(
-            result[19 * 4 : 24 * 4], baseline[19 * 4 : 24 * 4]
-        )
+        np.testing.assert_array_equal(result[48 * 4 : 64 * 4, 186 * 4 :], baseline[48 * 4 : 64 * 4, 186 * 4 :])
+        np.testing.assert_array_equal(result[19 * 4 : 24 * 4], baseline[19 * 4 : 24 * 4])
         self.assertEqual(len(audit["regions"]), 14)
         self.assertTrue(np.any(result != baseline))
 
@@ -94,9 +90,7 @@ class TitleGlyphTests(unittest.TestCase):
             crop = result[top * 4 : bottom * 4, left * 4 : right * 4]
             ink = (230, 210, 170) if index == 0 else (140, 120, 100)
             self.assertTrue(np.any(np.all(crop[:, :, :3] == ink, axis=2)))
-            orange = (
-                (crop[:, :, 0] > 200) & (crop[:, :, 1] < 180) & (crop[:, :, 2] < 60)
-            )
+            orange = (crop[:, :, 0] > 200) & (crop[:, :, 1] < 180) & (crop[:, :, 2] < 60)
             self.assertEqual(bool(np.any(orange)), index == 1)
         self.assertEqual(len(audit["regions"]), 9)
 
@@ -122,9 +116,7 @@ class TitleGlyphTests(unittest.TestCase):
         for digit in range(10):
             # Two untouched texels separate successive 14-texel sampled cells.
             left = (70 + digit * 16) * 4
-            np.testing.assert_array_equal(
-                result[:, left : left + 8], baseline[:, left : left + 8]
-            )
+            np.testing.assert_array_equal(result[:, left : left + 8], baseline[:, left : left + 8])
 
     def test_wrong_atlas_or_nonuniform_scale_is_rejected(self):
         source, baseline = atlas((256, 96), TITLE_LABELS)

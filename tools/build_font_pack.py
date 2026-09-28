@@ -1,30 +1,30 @@
-"""Enlarge the original 42 font atlases without replacing or guessing glyphs.
+"""Enlarge the 42 native font atlases 4x by filtering alpha coverage per glyph cell.
 
-Only alpha coverage is filtered. Every cell, UV, RGB value and native text
-metric retains its original meaning. Requires Pillow and NumPy, not an AI model.
+No glyph is replaced: every cell, UV, RGB value and text metric keeps its native meaning.
 """
-from __future__ import annotations
 
 import argparse
-import hashlib
 import json
+import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, __version__ as pillow_version
+from PIL import Image, ImageDraw
+from PIL import __version__ as pillow_version
 
-from upscale_textures import contained
+from upscale_textures import contained, digest
 
 SCALE = 4
 PITCH = 18
 GRID = 14
 FLOOR = 1
 SHARPEN = 0.20
+# SHA-256 of the decoded TM code image that the +offsets in this file refer to.
 DECODED_SHA256 = "422e46ab2ad6fd02db570a2384424dd1540b197e1ccd7e3da2645ca2b40b1879"
 
-# Printable ASCII 32..126: glyph index, post advance, pre offset, left/right
-# pair classes. Derived from native table +236F28 and converter +185130;
-# all 95 conversions were independently executed in Unicorn. No font outlines.
+# Printable ASCII 32..126: glyph index, post advance, pre offset, left/right pair classes.
+# From native table +236F28 and converter +185130; all 95 conversions were verified under emulation.
 ASCII_METRICS = """
 0 10 -5 0 0
 9 10 -5 0 0
@@ -122,17 +122,16 @@ ASCII_METRICS = """
 48 12 -4 0 0
 32 14 -1 0 0
 """
-METRICS = dict(zip(map(chr, range(32, 127)),
-                   [tuple(map(int, row.split())) for row in ASCII_METRICS.splitlines() if row]))
+METRICS = dict(
+    zip(map(chr, range(32, 127)), [tuple(map(int, row.split())) for row in ASCII_METRICS.splitlines() if row])
+)
 
 
-def digest(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+def cells() -> Iterator[tuple[int, int]]:
+    """Yield each cell's top-left in a disjoint 18px partition of the atlas.
 
-
-def cells():
-    # The native 17px UV rectangle begins at (2+18*c, 1+18*r). Keep its
-    # one-pixel left/top gutter in this disjoint 18px filtering partition.
+    The native 17px UV rectangle starts at (2 + 18c, 1 + 18r); its one-pixel left/top gutter stays inside the cell.
+    """
     for row in range(GRID):
         for column in range(GRID):
             yield 1 + column * PITCH, row * PITCH
@@ -143,26 +142,23 @@ def enlarge_alpha(alpha: np.ndarray, sharpen: float = SHARPEN) -> np.ndarray:
         raise ValueError("Expected a 256x256 font atlas with alpha floor 1")
     output = np.repeat(np.repeat(alpha, SCALE, axis=0), SCALE, axis=1)
     for x, y in cells():
-        coverage = (alpha[y:y + PITCH, x:x + PITCH].astype(np.float32) - FLOOR) / 254
-        # Padding avoids the image resizer's edge extension at each cell's
-        # boundary; no neighboring glyph enters the Lanczos filter support.
+        coverage = (alpha[y : y + PITCH, x : x + PITCH].astype(np.float32) - FLOOR) / 254
+        # Zero padding stops the resizer from extending edges; no neighbouring glyph enters the filter support.
         padded = Image.fromarray(np.pad(coverage, 3))
         enlarged = np.asarray(padded.resize((96, 96), Image.Resampling.LANCZOS))
         q = np.clip(enlarged[12:84, 12:84], 0, 1)
-        # A bounded, symmetric S curve. At strength .20 it changes coverage
-        # by at most 4.89/255, keeping 0, .5 and 1 fixed. No dilation or shift.
+        # Symmetric S curve fixing 0, .5 and 1; at strength .20 coverage moves by at most 4.89/255.
         q = q + sharpen * q * (1 - q) * (2 * q - 1)
         result = np.rint(FLOOR + 254 * q).astype(np.uint8)
-        output[y * SCALE:(y + PITCH) * SCALE, x * SCALE:(x + PITCH) * SCALE] = result
+        output[y * SCALE : (y + PITCH) * SCALE, x * SCALE : (x + PITCH) * SCALE] = result
     return output
 
 
 def cell_statistics(source: np.ndarray, enlarged: np.ndarray) -> dict:
     ratios, empty = [], 0
     for x, y in cells():
-        before = source[y:y + PITCH, x:x + PITCH].astype(np.float64) - FLOOR
-        after = enlarged[y * SCALE:(y + PITCH) * SCALE,
-                         x * SCALE:(x + PITCH) * SCALE].astype(np.float64) - FLOOR
+        before = source[y : y + PITCH, x : x + PITCH].astype(np.float64) - FLOOR
+        after = enlarged[y * SCALE : (y + PITCH) * SCALE, x * SCALE : (x + PITCH) * SCALE].astype(np.float64) - FLOOR
         if not before.any():
             if after.any():
                 raise ValueError("An empty glyph cell gained coverage")
@@ -172,8 +168,7 @@ def cell_statistics(source: np.ndarray, enlarged: np.ndarray) -> dict:
             if not 0.8 <= ratio <= 1.2:
                 raise ValueError(f"Unexpected integrated glyph coverage drift: {ratio}")
             ratios.append(ratio)
-    return {"empty_cells_preserved": empty,
-            "coverage_ratio_range": [min(ratios), max(ratios)] if ratios else None}
+    return {"empty_cells_preserved": empty, "coverage_ratio_range": [min(ratios), max(ratios)] if ratios else None}
 
 
 def bilinear(alpha: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
@@ -181,16 +176,18 @@ def bilinear(alpha: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
     x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
     x1, y1 = np.minimum(x0 + 1, alpha.shape[1] - 1), np.minimum(y0 + 1, alpha.shape[0] - 1)
     dx, dy = x - x0, y - y0
-    return ((1 - dy)[:, None] * ((1 - dx) * alpha[y0[:, None], x0] + dx * alpha[y0[:, None], x1])
-            + dy[:, None] * ((1 - dx) * alpha[y1[:, None], x0] + dx * alpha[y1[:, None], x1]))
+    return (1 - dy)[:, None] * ((1 - dx) * alpha[y0[:, None], x0] + dx * alpha[y0[:, None], x1]) + dy[:, None] * (
+        (1 - dx) * alpha[y1[:, None], x0] + dx * alpha[y1[:, None], x1]
+    )
 
 
-def draw_text(canvas: np.ndarray, atlases: dict, text: str, x: float, y: float,
-              font_pixels: float, atlas_scale: int) -> list:
-    """Preview native ASCII advances and UVs with a software bilinear sampler.
+def draw_text(
+    canvas: np.ndarray, atlases: dict, text: str, x: float, y: float, font_pixels: float, atlas_scale: int
+) -> list:
+    """Render text with native ASCII advances and UVs using a software bilinear sampler.
 
-    Native quad width is requested font size (+1849EF), despite sampling a
-    17px source region. This preview does not emulate the game's text effects.
+    The native quad is the requested font size wide (+1849EF) while sampling a 17px source region.
+    Text effects are not emulated.
     """
     placements, previous = [], 0
     for character in text:
@@ -201,8 +198,8 @@ def draw_text(canvas: np.ndarray, atlases: dict, text: str, x: float, y: float,
         source_x, source_y = 2 + PITCH * column, 1 + PITCH * row
         x0, x1 = max(0, int(np.ceil(x))), min(canvas.shape[1], int(np.ceil(x + font_pixels)))
         y0, y1 = max(0, int(np.ceil(y))), min(canvas.shape[0], int(np.ceil(y + font_pixels)))
-        xs = ((np.arange(x0, x1) + .5 - x) / font_pixels * 17 + source_x) * atlas_scale - .5
-        ys = ((np.arange(y0, y1) + .5 - y) / font_pixels * 17 + source_y) * atlas_scale - .5
+        xs = ((np.arange(x0, x1) + 0.5 - x) / font_pixels * 17 + source_x) * atlas_scale - 0.5
+        ys = ((np.arange(y0, y1) + 0.5 - y) / font_pixels * 17 + source_y) * atlas_scale - 0.5
         coverage = bilinear(atlases[atlas], xs, ys)[:, :, None] / 255
         target = canvas[y0:y1, x0:x1]
         target[:] = 255 * coverage + target * (1 - coverage)
@@ -216,8 +213,14 @@ def write_reviews(output: Path, originals: dict, enhanced: dict) -> dict:
     review = output / "review"
     review.mkdir()
     records = []
-    samples = ["Tetra Master", "Welcome, Player 01!", "Win: 28  Loss: 7",
-               "AaIiWw 0123456789", "AVATAR / Moogle", "!?:;., +-*/()[]"]
+    samples = [
+        "Tetra Master",
+        "Welcome, Player 01!",
+        "Win: 28  Loss: 7",
+        "AaIiWw 0123456789",
+        "AVATAR / Moogle",
+        "!?:;., +-*/()[]",
+    ]
     for height, scale in ((1440, 3), (2160, 4.5)):
         font_pixels = 16 * scale
         width, row_height = round(260 * scale), round(23 * scale)
@@ -228,7 +231,6 @@ def write_reviews(output: Path, originals: dict, enhanced: dict) -> dict:
             y = header + row * row_height
             before = draw_text(canvas, originals, sample, 12, y, font_pixels, 1)
             after = draw_text(canvas, enhanced, sample, width + 12, y, font_pixels, SCALE)
-            # Apart from the comparison column offset, layout must be identical.
             if [(g[0], round(g[1] + width, 4), *g[2:]) for g in before] != [tuple(g) for g in after]:
                 raise ValueError("Preview changed glyph layout")
             placements.append({"text": sample, "original": before, "enhanced": after})
@@ -236,27 +238,42 @@ def write_reviews(output: Path, originals: dict, enhanced: dict) -> dict:
         draw = ImageDraw.Draw(image)
         draw.text((12, 8), f"Original atlas, bilinear | {height}p display / {font_pixels:g}px quad", fill="white")
         draw.text((width + 12, 8), "4x isolated Lanczos + conservative coverage | identical metrics", fill="white")
-        draw.text((12, 27), "Software sampling preview; 4:3 viewport, 16-unit native font; no text effects", fill=(180, 180, 180))
+        draw.text(
+            (12, 27),
+            "Software sampling preview; 4:3 viewport, 16-unit native font; no text effects",
+            fill=(180, 180, 180),
+        )
         destination = review / f"font-text-{height}p.png"
         image.save(destination)
-        records.append({"file": destination.name, "sha256": digest(destination.read_bytes()),
-                        "display_height": height, "native_viewport_scale": scale,
-                        "font_pixels": font_pixels, "placements": placements})
-    # Exact 1:1 pixel comparison of a complete small atlas region, including
-    # punctuation and Japanese glyphs that the ASCII preview does not map.
+        records.append(
+            {
+                "file": destination.name,
+                "sha256": digest(destination.read_bytes()),
+                "display_height": height,
+                "native_viewport_scale": scale,
+                "font_pixels": font_pixels,
+                "placements": placements,
+            }
+        )
+    # Atlas detail also covers punctuation and Japanese glyphs the ASCII preview does not map.
     original = Image.fromarray(originals[0].astype(np.uint8)).crop((0, 0, 256, 72))
     original = original.resize((1024, 288), Image.Resampling.BILINEAR)
     filtered = Image.fromarray(enhanced[0].astype(np.uint8)).crop((0, 0, 1024, 288))
     sheet = Image.new("RGB", (1024, 636), (30, 30, 30))
-    for alpha, y, label in ((original, 28, "Original bilinear 4x"),
-                            (filtered, 344, "Cell-isolated 4x: no character substitutions")):
+    for alpha, y, label in (
+        (original, 28, "Original bilinear 4x"),
+        (filtered, 344, "Cell-isolated 4x: no character substitutions"),
+    ):
         white = Image.new("RGB", alpha.size, "white")
         sheet.paste(white, (0, y), alpha)
         ImageDraw.Draw(sheet).text((8, y - 22), label, fill="white")
     sheet.save(review / "font-atlas-detail.png")
-    result = {"method": "software bilinear sampling with native printable ASCII mapping/metrics",
-              "decoded_image_sha256": DECODED_SHA256,
-              "metrics_sha256": digest(ASCII_METRICS.strip().encode()), "previews": records}
+    result = {
+        "method": "software bilinear sampling with native printable ASCII mapping/metrics",
+        "decoded_image_sha256": DECODED_SHA256,
+        "metrics_sha256": digest(ASCII_METRICS.strip().encode()),
+        "previews": records,
+    }
     (review / "review.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
 
@@ -268,7 +285,7 @@ def self_check() -> None:
     source = np.ones((256, 256), dtype=np.uint8)
     source[8:12, 17:19] = 255
     enlarged = enlarge_alpha(source)
-    if np.any(enlarged[:, 19 * SCALE:] != FLOOR) or np.any(enlarged[:, :SCALE] != FLOOR):
+    if np.any(enlarged[:, 19 * SCALE :] != FLOOR) or np.any(enlarged[:, :SCALE] != FLOOR):
         raise ValueError("Filtering crossed a glyph-cell boundary")
     cell_statistics(source, enlarged)
     if np.any(enlarge_alpha(np.ones((256, 256), dtype=np.uint8)) != FLOOR):
@@ -279,10 +296,10 @@ def self_check() -> None:
         raise ValueError("Coverage adjustment is not conservative and monotonic")
 
 
-def build(args) -> dict:
+def build(lab: Path, output: Path) -> dict:
     self_check()
-    root = args.lab.resolve()
-    output = contained(root, args.output.as_posix())
+    root = lab.resolve()
+    output = contained(root, output.as_posix())
     if output == root or output.is_relative_to(root / "original") or output.exists():
         raise ValueError("Choose a new output directory separate from original exports")
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
@@ -305,10 +322,17 @@ def build(args) -> dict:
         final = np.full((1024, 1024, 4), 255, dtype=np.uint8)
         final[:, :, 3] = alpha
         images.append((texture_id, Image.fromarray(final)))
-        records.append({"id": texture_id, "source_sha256": record["sha256"],
-                        "logical_size": [256, 256], "physical_size": [1024, 1024],
-                        "file": texture_id + ".png", "validation": statistics})
-        if index < 2:  # Printable ASCII previews only use atlases 00 and 01.
+        records.append(
+            {
+                "id": texture_id,
+                "source_sha256": record["sha256"],
+                "logical_size": [256, 256],
+                "physical_size": [1024, 1024],
+                "file": texture_id + ".png",
+                "validation": statistics,
+            }
+        )
+        if index < 2:  # Printable ASCII lives in atlases 00 and 01.
             originals[index] = rgba[:, :, 3].astype(np.float64)
             enhanced[index] = alpha.astype(np.float64)
     output.mkdir(parents=True)
@@ -318,29 +342,49 @@ def build(args) -> dict:
         image.save(path)
         record["sha256"] = digest(path.read_bytes())
         print(f"{texture_id}: 256x256 -> 1024x1024; {record['sha256']}")
-    pack = {"version": 1, "generator": "tmloader/build_font_pack.py",
-            "method": "per-cell Lanczos with bounded alpha coverage S curve",
-            "scale": SCALE, "coverage_sharpen": SHARPEN, "alpha_floor": FLOOR,
-            "layout": {"grid": [14, 14], "cell_pitch": [18, 18], "sample_offset": [2, 1],
-                       "sample_extent": [17, 17], "logical_atlas": [256, 256]},
-            "decoded_image_sha256": DECODED_SHA256,
-            "dependencies": {"Pillow": pillow_version, "numpy": np.__version__},
-            "textures": records}
+    pack = {
+        "version": 1,
+        "generator": "tmloader/build_font_pack.py",
+        "method": "per-cell Lanczos with bounded alpha coverage S curve",
+        "scale": SCALE,
+        "coverage_sharpen": SHARPEN,
+        "alpha_floor": FLOOR,
+        "layout": {
+            "grid": [14, 14],
+            "cell_pitch": [18, 18],
+            "sample_offset": [2, 1],
+            "sample_extent": [17, 17],
+            "logical_atlas": [256, 256],
+        },
+        "decoded_image_sha256": DECODED_SHA256,
+        "dependencies": {"Pillow": pillow_version, "numpy": np.__version__},
+        "textures": records,
+    }
     (output / "pack.json").write_text(json.dumps(pack, indent=2) + "\n", encoding="utf-8")
     write_reviews(output, originals, enhanced)
     print(f"Prepared all 42 font atlases and 1440p/2160p text previews in {output}")
     return pack
 
 
-if __name__ == "__main__":
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lab", type=Path, default=Path("out/texture-lab"))
-    parser.add_argument("--output", type=Path, default=Path("variants/fonts-4x"),
-                        help="New output directory relative to --lab; existing outputs are preserved")
-    parser.add_argument("--self-check", action="store_true", help="Check cell isolation and coverage without assets")
+    parser.add_argument(
+        "--output", type=Path, default=Path("variants/fonts-4x"), help="new output directory relative to --lab"
+    )
+    parser.add_argument("--self-check", action="store_true", help="check cell isolation and coverage without assets")
     args = parser.parse_args()
-    if args.self_check:
-        self_check()
-        print("PASS: cell isolation, blank coverage, monotonic sharpening and 95 ASCII metrics")
-    else:
-        build(args)
+    try:
+        if args.self_check:
+            self_check()
+            print("PASS: cell isolation, blank coverage, monotonic sharpening and 95 ASCII metrics")
+        else:
+            build(args.lab, args.output)
+    except (OSError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

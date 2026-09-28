@@ -7,22 +7,17 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
-from extract_textures import PNG_SIGNATURE, parse_archive, png_bytes
+from extract_textures import parse_archive, png_bytes
 from upscale_textures import contained
 
 
 def chunk(name, data=b""):
-    return (
-        struct.pack(">I", len(data))
-        + name
-        + data
-        + struct.pack(">I", zlib.crc32(name + data))
-    )
+    return struct.pack(">I", len(data)) + name + data + struct.pack(">I", zlib.crc32(name + data))
 
 
 def image():
     return (
-        PNG_SIGNATURE
+        b"\x89PNG\r\n\x1a\n"
         + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
         + chunk(b"IDAT", zlib.compress(b"\0\xff\0\0\xff"))
         + chunk(b"IEND")
@@ -49,10 +44,11 @@ class TextureToolsTests(unittest.TestCase):
         self.assertEqual(texture.record_size % 16, 0)
 
     def test_png_crc_is_checked(self):
-        corrupt = bytearray(image())
-        corrupt[20] ^= 1
-        with self.assertRaisesRegex(ValueError, "checksum"):
-            png_bytes(bytes(corrupt))
+        for offset in (20, 42):  # IHDR and IDAT payloads
+            corrupt = bytearray(image())
+            corrupt[offset] ^= 1
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                png_bytes(bytes(corrupt))
 
     def test_truncated_png_is_rejected(self):
         with self.assertRaises(ValueError):

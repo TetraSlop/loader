@@ -92,8 +92,7 @@ jobs:
         run: ctest --test-dir build -C Release --output-on-failure --timeout 60 -LE graphics-device
       - name: Run Python tool and packaging tests
         run: python -m unittest discover -s tests/tools -v
-      - name: Verify executable format and privileges
-        run: python tools/verify_build.py build/Release/tmloader.exe
+      # Also checks the loader's PE headers and runs tmloader --check in the extracted full archive.
       - name: Build and verify both client archives
         run: python tools/build_release.py --loader build/Release/tmloader.exe
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -1,5 +1,4 @@
-# Install torch/torchvision separately using the official CPU wheel index.
-# No Electron, web server, GUI automation, or global Python changes are needed.
+# Install torch and torchvision separately from the official CPU wheel index.
 spandrel==0.4.1
 opencv-python-headless==4.13.0.92
 numpy==2.5.2
