@@ -26,6 +26,11 @@ the Python server's account save persists separately across browser restarts.
 Generated `out/boxedwine/online/client-manifest.json` records the input archive
 and every imported client file. `build-manifest.json` records the exact runtime
 and patch hashes. These generated files, binaries and captures are ignored by Git.
+The current client-only `TetraMaster-local-full.zip` has SHA-256
+`271fa7e4a31146c11fdb12da0b7af9736803629390db45ed9a2ded6441db4a80`.
+Its browser import contains 639 client files and no server or Python files.
+The executable and original/HD assets match the initial startup verification;
+only `tmloader.ini` changed in the client subtree.
 
 ## Connect to a separate server
 
