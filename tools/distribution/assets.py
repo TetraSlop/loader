@@ -18,6 +18,13 @@ TABLES = set(
     "Nuisance Option PackPrm Playdat Playmes PlPrm Ranking RankingPrize TMess "
     "Title Trade filter kiyaku rules rules_b".lower().split()
 )
+ORIGINAL_PATTERNS = (
+    r"^(?:" + "|".join(sorted(TABLES)) + r")\.(?:bin|txt)$",
+    r"^gw\d{3}\.dat$",
+    r"^utf/env\.dat$",
+    r"^win/sound/music/music\d+\.bgw$",
+    r"^win/sound/se/se\d+\.spw$",
+)
 
 
 def digest(data):
@@ -78,15 +85,8 @@ def installed_dlls(game, viewer):
 
 
 def original_name(name):
-    path = PurePosixPath(name.lower())
-    if len(path.parts) == 1:
-        return (
-            path.stem in TABLES and path.suffix in (".bin", ".txt")
-        ) or re.fullmatch(r"gw\d{3}\.dat", path.name) is not None
-    return (
-        name.lower() == "utf/env.dat"
-        or re.fullmatch(r"win/sound/music/music\d+\.bgw", name.lower()) is not None
-        or re.fullmatch(r"win/sound/se/se\d+\.spw", name.lower()) is not None
+    return any(
+        re.fullmatch(pattern, name, re.IGNORECASE) for pattern in ORIGINAL_PATTERNS
     )
 
 

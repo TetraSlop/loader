@@ -1,36 +1,22 @@
 # Refactor validation
 
-## Portable app packaging, 2026-09-27
+## Client-only packaging, 2026-09-27
 
-`tools/package_app.py` produced an 11.2 MiB default Windows ZIP and a 219.3 MiB
-local opt-in bundle with original client DLLs, data/audio and the current HD pack.
-Both contain isolated Python 3.13.15, current tmserver runtime files and the
-Release x86 loader. No native game window was opened by these packaging checks.
+The corrected distribution contains only tmloader, Windows setup helpers,
+connection configuration and explicitly selected client assets. The earlier
+combined client/server ZIP is superseded. tmserver and Python are never selected;
+Play connects to the configured server without starting a backend.
 
-- Eight distribution boundary tests pass: default omission, independent flags,
-  original/factory setting selection, texture path/hash validation, private
-  metadata removal, refusal to overwrite changed preferences, junction rejection,
-  pinned Python checksum and archive inventory checks.
-- `tools/check_portable.py` passes for both extracted variants: embedded imports,
-  all three server data resources, CLI help/account listing and both services on
-  ephemeral ports. Disposable saves/logs stay outside the extracted app; package
-  files remain unchanged.
-- The full package passes `distribution.app check` and `play --check`, including
-  native loader and all HD texture checks, with unchanged contents and integrity
-  labels. Neither command launches the game or loads its DLLs.
-- A fresh default package imported the local originals and HD manifest, used
-  the factory Viewer option template, then passed loader preflight. Source DLLs
-  and existing Viewer preferences remained unchanged; no account/save/settings
-  directories were copied.
-- ZIP inventory and every recorded size/SHA256 match `package-manifest.json`.
-  The default has no `client/runtime/` files. Neither ZIP contains prior saves,
-  logs or wrapper settings. The exported HD manifest has no build-machine paths.
-- New Python sources pass Ruff. The server's portable launcher changes pass
-  32 focused tests, including real encrypted headless peers.
-
-These checks establish packaging and setup behavior, not native rendering or
-gameplay from a freshly extracted copy. Browser runtime evidence is recorded
-separately in the browser integration documentation.
+Seven distribution tests pass, covering default asset omission, independent inclusion flags,
+client-only inventory, endpoint validation, original/factory settings and HD
+path/hash sanitization. The extracted bundle checker enforces its manifest,
+rejects server/Python/save payloads, and performs native read-only preflight
+when originals are present. Windows PowerShell import checks reject private
+Viewer defaults and preserve changed destination preferences. A fresh import
+of the supported DLLs, original media and all 443 HD textures passes native
+read-only preflight. GUI-subsystem preflight processes are awaited before
+using their exit status or removing staging files. No native gameplay or
+server launch is part of these checks.
 
 ## Subsystem directory layout, 2026-09-27
 

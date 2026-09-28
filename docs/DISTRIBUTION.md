@@ -1,34 +1,36 @@
-# Portable Windows distribution
+# Client-only Windows distribution
 
-`tools/package_app.py` builds an unzip-and-run app with tmloader, tmserver,
-an isolated Python runtime and console launch/setup shortcuts. It does not
-install anything, require a compiler, launch the game, or publish/upload files.
-Use a Windows x86 Release loader build; the bundled Python server is x64.
-
-## Default package
-
-From this repository with the sibling tmserver checkout:
+`tools/package_app.py` builds an unzip-and-run tmloader client. **Neither tmserver
+nor Python is included.** The server is built/deployed separately, and Play
+only opens the client against the configured endpoint. Windows PowerShell
+handles optional asset import and setup; recipients need no developer tools.
 
 ```powershell
 py -3 tools/package_app.py --loader build-browser/Release/tmloader.exe
 ```
 
-Output: `out/dist/TetraMaster-portable.zip`. An existing output is never replaced;
-use `--output` for a new filename. `--server` selects another tmserver checkout.
-Default packages omit original client DLLs, original client media, and replacement
-images. The server still includes its recovered protocol/catalogue/rule data.
-Recipients import their local files with **Import Game Files.cmd**, run
-**Check Setup.cmd**, then **Play.cmd**. See [the packaged instructions](PORTABLE_README.txt).
+Output: `out/dist/TetraMaster-portable.zip`. Existing output files are never
+overwritten. Use `--output` for another filename. The build needs Python 3.13+
+and a compiled x86 loader, but no tmserver checkout or downloaded interpreter.
 
-Python 3.13.15's official Windows embeddable x64 ZIP is downloaded once to
-`out/package-cache` and checked against its pinned SHA256. `--python-archive`
-accepts an offline copy with the same checksum. Its isolated `._pth` includes
-only the embedded standard library, `server/` and `app/`; no pip or global site
-packages are involved. Source/checksum: [Python release files](https://www.python.org/downloads/release/python-31315/).
+Connection defaults can be selected when packaging:
 
-## Explicit client components
+```powershell
+py -3 tools/package_app.py --loader build-browser/Release/tmloader.exe `
+  --server-address 203.0.113.10 --game-port 51241 --profile-port 51220 `
+  --output out/dist/TetraMaster-client.zip
+```
 
-Each switch is independent. Merely supplying `--runtime` includes nothing.
+The address above is a documentation example. Use the deployed server's numeric
+IPv4 address; the loader currently does not accept DNS names. Without these
+options the INI has loopback/test defaults. Recipients use **Connection
+Settings.cmd** to edit their endpoint and operator-provided credentials.
+Passwords/current personal INIs are not taken from the build machine.
+
+## Optional assets
+
+Original client DLLs, original media and HD replacements are independently
+opt-in. Supplying a runtime path alone includes nothing:
 
 ```powershell
 py -3 tools/package_app.py --loader build-browser/Release/tmloader.exe `
@@ -38,51 +40,50 @@ py -3 tools/package_app.py --loader build-browser/Release/tmloader.exe `
   --include-upgraded runtime/textures-hd-v2/pack.json
 ```
 
-- `--include-dlls`: exactly the two supported, hash-pinned game/Viewer binaries.
-- `--include-originals`: known client data tables, archives, audio and Viewer
-  environment data. Requires the hash-pinned factory Viewer option template.
-  A live `pub/home00/option.bin` is never used as the packaging input.
-- `--include-upgraded PACK_JSON`: only referenced PNGs and the engine fields of
-  their manifest; build-machine paths and unused authoring files are stripped.
+- `--include-dlls`: exactly the two supported, hash-pinned game/Viewer DLLs.
+- `--include-originals`: known data tables, graphics archives, audio and Viewer
+  environment data, plus the hash-pinned factory Viewer option template.
+- `--include-upgraded PACK_JSON`: referenced PNGs and engine manifest fields.
+  Private build paths and unused authoring files are stripped.
 
-Original data and HD images remain explicit opt-ins even if they are present
-beside the executable. These local bundle options are not permission to
-redistribute third-party assets. No existing saves, credentials/configuration,
-logs, wrapper preferences, IDE files or AI model weights are selected.
-The fresh client config uses the local synthetic test account only.
+Even the full bundle is client-only. No accounts, server catalogue/protocol data,
+server executable/code, server startup script or Python runtime are selected.
+Saves, logs, private preferences and AI models are omitted. Optional bundles do
+not grant permission to redistribute proprietary assets.
 
-## Layout and validation
+## Layout and first run
 
 ```text
 TetraMaster/
-  Play.cmd, Check Setup.cmd, Import Game Files.cmd, Start Server.cmd
-  client/tmloader.exe, tmloader.ini, runtime/ (optional imported files)
-  python/                   pinned application-local interpreter
-  server/tmserver/           exact tmserver runtime source/data manifest
-  server/examples/          local room configuration
-  app/distribution/         small setup/launch module
-  licenses/                 linked third-party notices
-  package-manifest.json     component selection, revisions, file SHA256s
-  user/                     created at first play; never pre-populated
+  Play.cmd, Check Setup.cmd, Import Game Files.cmd, Connection Settings.cmd
+  client/tmloader.exe, tmloader.ini, runtime/ (optional client assets)
+  app/client.ps1, assets.ps1, asset-policy.json
+  licenses/
+  package-manifest.json
 ```
 
-Build receipts contain relative paths and content hashes, not source-machine
-paths. Revisions identify the checkout commits; hashes describe exact bundled
-bytes including any uncommitted changes. The importer validates all selected
-files before copying and refuses changed destination files. Only the new app's
-runtime copy is labelled for the legacy client's low-integrity writes. The
-read-only check neither labels files nor opens the game.
+Import local assets if needed, enter connection details, check setup, then Play.
+See [the packaged instructions](PORTABLE_README.txt). Check Setup is read-only;
+Play adjusts only this app's writable runtime directories before opening the
+game. No script starts a server. Script execution policy is limited to the
+helper process and does not alter Windows policy settings.
+
+The importer uses the builder's exported hash/selection policy, checks the
+complete selection before writes, validates staged originals/textures with
+tmloader, and refuses changed destination files or linked paths. It imports
+factory Viewer defaults rather than private account preferences.
+
+## Validation
 
 ```powershell
 py -3 -m unittest tests.tools.test_distribution
 py -3 tools/check_portable.py --root 'out/extracted/TetraMaster'
 ```
 
-The smoke check uses the embedded interpreter, a disposable save and ephemeral
-ports. It never launches the native game and checks that the extracted package
-is unchanged. For a bundle with all original components, also run its
-`python/python.exe -I -B -m distribution.app check` from its root; this includes
-the loader's native hash, path and texture checks without opening a window.
+The checker verifies the exact manifest, rejects server/Python/save payloads,
+and runs the native read-only setup check when originals are included. It
+does not open the game, contact services or start a backend. File hashes are
+authoritative even when a checkout has uncommitted edits.
 
-The portable ZIP is a local testing distribution. Signing/installer integration,
-public account provisioning and a hosted-server deployment are separate work.
+The [browser integration](BROWSER.md) consumes this same client subtree. Its
+WebSocket gateway connects to an explicitly separate tmserver deployment.

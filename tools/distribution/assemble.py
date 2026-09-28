@@ -1,49 +1,14 @@
-"""Assemble a Windows portable ZIP from explicit application components."""
+"""Assemble a client-only Windows ZIP from explicit components."""
 
-import io
 import json
-import runpy
 import struct
 import subprocess
 import tempfile
-import urllib.request
 import zipfile
 from pathlib import Path
 
 from distribution import assets
-from distribution.app import config_text
-
-PYTHON_VERSION = "3.13.15"
-PYTHON_ARCHIVE = f"python-{PYTHON_VERSION}-embed-amd64.zip"
-PYTHON_URL = f"https://www.python.org/ftp/python/{PYTHON_VERSION}/{PYTHON_ARCHIVE}"
-PYTHON_SHA256 = "d1f04d990aee1253d8569e8e5104e30fa9f5fa830899f14843448872d936a2cf"
-
-
-def python_files(cache, supplied=None):
-    archive = supplied or cache / PYTHON_ARCHIVE
-    if not archive.exists():
-        if supplied:
-            raise ValueError(f"Missing embedded Python archive: {supplied}")
-        cache.mkdir(parents=True, exist_ok=True)
-        print(f"Downloading Python {PYTHON_VERSION} from python.org...", flush=True)
-        with urllib.request.urlopen(PYTHON_URL, timeout=60) as response:
-            data = response.read(32 * 1024 * 1024)
-        if assets.digest(data) != PYTHON_SHA256:
-            raise ValueError("Embedded Python download checksum mismatch")
-        archive.write_bytes(data)
-    data = assets.verified_file(archive, PYTHON_SHA256)
-    files = {}
-    with zipfile.ZipFile(io.BytesIO(data)) as source:
-        for info in source.infolist():
-            if info.is_dir():
-                continue
-            name = assets.relative_name(info.filename)
-            if f"python/{name}" in files:
-                raise ValueError(f"Duplicate Python archive member: {name}")
-            files[f"python/{name}"] = source.read(info)
-    # No pip or global/user site packages. All imports stay in the extracted app.
-    files["python/python313._pth"] = b"python313.zip\n.\n../server\n../app\n"
-    return files
+from distribution.config import config_text
 
 
 def loader_bytes(path):
@@ -62,19 +27,6 @@ def loader_bytes(path):
     return data
 
 
-def server_files(source):
-    # Reuse the server's exact runtime manifest rather than copying its working tree.
-    manifest = runpy.run_path(str(source / "tools/package.py"))["runtime_manifest"](
-        source
-    )
-    files = {
-        f"server/{assets.relative_name(name)}": data for name, data in manifest.items()
-    }
-    name = "examples/auto_rooms.example.json"
-    files[f"server/{name}"] = assets.regular_file(source / name).read_bytes()
-    return files
-
-
 def revision(source):
     result = subprocess.run(
         ["git", "-C", str(source), "rev-parse", "HEAD"],
@@ -82,30 +34,40 @@ def revision(source):
         text=True,
         check=True,
     )
-    # Per-file digests below are authoritative even if the checkout has local changes.
     return result.stdout.strip()
 
 
 def application_files(loader_repo):
-    files = {}
-    for name in ("__init__.py", "assets.py", "app.py"):
-        files[f"app/distribution/{name}"] = (Path(__file__).parent / name).read_bytes()
-    for label, command in (
-        ("Play", "play"),
-        ("Check Setup", "check"),
-        ("Import Game Files", "import"),
-        ("Start Server", "server"),
+    helpers = Path(__file__).parent / "windows"
+    files = {
+        f"app/{name}": (helpers / name).read_bytes()
+        for name in ("client.ps1", "assets.ps1")
+    }
+    policy = {
+        "dll_hashes": assets.DLL_HASHES,
+        "default_options_hash": assets.DEFAULT_OPTIONS_HASH,
+        "original_patterns": assets.ORIGINAL_PATTERNS,
+    }
+    files["app/asset-policy.json"] = (json.dumps(policy, indent=2) + "\n").encode()
+    for label, action in (
+        ("Play", "Play"),
+        ("Check Setup", "Check"),
+        ("Import Game Files", "Import"),
     ):
+        # Execution policy applies only to this child process, not the machine/user settings.
         script = (
-            '@echo off\r\nsetlocal\r\ncd /d "%~dp0"\r\n'
-            f'"%~dp0python\\python.exe" -I -B -m distribution.app {command} %*\r\n'
+            "@echo off\r\nsetlocal\r\n"
+            "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass "
+            f'-File "%~dp0app\\client.ps1" -Action {action} %*\r\n'
             'set "app_exit=%ERRORLEVEL%"\r\n'
         )
-        if command in ("check", "import"):
-            script += "pause\r\n"
-        else:
-            script += 'if not "%app_exit%"=="0" pause\r\n'
+        script += (
+            'if not "%app_exit%"=="0" pause\r\n' if action == "Play" else "pause\r\n"
+        )
         files[f"{label}.cmd"] = (script + "exit /b %app_exit%\r\n").encode()
+    files["Connection Settings.cmd"] = (
+        b'@echo off\r\nnotepad.exe "%~dp0client\\tmloader.ini"\r\n'
+    )
     files["README.txt"] = (loader_repo / "docs/PORTABLE_README.txt").read_bytes()
     for path in sorted((loader_repo / "third_party").glob("*LICENSE*")):
         if not path.name.startswith("Catch2"):
@@ -115,10 +77,14 @@ def application_files(loader_repo):
 
 def assemble(args):
     root = Path(__file__).resolve().parents[2]
-    files = application_files(root) | python_files(args.cache, args.python_archive)
-    files.update(server_files(args.server))
+    files = application_files(root)
     files["client/tmloader.exe"] = loader_bytes(args.loader)
-    files["client/tmloader.ini"] = config_text(bool(args.include_upgraded)).encode()
+    files["client/tmloader.ini"] = config_text(
+        bool(args.include_upgraded),
+        args.server_address,
+        args.game_port,
+        args.profile_port,
+    ).encode()
     selected = {}
     if args.include_dlls:
         selected.update(assets.dlls(args.runtime))
@@ -131,15 +97,10 @@ def assemble(args):
     if len(set(folded)) != len(folded):
         raise ValueError("Case-insensitive package path collision")
     manifest = {
-        "format": 1,
-        "platform": "windows-x64 (x86 game client)",
+        "format": 2,
+        "kind": "client-only",
+        "platform": "windows (x86 game client)",
         "loader_revision": revision(root),
-        "server_revision": revision(args.server),
-        "python": {
-            "version": PYTHON_VERSION,
-            "url": PYTHON_URL,
-            "sha256": PYTHON_SHA256,
-        },
         "components": {
             "dlls": args.include_dlls,
             "originals": args.include_originals,
@@ -170,5 +131,4 @@ def write_archive(output, files):
                 info.compress_type = zipfile.ZIP_DEFLATED
                 info.external_attr = 0o644 << 16
                 archive.writestr(info, data)
-        # rename does not overwrite an existing target on Windows.
         pending.rename(output)

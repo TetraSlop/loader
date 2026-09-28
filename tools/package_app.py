@@ -1,4 +1,4 @@
-"""Build a portable Windows ZIP. Original client files are excluded by default."""
+"""Build a client-only Windows ZIP. Original game files are opt-in; no server is bundled."""
 
 import argparse
 import sys
@@ -14,13 +14,15 @@ def arguments(argv=None):
     parser.add_argument(
         "--loader", type=Path, required=True, help="built x86 tmloader.exe"
     )
-    parser.add_argument("--server", type=Path, default=ROOT.parent / "tmserver")
+    parser.add_argument(
+        "--server-address",
+        default="127.0.0.1",
+        help="separately deployed server's IPv4 address",
+    )
+    parser.add_argument("--game-port", type=int, default=51241)
+    parser.add_argument("--profile-port", type=int, default=51220)
     parser.add_argument(
         "--output", type=Path, default=ROOT / "out/dist/TetraMaster-portable.zip"
-    )
-    parser.add_argument("--cache", type=Path, default=ROOT / "out/package-cache")
-    parser.add_argument(
-        "--python-archive", type=Path, help="offline copy of the pinned Python ZIP"
     )
     parser.add_argument(
         "--runtime",
