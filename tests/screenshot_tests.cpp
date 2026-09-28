@@ -17,7 +17,7 @@ static void WINAPI fixedScreenshotTime(SYSTEMTIME* time)
 static bool failScreenshotWrite = false;
 static bool requestDuringWrite  = false;
 
-static BOOL WINAPI screenshotWrite(HANDLE file, LPCVOID data, DWORD size, LPDWORD written, LPOVERLAPPED overlap)
+static auto WINAPI screenshotWrite(HANDLE file, LPCVOID data, DWORD size, LPDWORD written, LPOVERLAPPED overlap) -> BOOL
 {
     if (requestDuringWrite)
     {
@@ -88,12 +88,12 @@ struct Surface
         std::memcpy(storage.data() + 20, bottom, sizeof(bottom));
     }
 
-    static ULONG WINAPI release(Surface* self)
+    static auto WINAPI release(Surface* self) -> ULONG
     {
         return --self->references;
     }
 
-    static HRESULT WINAPI description(Surface* self, DWORD* output)
+    static auto WINAPI description(Surface* self, DWORD* output) -> HRESULT
     {
         output[0] = self->format;
         output[6] = self->width;
@@ -101,7 +101,7 @@ struct Surface
         return self->descResult;
     }
 
-    static HRESULT WINAPI lock(Surface* self, LockedPixels* output, const RECT* rect, DWORD flags)
+    static auto WINAPI lock(Surface* self, LockedPixels* output, const RECT* rect, DWORD flags) -> HRESULT
     {
         REQUIRE((!rect && flags == 0x10));
         ++self->locks;
@@ -112,7 +112,7 @@ struct Surface
         return S_OK;
     }
 
-    static HRESULT WINAPI unlock(Surface* self)
+    static auto WINAPI unlock(Surface* self) -> HRESULT
     {
         ++self->unlocks;
         return S_OK;
@@ -133,7 +133,7 @@ struct Device
         methods[16] = reinterpret_cast<void*>(backbuffer);
     }
 
-    static HRESULT WINAPI backbuffer(Device* self, UINT index, DWORD type, void** output)
+    static auto WINAPI backbuffer(Device* self, UINT index, DWORD type, void** output) -> HRESULT
     {
         REQUIRE((index == 0 && type == 0));
         ++self->reads;
@@ -145,7 +145,7 @@ struct Device
     }
 };
 
-std::set<std::filesystem::path> files()
+auto files() -> std::set<std::filesystem::path>
 {
     std::set<std::filesystem::path> result;
     const auto                      dir = options.runtimeDir / "logs/screenshots";
@@ -155,14 +155,14 @@ std::set<std::filesystem::path> files()
     return result;
 }
 
-std::filesystem::path requestedFileName(unsigned number)
+auto requestedFileName(unsigned number) -> std::filesystem::path
 {
     wchar_t name[128];
     swprintf_s(name, L"TetraMaster_20260927_123456_789_%lu_%u.png", GetCurrentProcessId(), number);
     return options.runtimeDir / "logs/screenshots" / name;
 }
 
-std::vector<DWORD> decode(const std::filesystem::path& path)
+auto decode(const std::filesystem::path& path) -> std::vector<DWORD>
 {
     ComScope                   com;
     ComPtr<IWICImagingFactory> factory;
@@ -231,7 +231,7 @@ void lowIntegrityCapture(const std::filesystem::path& fixture)
     CloseHandle(token);
 
     // The medium-labeled control proves that low-write isolation is effective.
-    HANDLE forbidden = CreateFileW((fixture / "medium/control.png").c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    const auto forbidden = CreateFileW((fixture / "medium/control.png").c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
     REQUIRE((forbidden == INVALID_HANDLE_VALUE && GetLastError() == ERROR_ACCESS_DENIED));
     options.runtimeDir = fixture / "low";
     options.game       = options.runtimeDir / "TM_native.dll";
@@ -366,8 +366,8 @@ TEST_CASE("Screenshots preserve pixels and safe output lifecycle", "[screenshot]
     REQUIRE((SUCCEEDED(CoGetContextToken(&token)) && token != 0));
     CoUninitialize();
     // A newer request must survive completion of the in-progress screenshot.
-    requestDuringWrite = true;
-    unsigned reads     = device.reads;
+    requestDuringWrite   = true;
+    const unsigned reads = device.reads;
     requestScreenshot();
     saveRequestedScreenshot(&device);
     REQUIRE((device.reads == reads + 1 && screenshotStatus().find("queued") != std::string::npos));
@@ -404,7 +404,7 @@ TEST_CASE("Low-integrity screenshot child", "[.screenshot-child]")
     lowIntegrityCapture(childFixture);
 }
 
-int wmain(int argc, wchar_t** argv)
+auto wmain(int argc, wchar_t** argv) -> int
 {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     if (argc == 3 && std::wstring_view(argv[1]) == L"--low-integrity")

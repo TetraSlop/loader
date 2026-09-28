@@ -26,12 +26,12 @@ void logf(const char* format, ...)
     fflush(logfile);
 }
 
-LONG WINAPI crash(EXCEPTION_POINTERS* ep)
+auto WINAPI crash(EXCEPTION_POINTERS* ep) -> LONG
 {
     logf("EXCEPTION %08lX at %p EIP=%08lX ESP=%08lX", ep->ExceptionRecord->ExceptionCode, ep->ExceptionRecord->ExceptionAddress, ep->ContextRecord->Eip, ep->ContextRecord->Esp);
     for (DWORD i = 0; i < ep->ExceptionRecord->NumberParameters; i++)
         logf("  info[%lu]=%08lX", i, ep->ExceptionRecord->ExceptionInformation[i]);
-    const auto* stack = reinterpret_cast<const DWORD*>(ep->ContextRecord->Esp);
+    const auto* const stack = reinterpret_cast<const DWORD*>(ep->ContextRecord->Esp);
     __try
     {
         for (int i = 0; i < 16; i++)
@@ -43,7 +43,7 @@ LONG WINAPI crash(EXCEPTION_POINTERS* ep)
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
-bool lowerIntegrity()
+auto lowerIntegrity() -> bool
 {
     wil::unique_handle token;
     wil::unique_hlocal sid;
@@ -60,13 +60,13 @@ bool lowerIntegrity()
     return result != FALSE;
 }
 
-int WINAPI loggedMessage(HWND, const char* text, const char* title, UINT flags)
+auto WINAPI loggedMessage(HWND, const char* text, const char* title, UINT flags) -> int
 {
     logf("MessageBoxA caller=%p [%s] flags=%X: %s", _ReturnAddress(), title ? title : "", flags, text ? text : "");
     return IDOK;
 }
 
-int WINAPI loggedMessageW(HWND, const wchar_t* text, const wchar_t* title, UINT flags)
+auto WINAPI loggedMessageW(HWND, const wchar_t* text, const wchar_t* title, UINT flags) -> int
 {
     logf("MessageBoxW [%ls] flags=%X: %ls", title ? title : L"", flags, text ? text : L"");
     return IDOK;

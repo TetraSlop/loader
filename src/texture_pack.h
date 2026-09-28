@@ -14,8 +14,8 @@ struct PngInfo
     size_t   bytes = 0; // Through IEND, excluding archive alignment bytes.
 };
 
-PngInfo     pngInfo(const void* data, size_t bytes);
-std::string sha256Bytes(const void* data, size_t bytes);
+auto pngInfo(const void* data, size_t bytes) -> PngInfo;
+auto sha256Bytes(const void* data, size_t bytes) -> std::string;
 
 enum class TextureCategory
 {
@@ -34,12 +34,12 @@ struct TextureAsset
 class TexturePack
 {
 public:
-    void                 load(const std::filesystem::path& manifest);
-    const TextureAsset*  match(const void* png, size_t bytes) const;
-    std::vector<uint8_t> read(const TextureAsset& asset) const;
-    void                 validateFiles() const;
+    void load(const std::filesystem::path& manifest);
+    auto match(const void* png, size_t bytes) const -> const TextureAsset*;
+    auto read(const TextureAsset& asset) const -> std::vector<uint8_t>;
+    void validateFiles() const;
 
-    size_t size() const
+    auto size() const -> size_t
     {
         return assets_.size();
     }

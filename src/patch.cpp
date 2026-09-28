@@ -7,10 +7,10 @@ namespace tmloader
 
 void replacePointer(HMODULE image, void* oldValue, void* newValue)
 {
-    auto* const base = reinterpret_cast<BYTE*>(image);
-    const auto* dos  = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
-    const auto* nt   = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
-    const auto  size = nt->OptionalHeader.SizeOfImage;
+    auto* const       base = reinterpret_cast<BYTE*>(image);
+    const auto* const dos  = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+    const auto* const nt   = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+    const auto        size = nt->OptionalHeader.SizeOfImage;
     for (DWORD rva = 0x1000; rva + 4 < size;)
     {
         MEMORY_BASIC_INFORMATION mem = {};

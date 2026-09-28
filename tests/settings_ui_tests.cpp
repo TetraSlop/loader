@@ -25,22 +25,22 @@ void logf(const char*, ...)
 {
 }
 
-WindowSettings currentWindowSettings()
+auto currentWindowSettings() -> WindowSettings
 {
     return testSettings;
 }
 
-float activeRenderScale()
+auto activeRenderScale() -> float
 {
     return 4.5f;
 }
 
-size_t texturePackCount()
+auto texturePackCount() -> size_t
 {
     return availableImages;
 }
 
-unsigned textureReplacementCount()
+auto textureReplacementCount() -> unsigned
 {
     return 5;
 }
@@ -54,7 +54,7 @@ void requestScreenshot() noexcept
     ++screenshotRequests;
 }
 
-std::string screenshotStatus()
+auto screenshotStatus() -> std::string
 {
     ++statusReads;
     return captureStatus;
@@ -73,14 +73,14 @@ void frame()
     REQUIRE((ImGui::GetDrawData()->Valid && ImGui::GetDrawData()->TotalVtxCount > 0));
 }
 
-ImGuiWindow* selectTab(const char* label, ImVec2 size)
+auto selectTab(const char* label, ImVec2 size) -> ImGuiWindow*
 {
     auto& io       = ImGui::GetIO();
     io.DisplaySize = size;
     frame();
-    auto* window = ImGui::FindWindowByName("Wrapper settings");
+    auto* const window = ImGui::FindWindowByName("Wrapper settings");
     REQUIRE(window);
-    auto* tabs = ImGui::GetCurrentContext()->TabBars.GetByKey(window->GetID("settings-tabs"));
+    auto* const tabs = ImGui::GetCurrentContext()->TabBars.GetByKey(window->GetID("settings-tabs"));
     REQUIRE((tabs && tabs->Tabs.Size == 3));
     ImGuiID selected = 0;
     for (auto& tab : tabs->Tabs)
@@ -113,7 +113,7 @@ TEST_CASE("Settings layout fits supported DPI scales", "[settings_ui]")
 {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     // Build the real panel's draw lists without a window, GPU, game or desktop input.
-    for (float scale : { 1.0f, 1.5f, 2.0f })
+    for (const float scale : { 1.0f, 1.5f, 2.0f })
     {
         ImGui::CreateContext();
         tmloader::configurePanel(scale);
@@ -128,9 +128,9 @@ TEST_CASE("Settings layout fits supported DPI scales", "[settings_ui]")
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
         const ImVec2 preferred{ 524 * scale, 730 * scale };
         captureStatus.clear();
-        for (const char* tab : { "Display", "Artwork & text", "Screenshots" })
+        for (const char* const tab : { "Display", "Artwork & text", "Screenshots" })
         {
-            auto* window = selectTab(tab, preferred);
+            auto* const window = selectTab(tab, preferred);
             checkWidth(window);
             REQUIRE(window->ScrollMax.y == 0);
         }
@@ -159,7 +159,7 @@ TEST_CASE("Settings layout fits supported DPI scales", "[settings_ui]")
         }
         // The native window clamps to the monitor work area. A short monitor
         // should produce vertical scrolling, never clip or widen the controls.
-        for (const char* tab : { "Display", "Artwork & text", "Screenshots" })
+        for (const char* const tab : { "Display", "Artwork & text", "Screenshots" })
         {
             window = selectTab(tab, { 524 * scale, 260 * scale });
             checkWidth(window);

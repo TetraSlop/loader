@@ -16,7 +16,7 @@ std::mutex      settingsMutex;
 WINDOWPLACEMENT windowedPlacement{ sizeof(WINDOWPLACEMENT) };
 bool            changingWindow = false;
 
-std::filesystem::path settingsFile()
+auto settingsFile() -> std::filesystem::path
 {
     return options.runtimeDir / "settings" / (options.polId + ".window");
 }
@@ -47,7 +47,7 @@ void rememberWindowSize(HWND hwnd)
     if (changingWindow || currentWindowSettings().fullscreen || IsIconic(hwnd) || IsZoomed(hwnd) ||
         !GetClientRect(hwnd, &client) || !validWindowSize(client.right, client.bottom))
         return;
-    std::lock_guard<std::mutex> lock(settingsMutex);
+    const std::lock_guard<std::mutex> lock(settingsMutex);
     settings.width  = client.right;
     settings.height = client.bottom;
 }
@@ -82,7 +82,7 @@ void fullscreen(HWND hwnd, bool enabled)
         SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
     {
-        std::lock_guard<std::mutex> lock(settingsMutex);
+        const std::lock_guard<std::mutex> lock(settingsMutex);
         settings.fullscreen = enabled;
     }
     changingWindow = false;
@@ -106,7 +106,8 @@ void action(HWND hwnd, WindowAction command, LPARAM value)
     {
         case WindowAction::size:
         {
-            int width = LOWORD(value), height = HIWORD(value);
+            const auto width  = static_cast<int>(LOWORD(value));
+            const auto height = static_cast<int>(HIWORD(value));
             if (!validWindowSize(width, height))
                 break;
             fullscreen(hwnd, false);
@@ -121,7 +122,7 @@ void action(HWND hwnd, WindowAction command, LPARAM value)
             break;
         case WindowAction::aspect:
         {
-            std::lock_guard<std::mutex> lock(settingsMutex);
+            const std::lock_guard<std::mutex> lock(settingsMutex);
             settings.preserveAspect = value != 0;
         }
             InvalidateRect(hwnd, nullptr, TRUE);
@@ -132,7 +133,7 @@ void action(HWND hwnd, WindowAction command, LPARAM value)
             break;
         case WindowAction::hdTextures:
         {
-            std::lock_guard<std::mutex> lock(settingsMutex);
+            const std::lock_guard<std::mutex> lock(settingsMutex);
             settings.hdTextures = value != 0;
         }
             rememberSettings();
@@ -141,7 +142,7 @@ void action(HWND hwnd, WindowAction command, LPARAM value)
             if (value >= 0 && static_cast<size_t>(value) < renderScales.size())
             {
                 {
-                    std::lock_guard<std::mutex> lock(settingsMutex);
+                    const std::lock_guard<std::mutex> lock(settingsMutex);
                     settings.renderScale    = renderScales[value];
                     settings.autoResolution = false;
                 }
@@ -150,14 +151,14 @@ void action(HWND hwnd, WindowAction command, LPARAM value)
             break;
         case WindowAction::autoResolution:
         {
-            std::lock_guard<std::mutex> lock(settingsMutex);
+            const std::lock_guard<std::mutex> lock(settingsMutex);
             settings.autoResolution = true;
         }
             rememberSettings();
             break;
         case WindowAction::hdFonts:
         {
-            std::lock_guard<std::mutex> lock(settingsMutex);
+            const std::lock_guard<std::mutex> lock(settingsMutex);
             settings.hdFonts = value != 0;
         }
             rememberSettings();
@@ -165,7 +166,7 @@ void action(HWND hwnd, WindowAction command, LPARAM value)
     }
 }
 
-LRESULT CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
+auto CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) -> LRESULT
 {
     // The native WM_ACTIVATEAPP handler posts 0x64 after losing foreground.
     // Its recipient forcibly restores and foregrounds the game. A desktop
@@ -176,10 +177,10 @@ LRESULT CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lp
     {
         if (reinterpret_cast<HWND>(wparam) == hwnd && LOWORD(lparam) == HTCLIENT)
         {
-            POINT point{};
-            RECT  content    = gameContentRect();
-            bool  gameCursor = GetForegroundWindow() == hwnd && !settingsPanelOpen() &&
-                               GetCursorPos(&point) && ScreenToClient(hwnd, &point) && PtInRect(&content, point);
+            POINT      point{};
+            const auto content    = gameContentRect();
+            const bool gameCursor = GetForegroundWindow() == hwnd && !settingsPanelOpen() &&
+                                    GetCursorPos(&point) && ScreenToClient(hwnd, &point) && PtInRect(&content, point);
             SetCursor(gameCursor ? nullptr : LoadCursorW(nullptr, MAKEINTRESOURCEW(32512)));
             return TRUE;
         }
@@ -226,7 +227,7 @@ LRESULT CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lp
     }
     if (message == WM_SYSCOMMAND)
     {
-        UINT command = static_cast<UINT>(wparam) & 0xfff0;
+        const auto command = static_cast<UINT>(wparam) & 0xfff0;
         if (command == SC_CLOSE)
         {
             closeGame();
@@ -240,8 +241,8 @@ LRESULT CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lp
     }
     if (message == WM_GETMINMAXINFO)
     {
-        auto* limits = reinterpret_cast<MINMAXINFO*>(lparam);
-        RECT  minimum{ 0, 0, 320, 240 };
+        auto* const limits = reinterpret_cast<MINMAXINFO*>(lparam);
+        RECT        minimum{ 0, 0, 320, 240 };
         AdjustWindowRect(&minimum, WS_OVERLAPPEDWINDOW, FALSE);
         limits->ptMinTrackSize = { minimum.right - minimum.left, minimum.bottom - minimum.top };
         return 0;
@@ -276,20 +277,20 @@ LRESULT CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lp
 
 } // namespace
 
-WindowSettings currentWindowSettings()
+auto currentWindowSettings() -> WindowSettings
 {
-    std::lock_guard<std::mutex> lock(settingsMutex);
+    const std::lock_guard<std::mutex> lock(settingsMutex);
     return settings;
 }
 
-RECT gameContentRect()
+auto gameContentRect() -> RECT
 {
     RECT client{};
     GetClientRect(gameWindow, &client);
     return contentRect(client.right, client.bottom, currentWindowSettings().preserveAspect);
 }
 
-BYTE takeMousePresses()
+auto takeMousePresses() -> BYTE
 {
     return static_cast<BYTE>(InterlockedExchange(&pendingMousePresses, 0));
 }
@@ -314,7 +315,7 @@ void initializeGameWindow(HWND hwnd)
         loaded = readWindowSettings(in);
     }
     {
-        std::lock_guard<std::mutex> lock(settingsMutex);
+        const std::lock_guard<std::mutex> lock(settingsMutex);
         settings            = loaded;
         settings.fullscreen = false;
     }

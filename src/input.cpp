@@ -7,13 +7,13 @@ namespace tmloader
 namespace
 {
 
-bool inputContentRect(RECT* rect)
+auto inputContentRect(RECT* rect) -> bool
 {
     *rect = gameContentRect();
     return rect->right > rect->left && rect->bottom > rect->top;
 }
 
-bool mapTetraMouse(LONG x, LONG y, LONG* dx, LONG* dy)
+auto mapTetraMouse(LONG x, LONG y, LONG* dx, LONG* dy) -> bool
 {
     if (!gameBase || !gameWindow)
     {
@@ -33,7 +33,7 @@ bool mapTetraMouse(LONG x, LONG y, LONG* dx, LONG* dy)
 
 } // namespace
 
-HRESULT WINAPI tracedInput(HINSTANCE instance, DWORD version, REFIID iid, void** output, IUnknown* outer)
+auto WINAPI tracedInput(HINSTANCE instance, DWORD version, REFIID iid, void** output, IUnknown* outer) -> HRESULT
 {
     using Factory   = HRESULT(WINAPI*)(HINSTANCE, DWORD, REFIID, void**, IUnknown*);
     const auto real = reinterpret_cast<Factory>(GetProcAddress(LoadLibraryA("dinput8.dll"), "DirectInput8Create"));

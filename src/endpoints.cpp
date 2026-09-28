@@ -8,20 +8,20 @@
 namespace tmloader
 {
 
-bool isProfileAlias(const char* host)
+auto isProfileAlias(const char* host) -> bool
 {
     if (!host || std::strlen(host) != 13 || _strnicmp(host, "pp", 2) || _stricmp(host + 5, ".pol.com"))
         return false;
     return host[2] >= '0' && host[2] <= '9' && host[3] >= '0' && host[3] <= '9' && host[4] >= '0' && host[4] <= '9';
 }
 
-bool isIpv4Address(const std::string& host)
+auto isIpv4Address(const std::string& host) -> bool
 {
     IN_ADDR address{};
     return InetPtonA(AF_INET, host.c_str(), &address) == 1 && address.s_addr != INADDR_NONE && address.s_addr != INADDR_ANY;
 }
 
-bool pathIsWithin(const std::filesystem::path& path, const std::filesystem::path& root)
+auto pathIsWithin(const std::filesystem::path& path, const std::filesystem::path& root) -> bool
 {
     std::error_code ec;
     const auto      p = std::filesystem::weakly_canonical(path, ec);
@@ -77,12 +77,12 @@ auto localOutputAllowed(const Config& config, const std::filesystem::path& path,
 
 } // namespace
 
-bool outputPathAllowed(const Config& config, const std::filesystem::path& path)
+auto outputPathAllowed(const Config& config, const std::filesystem::path& path) -> bool
 {
     return localOutputAllowed(config, path, "logs");
 }
 
-bool settingsPathAllowed(const Config& config, const std::filesystem::path& path)
+auto settingsPathAllowed(const Config& config, const std::filesystem::path& path) -> bool
 {
     return localOutputAllowed(config, path, "settings");
 }

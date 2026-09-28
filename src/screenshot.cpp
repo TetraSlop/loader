@@ -24,7 +24,7 @@ std::string           status;
 
 void finishStatus(const std::string& message)
 {
-    std::lock_guard<std::mutex> lock(statusMutex);
+    const std::lock_guard<std::mutex> lock(statusMutex);
     // A request arriving during compression belongs to the next frame. Keep
     // its queued state visible instead of replacing it with this frame's result.
     if (!pending.load())
@@ -44,7 +44,7 @@ void check(HRESULT hr, const char* action)
 }
 
 template <class... Args>
-HRESULT call(void* object, unsigned slot, Args... args)
+auto call(void* object, unsigned slot, Args... args) -> HRESULT
 {
     using Method = HRESULT(WINAPI*)(void*, Args...);
     return reinterpret_cast<Method>((*static_cast<void***>(object))[slot])(object, args...);
@@ -153,8 +153,8 @@ auto encodeBackbuffer(void* device) -> ComPtr<IStream>
         }
         for (UINT y = 0; y < height; ++y)
         {
-            const BYTE* source      = locked.pixels().data + static_cast<ptrdiff_t>(int64_t{ y } * pitch);
-            BYTE*       destination = bgr.data() + static_cast<size_t>(y) * width * 3;
+            const BYTE* const source      = locked.pixels().data + static_cast<ptrdiff_t>(int64_t{ y } * pitch);
+            BYTE* const       destination = bgr.data() + static_cast<size_t>(y) * width * 3;
             for (UINT x = 0; x < width; ++x)
             {
                 destination[x * 3]     = source[x * 4];
@@ -188,7 +188,7 @@ auto encodeBackbuffer(void* device) -> ComPtr<IStream>
     return stream;
 }
 
-std::filesystem::path writeScreenshot(IStream* stream)
+auto writeScreenshot(IStream* stream) -> std::filesystem::path
 {
     SYSTEMTIME time{};
     GetLocalTime(&time);
@@ -220,7 +220,7 @@ std::filesystem::path writeScreenshot(IStream* stream)
         }
         try
         {
-            LARGE_INTEGER start{};
+            const auto start = LARGE_INTEGER{};
             check(stream->Seek(start, STREAM_SEEK_SET, nullptr), "Read PNG stream");
             std::array<BYTE, 65536> buffer{};
             for (;;)
@@ -268,7 +268,7 @@ void requestScreenshot() noexcept
 {
     try
     {
-        std::lock_guard<std::mutex> lock(statusMutex);
+        const std::lock_guard<std::mutex> lock(statusMutex);
         pending.store(true);
         status = "Screenshot queued for the next game frame.";
     }
@@ -277,9 +277,9 @@ void requestScreenshot() noexcept
     }
 }
 
-std::string screenshotStatus()
+auto screenshotStatus() -> std::string
 {
-    std::lock_guard<std::mutex> lock(statusMutex);
+    const std::lock_guard<std::mutex> lock(statusMutex);
     return status;
 }
 
@@ -292,7 +292,7 @@ void saveRequestedScreenshot(void* device) noexcept
     try
     {
         {
-            std::lock_guard<std::mutex> lock(statusMutex);
+            const std::lock_guard<std::mutex> lock(statusMutex);
             if (!pending.exchange(false))
             {
                 return;

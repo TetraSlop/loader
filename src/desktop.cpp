@@ -9,7 +9,7 @@ namespace
 
 // These adapters replace only imports in the supported game DLL. Windows,
 // Dear ImGui and the loader itself retain their normal APIs.
-HHOOK WINAPI desktopKeyboardHook(int kind, HOOKPROC callback, HINSTANCE instance, DWORD thread)
+auto WINAPI desktopKeyboardHook(int kind, HOOKPROC callback, HINSTANCE instance, DWORD thread) -> HHOOK
 {
     if (kind == WH_KEYBOARD_LL)
     {
@@ -20,34 +20,34 @@ HHOOK WINAPI desktopKeyboardHook(int kind, HOOKPROC callback, HINSTANCE instance
     return SetWindowsHookExA(kind, callback, instance, thread);
 }
 
-BOOL WINAPI desktopCursorPosition(int, int)
+auto WINAPI desktopCursorPosition(int, int) -> BOOL
 {
     return TRUE;
 }
 
-int WINAPI desktopCursorVisibility(BOOL show)
+auto WINAPI desktopCursorVisibility(BOOL show) -> int
 {
     // Native code loops until ShowCursor crosses zero. Satisfy that contract
     // without changing Windows' thread-local visibility counter.
     return show ? 0 : -1;
 }
 
-BOOL WINAPI desktopAttachInput(DWORD, DWORD, BOOL)
+auto WINAPI desktopAttachInput(DWORD, DWORD, BOOL) -> BOOL
 {
     return TRUE;
 }
 
-BOOL WINAPI desktopForeground(HWND)
+auto WINAPI desktopForeground(HWND) -> BOOL
 {
     return TRUE;
 }
 
-HWND WINAPI desktopActiveWindow(HWND window)
+auto WINAPI desktopActiveWindow(HWND window) -> HWND
 {
     return window;
 }
 
-BOOL WINAPI desktopParameters(UINT action, UINT value, PVOID data, UINT flags)
+auto WINAPI desktopParameters(UINT action, UINT value, PVOID data, UINT flags) -> BOOL
 {
     switch (action)
     {
@@ -71,9 +71,9 @@ void skipLegacyCursorSync(HMODULE module)
     // the Windows pointer every frame, even while another window has focus.
     // Our input bridge already maps the pointer to the scaled game content.
     // Skip the whole reconciliation block, including its stale bounds clamp.
-    auto* base = reinterpret_cast<BYTE*>(module);
-    BYTE* site = base + 0x185753;
-    DWORD operand;
+    auto* const base = reinterpret_cast<BYTE*>(module);
+    BYTE* const site = base + 0x185753;
+    DWORD       operand;
     std::memcpy(&operand, site + 1, sizeof(operand));
     if (site[0] != 0xa1 || operand != reinterpret_cast<DWORD>(base + 0x2ff248))
         throw std::runtime_error("Unsupported live cursor synchronization layout");

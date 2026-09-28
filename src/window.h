@@ -16,12 +16,12 @@ enum class WindowAction : WPARAM
     hdFonts,
     autoResolution
 };
-void           initializeGameWindow(HWND window);
-WindowSettings currentWindowSettings();
-RECT           gameContentRect();
-void           toggleSettingsPanel();
-void           stopSettingsPanel();
-bool           settingsPanelOpen();
+void initializeGameWindow(HWND window);
+auto currentWindowSettings() -> WindowSettings;
+auto gameContentRect() -> RECT;
+void toggleSettingsPanel();
+void stopSettingsPanel();
+auto settingsPanelOpen() -> bool;
 // UI commands are dispatched on the game's window thread. renderScale takes
 // an index into renderScales, so fractional scales need no message encoding.
 void postWindowAction(WindowAction action, LPARAM value = 0);

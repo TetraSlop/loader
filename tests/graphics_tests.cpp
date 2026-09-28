@@ -3,7 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 
-static BOOL fakeIconic(HWND)
+static auto fakeIconic(HWND) -> BOOL
 {
     return FALSE;
 }
@@ -11,17 +11,17 @@ static BOOL fakeIconic(HWND)
 static bool  monitorAvailable = true, displayAvailable = true;
 static DWORD displayWidth = 3840, displayHeight = 2160;
 
-static HMONITOR fakeMonitor(HWND, DWORD)
+static auto fakeMonitor(HWND, DWORD) -> HMONITOR
 {
     return reinterpret_cast<HMONITOR>(1);
 }
 
-static BOOL fakeMonitorInfo(HMONITOR, MONITORINFOEXW*)
+static auto fakeMonitorInfo(HMONITOR, MONITORINFOEXW*) -> BOOL
 {
     return monitorAvailable;
 }
 
-static BOOL fakeDisplaySettings(LPCWSTR, DWORD mode, DEVMODEW* info)
+static auto fakeDisplaySettings(LPCWSTR, DWORD mode, DEVMODEW* info) -> BOOL
 {
     REQUIRE(mode == ENUM_CURRENT_SETTINGS);
     info->dmPelsWidth  = displayWidth;
@@ -53,7 +53,7 @@ void initializeGameWindow(HWND)
 {
 }
 
-WindowSettings currentWindowSettings()
+auto currentWindowSettings() -> WindowSettings
 {
     return {};
 }
@@ -63,29 +63,29 @@ void saveRequestedScreenshot(void*) noexcept
     ++screenshotChecks;
 }
 
-RECT gameContentRect()
+auto gameContentRect() -> RECT
 {
     return { 240, 0, 1680, 1080 };
 }
 
 } // namespace tmloader
 
-static HRESULT WINAPI reset(void*, tmloader::Present8* pp)
+static auto WINAPI reset(void*, tmloader::Present8* pp) -> HRESULT
 {
     // Emulate D3D8's presentation contract: explicit rectangles require COPY.
-    float scale = tmloader::activeRenderScale();
+    const float scale = tmloader::activeRenderScale();
     REQUIRE((pp->windowed && pp->width == 640U * scale && pp->height == 480U * scale));
     REQUIRE((pp->swap == 3 && pp->count == 1 && pp->multisample == 0));
     REQUIRE((pp->window == tmloader::gameWindow && pp->refresh == 0));
     return S_OK;
 }
 
-static HRESULT WINAPI present(void*, const RECT* source, const RECT* dest, HWND, const RGNDATA*)
+static auto WINAPI present(void*, const RECT* source, const RECT* dest, HWND, const RGNDATA*) -> HRESULT
 {
     REQUIRE((dest && dest->left == 240 && dest->top == 0 && dest->right == 1680 && dest->bottom == 1080));
     if (source)
     {
-        int quarters = static_cast<int>(tmloader::activeRenderScale() * 4);
+        const int quarters = static_cast<int>(tmloader::activeRenderScale() * 4);
         REQUIRE((source->left == MulDiv(11, quarters, 4) && source->top == MulDiv(21, quarters, 4) &&
                  source->right == MulDiv(631, quarters, 4) && source->bottom == MulDiv(471, quarters, 4)));
     }
@@ -95,7 +95,7 @@ static HRESULT WINAPI present(void*, const RECT* source, const RECT* dest, HWND,
 static DWORD selectedShader, bufferFormat;
 static int   shaderCreates, shaderDeletes, constantsCalls;
 
-static HRESULT WINAPI createShader(void*, const DWORD* declaration, const DWORD* code, DWORD* shader, DWORD)
+static auto WINAPI createShader(void*, const DWORD* declaration, const DWORD* code, DWORD* shader, DWORD) -> HRESULT
 {
     REQUIRE((declaration[0] == 0x20000000 && code[0] == 0xfffe0101));
     *shader = 0x123;
@@ -103,29 +103,29 @@ static HRESULT WINAPI createShader(void*, const DWORD* declaration, const DWORD*
     return S_OK;
 }
 
-static HRESULT WINAPI deleteShader(void*, DWORD shader)
+static auto WINAPI deleteShader(void*, DWORD shader) -> HRESULT
 {
     REQUIRE(shader == 0x123);
     ++shaderDeletes;
     return S_OK;
 }
 
-static HRESULT WINAPI constants(void*, DWORD index, const void* data, DWORD count)
+static auto WINAPI constants(void*, DWORD index, const void* data, DWORD count) -> HRESULT
 {
     REQUIRE((index == 0 && count == 2));
-    auto* values = static_cast<const float*>(data);
+    auto* const values = static_cast<const float*>(data);
     REQUIRE((std::abs(values[0] - 2.0f / 640) < 0.000001f && values[3] == 1));
     ++constantsCalls;
     return S_OK;
 }
 
-static HRESULT WINAPI selectShader(void*, DWORD shader)
+static auto WINAPI selectShader(void*, DWORD shader) -> HRESULT
 {
     selectedShader = shader;
     return S_OK;
 }
 
-static HRESULT WINAPI makeBuffer(void*, UINT size, DWORD usage, DWORD format, DWORD pool, void**)
+static auto WINAPI makeBuffer(void*, UINT size, DWORD usage, DWORD format, DWORD pool, void**) -> HRESULT
 {
     REQUIRE((size == 128 && usage == 0x238 && pool == 0));
     bufferFormat = format;
@@ -164,7 +164,7 @@ TEST_CASE("Graphics hooks preserve presentation and device lifecycle", "[graphic
     void** device        = table;
     originalVertexShader = selectShader;
     originalVertexBuffer = makeBuffer;
-    for (float factor : renderScales)
+    for (const float factor : renderScales)
     {
         renderingFactor = factor;
         REQUIRE(resetDevice(&device, &pp) == S_OK);
@@ -174,7 +174,7 @@ TEST_CASE("Graphics hooks preserve presentation and device lifecycle", "[graphic
         REQUIRE(bufferFormat == (factor == 1 ? gameVertexFormat : 0));
         REQUIRE((vertexBuffer(&device, 128, 0x238, 0x142, 0, nullptr) == S_OK && bufferFormat == 0x142));
         REQUIRE((setVertexShader(&device, 0x142) == S_OK && selectedShader == 0x142));
-        RECT source{ 11, 21, 631, 471 };
+        const auto source = RECT{ 11, 21, 631, 471 };
         REQUIRE(presentFrame(nullptr, &source, nullptr, nullptr, nullptr) == S_OK);
         REQUIRE((source.left == 11 && source.right == 631));
     }

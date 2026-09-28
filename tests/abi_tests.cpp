@@ -14,32 +14,32 @@ public:
     LPSTR         command  = nullptr;
     unsigned long table[4]{ 11, 22, 33, 44 };
 
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID, void**) override
+    auto STDMETHODCALLTYPE QueryInterface(REFIID, void**) -> HRESULT override
     {
         return E_NOINTERFACE;
     }
 
-    ULONG STDMETHODCALLTYPE AddRef() override
+    auto STDMETHODCALLTYPE AddRef() -> ULONG override
     {
         return 1;
     }
 
-    ULONG STDMETHODCALLTYPE Release() override
+    auto STDMETHODCALLTYPE Release() -> ULONG override
     {
         return 1;
     }
 
-    virtual HRESULT __stdcall GethInstance(HINSTANCE*)
+    virtual auto __stdcall GethInstance(HINSTANCE*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall GetlpCmdLine(LPSTR*)
+    virtual auto __stdcall GetlpCmdLine(LPSTR*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall SetParamInit(HINSTANCE h, LPSTR text)
+    virtual auto __stdcall SetParamInit(HINSTANCE h, LPSTR text) -> HRESULT
     {
         ++paramCalls;
         instance = h;
@@ -47,114 +47,114 @@ public:
         return S_OK;
     }
 
-    virtual HRESULT __stdcall GetWindowsType(unsigned long*)
+    virtual auto __stdcall GetWindowsType(unsigned long*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall GetCommonFunctionTable(unsigned long** out)
+    virtual auto __stdcall GetCommonFunctionTable(unsigned long** out) -> HRESULT
     {
         ++tableCalls;
         *out = table;
         return S_OK;
     }
 
-    virtual HRESULT __stdcall PolViewerExec(unsigned long*)
+    virtual auto __stdcall PolViewerExec(unsigned long*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall GetWindowsVersion(unsigned long*, unsigned long*, unsigned long*, unsigned long*, BSTR*, unsigned long)
+    virtual auto __stdcall GetWindowsVersion(unsigned long*, unsigned long*, unsigned long*, unsigned long*, BSTR*, unsigned long) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall PressAnyKey(unsigned long)
+    virtual auto __stdcall PressAnyKey(unsigned long) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall PolconSetEnableWakeupFuncFlag(unsigned long, unsigned long)
+    virtual auto __stdcall PolconSetEnableWakeupFuncFlag(unsigned long, unsigned long) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall CreateInput(void*)
+    virtual auto __stdcall CreateInput(void*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall UpdateInputState()
+    virtual auto __stdcall UpdateInputState() -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall GetPadRepeat(unsigned long, unsigned long*)
+    virtual auto __stdcall GetPadRepeat(unsigned long, unsigned long*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall GetPadOn(unsigned long, unsigned long*)
+    virtual auto __stdcall GetPadOn(unsigned long, unsigned long*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall FinalCleanup()
+    virtual auto __stdcall FinalCleanup() -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall SetParamInitW(HINSTANCE, LPWSTR)
+    virtual auto __stdcall SetParamInitW(HINSTANCE, LPWSTR) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall GetlpCmdLineW(LPWSTR*)
+    virtual auto __stdcall GetlpCmdLineW(LPWSTR*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall PaintFriendList(void*)
+    virtual auto __stdcall PaintFriendList(void*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall CreateFriendList()
+    virtual auto __stdcall CreateFriendList() -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall DestroyFriendList()
+    virtual auto __stdcall DestroyFriendList() -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall SetMaskWindowHandle(void*)
+    virtual auto __stdcall SetMaskWindowHandle(void*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall GetPlayOnlineRegKeyNameW(LPWSTR*)
+    virtual auto __stdcall GetPlayOnlineRegKeyNameW(LPWSTR*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall GetPlayOnlineRegKeyNameA(LPSTR*)
+    virtual auto __stdcall GetPlayOnlineRegKeyNameA(LPSTR*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall GetSquareEnixRegKeyNameW(LPWSTR*)
+    virtual auto __stdcall GetSquareEnixRegKeyNameW(LPWSTR*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall GetSquareEnixRegKeyNameA(LPSTR*)
+    virtual auto __stdcall GetSquareEnixRegKeyNameA(LPSTR*) -> HRESULT
     {
         return unexpected();
     }
 
-    virtual HRESULT __stdcall SetAreaCode(long value)
+    virtual auto __stdcall SetAreaCode(long value) -> HRESULT
     {
         ++areaCalls;
         area = value;
@@ -162,14 +162,14 @@ public:
     }
 
 private:
-    HRESULT unexpected()
+    auto unexpected() -> HRESULT
     {
         ++wrongCalls;
         return E_UNEXPECTED;
     }
 };
 
-static HRESULT __stdcall mockGameStart(IUnknown* game, IUnknown* core, tmloader::abi::LaunchDescriptor* launch)
+static auto __stdcall mockGameStart(IUnknown* game, IUnknown* core, tmloader::abi::LaunchDescriptor* launch) -> HRESULT
 {
     REQUIRE((game && core));
     REQUIRE((launch->size == 28 && launch->flags == 0x200));
@@ -180,10 +180,10 @@ static HRESULT __stdcall mockGameStart(IUnknown* game, IUnknown* core, tmloader:
 TEST_CASE("COM dispatch preserves native signatures and slots", "[abi]")
 {
     using namespace tmloader;
-    MockCore  core;
-    IUnknown* object    = &core;
-    char      command[] = " /game DdcMLbB";
-    HINSTANCE instance  = reinterpret_cast<HINSTANCE>(0x12345678);
+    MockCore        core;
+    IUnknown* const object    = &core;
+    char            command[] = " /game DdcMLbB";
+    const auto      instance  = reinterpret_cast<HINSTANCE>(0x12345678);
     REQUIRE(abi::coreCall<abi::SetAreaCode>(object, 1L) == S_OK);
     REQUIRE((core.areaCalls == 1 && core.area == 1 && core.wrongCalls == 0));
     // Signed long matches the declared ABI as well as the usual value1.
@@ -198,7 +198,7 @@ TEST_CASE("COM dispatch preserves native signatures and slots", "[abi]")
     REQUIRE(abi::coreCall<25>(object, static_cast<LPWSTR*>(nullptr)) == E_UNEXPECTED);
     REQUIRE((core.wrongCalls == 1 && core.areaCalls == 2));
     abi::LaunchDescriptor descriptor{ sizeof(descriptor), 0x200, abi::coreInterface, nullptr };
-    abi::GameStart        start = mockGameStart;
+    const abi::GameStart  start = mockGameStart;
     REQUIRE(start(object, object, &descriptor) == 123);
     std::cout << "COM slot/signature and launch descriptor regression checks passed.\n";
 }

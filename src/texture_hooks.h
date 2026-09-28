@@ -9,6 +9,6 @@ using TextureUploadFn = HRESULT(WINAPI*)(void* device, const void* source, UINT 
 
 // Install before native game initialization, while no thread can execute these
 // calls. Unsupported code or memory protection leaves all original calls intact.
-TextureUploadFn installTextureCallHooks(BYTE* image, TextureUploadFn replacement);
+auto installTextureCallHooks(BYTE* image, TextureUploadFn replacement) -> TextureUploadFn;
 
 } // namespace tmloader

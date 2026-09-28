@@ -37,10 +37,16 @@ For new or refactored code:
   anonymous namespaces in their owning `.cpp`. Shared ABI and rendering constants
   retain named ownership in the headers that declare their contract.
 - Prefer `const auto`, `constexpr`, typed initialization on the right and one
-  variable per declaration. Use named casts and `nullptr`.
-- Use trailing return types for new ordinary helpers, `member_` for private
-  members, explicit single-argument constructors and `override`/`final` where
-  appropriate. Retain exact Windows/COM calling conventions and ABI types.
+  variable per declaration. Make a local binding const when its value does not
+  change; retain mutable output parameters, resource owners and values returned
+  by move. For pointers, distinguish a constant binding (`auto* const`) from a
+  read-only pointee (`const auto*`). Use named casts and `nullptr`.
+- Use trailing return types on non-void functions, including Windows callbacks
+  and COM overrides: `auto WINAPI callback(...) -> HRESULT`. Keep void functions,
+  constructors and destructors in their ordinary form. Retain exact Windows/COM
+  calling conventions and ABI types.
+- Use `member_` for private members, explicit single-argument constructors and
+  `override`/`final` where appropriate.
 - Use braced control flow and `if` or immediately invoked lambdas instead of new
   ternaries. Keep lazy evaluation and numeric conversions explicit.
 - Follow the rule of zero or five. Resource-owning helpers that cannot transfer
@@ -52,9 +58,11 @@ Windows base types precede BCrypt, and multimedia types precede DirectSound.
 Keep these include groups separated by blank lines so include sorting preserves
 the required order.
 
-The current cleanup formats all owned C++, while semantic changes are confined
-to the extracted classes and related implementation boundaries. Older control
-flow and declarations elsewhere can adopt these conventions as they are edited.
-The existing `.clang-tidy` checks cover C-style casts, `NULL` and `typedef`.
+The formatter covers all first-party C++. The `.clang-tidy` checks enforce
+trailing return types and const local bindings alongside the existing checks for
+C-style casts, `NULL` and `typedef`. Its pointer fixes only make bindings const;
+they do not change pointed-to types. Keep simplifications focused on removing
+duplicated work, unnecessary state and nesting while preserving failure behavior
+and resource cleanup order.
 
 Reference: [LandSandBoat Development Guide](https://github.com/LandSandBoat/server/wiki/Development-Guide).

@@ -23,7 +23,7 @@ auto LocalInput::supports(REFIID iid) noexcept -> bool
     return iid == inputIID;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInput::QueryInterface(REFIID iid, void** out)
+auto STDMETHODCALLTYPE LocalInput::QueryInterface(REFIID iid, void** out) -> HRESULT
 {
     if (iid != inputIID && iid != IID_IUnknown)
     {
@@ -35,12 +35,12 @@ HRESULT STDMETHODCALLTYPE LocalInput::QueryInterface(REFIID iid, void** out)
     return S_OK;
 }
 
-ULONG STDMETHODCALLTYPE LocalInput::AddRef()
+auto STDMETHODCALLTYPE LocalInput::AddRef() -> ULONG
 {
     return ++references_;
 }
 
-ULONG STDMETHODCALLTYPE LocalInput::Release()
+auto STDMETHODCALLTYPE LocalInput::Release() -> ULONG
 {
     const auto n = --references_;
     if (!n)
@@ -50,7 +50,7 @@ ULONG STDMETHODCALLTYPE LocalInput::Release()
     return n;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInput::CreateDevice(REFGUID guid, LPDIRECTINPUTDEVICE8A* out, LPUNKNOWN outer)
+auto STDMETHODCALLTYPE LocalInput::CreateDevice(REFGUID guid, LPDIRECTINPUTDEVICE8A* out, LPUNKNOWN outer) -> HRESULT
 {
     if (outer)
     {
@@ -73,12 +73,12 @@ HRESULT STDMETHODCALLTYPE LocalInput::CreateDevice(REFGUID guid, LPDIRECTINPUTDE
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInput::EnumDevices(DWORD, LPDIENUMDEVICESCALLBACKA, LPVOID, DWORD)
+auto STDMETHODCALLTYPE LocalInput::EnumDevices(DWORD, LPDIENUMDEVICESCALLBACKA, LPVOID, DWORD) -> HRESULT
 {
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInput::GetDeviceStatus(REFGUID guid)
+auto STDMETHODCALLTYPE LocalInput::GetDeviceStatus(REFGUID guid) -> HRESULT
 {
     if (guid == keyboardGUID || guid == mouseGUID)
     {
@@ -87,27 +87,27 @@ HRESULT STDMETHODCALLTYPE LocalInput::GetDeviceStatus(REFGUID guid)
     return DI_NOTATTACHED;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInput::RunControlPanel(HWND, DWORD)
+auto STDMETHODCALLTYPE LocalInput::RunControlPanel(HWND, DWORD) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInput::Initialize(HINSTANCE, DWORD)
+auto STDMETHODCALLTYPE LocalInput::Initialize(HINSTANCE, DWORD) -> HRESULT
 {
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInput::FindDevice(REFGUID, LPCSTR, LPGUID)
+auto STDMETHODCALLTYPE LocalInput::FindDevice(REFGUID, LPCSTR, LPGUID) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInput::EnumDevicesBySemantics(LPCSTR, LPDIACTIONFORMATA, LPDIENUMDEVICESBYSEMANTICSCBA, LPVOID, DWORD)
+auto STDMETHODCALLTYPE LocalInput::EnumDevicesBySemantics(LPCSTR, LPDIACTIONFORMATA, LPDIENUMDEVICESBYSEMANTICSCBA, LPVOID, DWORD) -> HRESULT
 {
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInput::ConfigureDevices(LPDICONFIGUREDEVICESCALLBACK, LPDICONFIGUREDEVICESPARAMSA, DWORD, LPVOID)
+auto STDMETHODCALLTYPE LocalInput::ConfigureDevices(LPDICONFIGUREDEVICESCALLBACK, LPDICONFIGUREDEVICESPARAMSA, DWORD, LPVOID) -> HRESULT
 {
     return E_NOTIMPL;
 }
@@ -117,19 +117,19 @@ LocalInputDevice::LocalInputDevice(bool key) noexcept
 {
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::QueryInterface(REFIID, void** out)
+auto STDMETHODCALLTYPE LocalInputDevice::QueryInterface(REFIID, void** out) -> HRESULT
 {
     *out = this;
     AddRef();
     return S_OK;
 }
 
-ULONG STDMETHODCALLTYPE LocalInputDevice::AddRef()
+auto STDMETHODCALLTYPE LocalInputDevice::AddRef() -> ULONG
 {
     return ++references_;
 }
 
-ULONG STDMETHODCALLTYPE LocalInputDevice::Release()
+auto STDMETHODCALLTYPE LocalInputDevice::Release() -> ULONG
 {
     const auto n = --references_;
     if (!n)
@@ -139,7 +139,7 @@ ULONG STDMETHODCALLTYPE LocalInputDevice::Release()
     return n;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::GetCapabilities(LPDIDEVCAPS p)
+auto STDMETHODCALLTYPE LocalInputDevice::GetCapabilities(LPDIDEVCAPS p) -> HRESULT
 {
     const auto size = p->dwSize;
     memset(p, 0, size);
@@ -160,34 +160,34 @@ HRESULT STDMETHODCALLTYPE LocalInputDevice::GetCapabilities(LPDIDEVCAPS p)
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::EnumObjects(LPDIENUMDEVICEOBJECTSCALLBACKA, LPVOID, DWORD)
+auto STDMETHODCALLTYPE LocalInputDevice::EnumObjects(LPDIENUMDEVICEOBJECTSCALLBACKA, LPVOID, DWORD) -> HRESULT
 {
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::GetProperty(REFGUID, LPDIPROPHEADER)
+auto STDMETHODCALLTYPE LocalInputDevice::GetProperty(REFGUID, LPDIPROPHEADER) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::SetProperty(REFGUID, LPCDIPROPHEADER)
+auto STDMETHODCALLTYPE LocalInputDevice::SetProperty(REFGUID, LPCDIPROPHEADER) -> HRESULT
 {
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::Acquire()
-{
-    mouseSampleValid_ = false;
-    return S_OK;
-}
-
-HRESULT STDMETHODCALLTYPE LocalInputDevice::Unacquire()
+auto STDMETHODCALLTYPE LocalInputDevice::Acquire() -> HRESULT
 {
     mouseSampleValid_ = false;
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::GetDeviceState(DWORD size, void* output)
+auto STDMETHODCALLTYPE LocalInputDevice::Unacquire() -> HRESULT
+{
+    mouseSampleValid_ = false;
+    return S_OK;
+}
+
+auto STDMETHODCALLTYPE LocalInputDevice::GetDeviceState(DWORD size, void* output) -> HRESULT
 {
     if (!output)
     {
@@ -312,7 +312,7 @@ HRESULT STDMETHODCALLTYPE LocalInputDevice::GetDeviceState(DWORD size, void* out
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::GetDeviceData(DWORD, LPDIDEVICEOBJECTDATA, LPDWORD count, DWORD)
+auto STDMETHODCALLTYPE LocalInputDevice::GetDeviceData(DWORD, LPDIDEVICEOBJECTDATA, LPDWORD count, DWORD) -> HRESULT
 {
     if (count)
     {
@@ -321,18 +321,18 @@ HRESULT STDMETHODCALLTYPE LocalInputDevice::GetDeviceData(DWORD, LPDIDEVICEOBJEC
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::SetDataFormat(LPCDIDATAFORMAT p)
+auto STDMETHODCALLTYPE LocalInputDevice::SetDataFormat(LPCDIDATAFORMAT p) -> HRESULT
 {
     logf("Input bridge format bytes=%lu objects=%lu flags=%lX", p->dwDataSize, p->dwNumObjs, p->dwFlags);
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::SetEventNotification(HANDLE)
+auto STDMETHODCALLTYPE LocalInputDevice::SetEventNotification(HANDLE) -> HRESULT
 {
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::SetCooperativeLevel(HWND h, DWORD flags)
+auto STDMETHODCALLTYPE LocalInputDevice::SetCooperativeLevel(HWND h, DWORD flags) -> HRESULT
 {
     window_           = h;
     mouseSampleValid_ = false;
@@ -340,12 +340,12 @@ HRESULT STDMETHODCALLTYPE LocalInputDevice::SetCooperativeLevel(HWND h, DWORD fl
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::GetObjectInfo(LPDIDEVICEOBJECTINSTANCEA, DWORD, DWORD)
+auto STDMETHODCALLTYPE LocalInputDevice::GetObjectInfo(LPDIDEVICEOBJECTINSTANCEA, DWORD, DWORD) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::GetDeviceInfo(LPDIDEVICEINSTANCEA p)
+auto STDMETHODCALLTYPE LocalInputDevice::GetDeviceInfo(LPDIDEVICEINSTANCEA p) -> HRESULT
 {
     const auto size = p->dwSize;
     memset(p, 0, size);
@@ -367,32 +367,32 @@ HRESULT STDMETHODCALLTYPE LocalInputDevice::GetDeviceInfo(LPDIDEVICEINSTANCEA p)
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::RunControlPanel(HWND, DWORD)
+auto STDMETHODCALLTYPE LocalInputDevice::RunControlPanel(HWND, DWORD) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::Initialize(HINSTANCE, DWORD, REFGUID)
+auto STDMETHODCALLTYPE LocalInputDevice::Initialize(HINSTANCE, DWORD, REFGUID) -> HRESULT
 {
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::CreateEffect(REFGUID, LPCDIEFFECT, LPDIRECTINPUTEFFECT*, LPUNKNOWN)
+auto STDMETHODCALLTYPE LocalInputDevice::CreateEffect(REFGUID, LPCDIEFFECT, LPDIRECTINPUTEFFECT*, LPUNKNOWN) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::EnumEffects(LPDIENUMEFFECTSCALLBACKA, LPVOID, DWORD)
+auto STDMETHODCALLTYPE LocalInputDevice::EnumEffects(LPDIENUMEFFECTSCALLBACKA, LPVOID, DWORD) -> HRESULT
 {
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::GetEffectInfo(LPDIEFFECTINFOA, REFGUID)
+auto STDMETHODCALLTYPE LocalInputDevice::GetEffectInfo(LPDIEFFECTINFOA, REFGUID) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::GetForceFeedbackState(LPDWORD p)
+auto STDMETHODCALLTYPE LocalInputDevice::GetForceFeedbackState(LPDWORD p) -> HRESULT
 {
     if (p)
     {
@@ -401,27 +401,27 @@ HRESULT STDMETHODCALLTYPE LocalInputDevice::GetForceFeedbackState(LPDWORD p)
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::SendForceFeedbackCommand(DWORD)
+auto STDMETHODCALLTYPE LocalInputDevice::SendForceFeedbackCommand(DWORD) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::EnumCreatedEffectObjects(LPDIENUMCREATEDEFFECTOBJECTSCALLBACK, LPVOID, DWORD)
+auto STDMETHODCALLTYPE LocalInputDevice::EnumCreatedEffectObjects(LPDIENUMCREATEDEFFECTOBJECTSCALLBACK, LPVOID, DWORD) -> HRESULT
 {
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::Escape(LPDIEFFESCAPE)
+auto STDMETHODCALLTYPE LocalInputDevice::Escape(LPDIEFFESCAPE) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::Poll()
+auto STDMETHODCALLTYPE LocalInputDevice::Poll() -> HRESULT
 {
     return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::SendDeviceData(DWORD, LPCDIDEVICEOBJECTDATA, LPDWORD count, DWORD)
+auto STDMETHODCALLTYPE LocalInputDevice::SendDeviceData(DWORD, LPCDIDEVICEOBJECTDATA, LPDWORD count, DWORD) -> HRESULT
 {
     if (count)
     {
@@ -430,27 +430,27 @@ HRESULT STDMETHODCALLTYPE LocalInputDevice::SendDeviceData(DWORD, LPCDIDEVICEOBJ
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::EnumEffectsInFile(LPCSTR, LPDIENUMEFFECTSINFILECALLBACK, LPVOID, DWORD)
+auto STDMETHODCALLTYPE LocalInputDevice::EnumEffectsInFile(LPCSTR, LPDIENUMEFFECTSINFILECALLBACK, LPVOID, DWORD) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::WriteEffectToFile(LPCSTR, DWORD, LPDIFILEEFFECT, DWORD)
+auto STDMETHODCALLTYPE LocalInputDevice::WriteEffectToFile(LPCSTR, DWORD, LPDIFILEEFFECT, DWORD) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::BuildActionMap(LPDIACTIONFORMATA, LPCSTR, DWORD)
+auto STDMETHODCALLTYPE LocalInputDevice::BuildActionMap(LPDIACTIONFORMATA, LPCSTR, DWORD) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::SetActionMap(LPDIACTIONFORMATA, LPCSTR, DWORD)
+auto STDMETHODCALLTYPE LocalInputDevice::SetActionMap(LPDIACTIONFORMATA, LPCSTR, DWORD) -> HRESULT
 {
     return E_NOTIMPL;
 }
 
-HRESULT STDMETHODCALLTYPE LocalInputDevice::GetImageInfo(LPDIDEVICEIMAGEINFOHEADERA)
+auto STDMETHODCALLTYPE LocalInputDevice::GetImageInfo(LPDIDEVICEIMAGEINFOHEADERA) -> HRESULT
 {
     return E_NOTIMPL;
 }

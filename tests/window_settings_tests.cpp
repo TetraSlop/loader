@@ -6,7 +6,7 @@ using namespace tmloader;
 
 void rect(LONG width, LONG height, bool aspect, RECT expected)
 {
-    RECT actual = contentRect(width, height, aspect);
+    const auto actual = contentRect(width, height, aspect);
     REQUIRE(EqualRect(&actual, &expected));
 }
 
@@ -36,10 +36,10 @@ TEST_CASE("Content rectangles preserve optional aspect ratios", "[window_setting
 
 TEST_CASE("Window settings preserve saved preferences and legacy defaults", "[window_settings]")
 {
-    for (const char* malformed : { "", "oops", "tmloader-window-v1 -1 480 0 1", "tmloader-window-v1 640 0 0 1", "tmloader-window-v1 99999 480 0 1", "tmloader-window-v1 640 480 2 1", "tmloader-window-v1 640 480 0 9" })
+    for (const auto* const malformed : { "", "oops", "tmloader-window-v1 -1 480 0 1", "tmloader-window-v1 640 0 0 1", "tmloader-window-v1 99999 480 0 1", "tmloader-window-v1 640 480 2 1", "tmloader-window-v1 640 480 0 9" })
     {
         std::istringstream in(malformed);
-        auto               value = readWindowSettings(in);
+        const auto         value = readWindowSettings(in);
         REQUIRE((value.width == 640 && value.height == 480 && !value.fullscreen && value.preserveAspect));
         REQUIRE((value.autoResolution && value.hdFonts && value.hdTextures));
     }
@@ -51,7 +51,7 @@ TEST_CASE("Window settings preserve saved preferences and legacy defaults", "[wi
     value = readWindowSettings(legacy);
     REQUIRE((value.width == 960 && value.height == 720 && value.renderScale == 1));
     REQUIRE(!value.autoResolution);
-    for (float scale : renderScales)
+    for (const auto scale : renderScales)
     {
         std::stringstream saved;
         value.renderScale = scale;
@@ -73,33 +73,90 @@ TEST_CASE("Window settings preserve saved preferences and legacy defaults", "[wi
     std::istringstream fourth("tmloader-window-v4 1280 960 0 1 4.5 1");
     value = readWindowSettings(fourth);
     REQUIRE((value.renderScale == 4.5f && value.hdTextures && value.hdFonts && !value.autoResolution));
-    for (bool automatic : { false, true })
+    for (const auto automatic : { false, true })
     {
-        for (bool artwork : { false, true })
+        for (const auto artwork : { false, true })
         {
-            for (bool fonts : { false, true })
+            for (const auto fonts : { false, true })
             {
                 value.autoResolution = automatic;
                 value.hdTextures     = artwork;
                 value.hdFonts        = fonts;
                 std::stringstream saved;
                 writeWindowSettings(saved, value);
-                auto restored = readWindowSettings(saved);
+                const auto restored = readWindowSettings(saved);
                 REQUIRE((restored.autoResolution == automatic && restored.hdTextures == artwork && restored.hdFonts == fonts));
                 REQUIRE(restored.renderScale == 4.5f);
             }
         }
     }
-    for (const char* flags : { "", "invalid", "2 8" })
+    for (const auto* const flags : { "", "invalid", "2 8" })
     {
         std::istringstream invalid(std::string("tmloader-window-v5 960 720 0 1 2.25 0 ") + flags);
         value = readWindowSettings(invalid);
         REQUIRE((value.renderScale == 2.25f && !value.hdTextures && !value.hdFonts && value.autoResolution));
     }
-    for (const char* scale : { "0", "-1", "5", "999999999999999999", "oops", "" })
+    for (const auto* const scale : { "0", "-1", "5", "999999999999999999", "oops", "" })
     {
         std::istringstream invalid(std::string("tmloader-window-v2 960 720 0 1 ") + scale);
         value = readWindowSettings(invalid);
         REQUIRE((value.width == 960 && value.height == 720 && value.renderScale == 1));
+    }
+}
+
+TEST_CASE("Window settings reject unknown versions and retain partial-field compatibility", "[window_settings]")
+{
+    for (const auto* const magic : { "tmloader-window-v0", "tmloader-window-v6", "tmloader-window-v01", "tmloader-window-v5extra", "tmloader-window-v", "other-window-v5" })
+    {
+        CAPTURE(magic);
+        auto       input = std::istringstream{ std::string{ magic } + " 960 720 0 1 2.25 0 0 0" };
+        const auto value = readWindowSettings(input);
+        REQUIRE(value.width == 640);
+        REQUIRE(value.height == 480);
+        REQUIRE(value.renderScale == 1);
+        REQUIRE(value.hdTextures);
+        REQUIRE(value.hdFonts);
+        REQUIRE(value.autoResolution);
+    }
+
+    SECTION("Invalid numeric scale preserves later preferences")
+    {
+        auto       input = std::istringstream{ "tmloader-window-v5 960 720 0 1 5 0 1 0" };
+        const auto value = readWindowSettings(input);
+        REQUIRE(value.width == 960);
+        REQUIRE(value.renderScale == 1);
+        REQUIRE_FALSE(value.hdTextures);
+        REQUIRE(value.hdFonts);
+        REQUIRE_FALSE(value.autoResolution);
+    }
+
+    SECTION("Unreadable scale stops optional-field parsing")
+    {
+        auto       input = std::istringstream{ "tmloader-window-v5 960 720 0 1 invalid 0 0 0" };
+        const auto value = readWindowSettings(input);
+        REQUIRE(value.width == 960);
+        REQUIRE(value.renderScale == 1);
+        REQUIRE(value.hdTextures);
+        REQUIRE(value.hdFonts);
+        REQUIRE(value.autoResolution);
+    }
+
+    SECTION("Invalid numeric artwork flag leaves later valid flags readable")
+    {
+        auto       input = std::istringstream{ "tmloader-window-v5 960 720 0 1 2.25 2 0 0" };
+        const auto value = readWindowSettings(input);
+        REQUIRE(value.renderScale == 2.25f);
+        REQUIRE(value.hdTextures);
+        REQUIRE_FALSE(value.hdFonts);
+        REQUIRE_FALSE(value.autoResolution);
+    }
+
+    SECTION("Invalid numeric font flag retains the artwork default")
+    {
+        auto       input = std::istringstream{ "tmloader-window-v5 960 720 0 1 2.25 0 2 0" };
+        const auto value = readWindowSettings(input);
+        REQUIRE_FALSE(value.hdTextures);
+        REQUIRE_FALSE(value.hdFonts);
+        REQUIRE_FALSE(value.autoResolution);
     }
 }

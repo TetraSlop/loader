@@ -11,6 +11,6 @@ void requestScreenshot() noexcept;
 // The backbuffer is read at its actual internal resolution, without desktop UI.
 void saveRequestedScreenshot(void* device) noexcept;
 // UTF-8 text for the settings window; empty until the first request.
-std::string screenshotStatus();
+auto screenshotStatus() -> std::string;
 
 } // namespace tmloader

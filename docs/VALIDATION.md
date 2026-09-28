@@ -1,5 +1,38 @@
 # Refactor validation
 
+## Const, trailing returns and simplification, 2026-09-27
+
+Non-void functions now use trailing return types throughout first-party C++,
+including Windows callbacks, COM overrides and native test doubles. Stable local
+values and pointer bindings are const; output parameters, advancing cursors and
+ownership transfers retain their required mutability. The persisted clang-tidy
+rules enforce these conventions without changing pointed-to types.
+
+The simplification pass replaces config's map of boolean markers with set
+insertion, avoids a redundant trim copy, decodes the saved window-settings
+version once, and shares optional boolean parsing. The settings panel separates
+window lifetime from rendering and uses WRL COM owners for its graphics objects.
+Virtual registry responses share their type/size/buffer handling. Callback
+calling conventions, initialization order and graphics cleanup order remain.
+
+- The isolated MSVC x86 C++23 RelWithDebInfo build passes without compiler
+  warnings. **24/24 CTest cases pass**, with no skips. Three added cases cover
+  registry buffer contracts and malformed/partial saved preferences.
+- All **37 production and test translation units** pass the persisted
+  clang-tidy checks with warnings treated as errors and no first-party
+  diagnostics. All **51 C++ files** pass clang-format 22 verification.
+- A standalone comparison against the committed settings parser covers
+  **30,000 combinations** of versions, dimensions and optional field values.
+  All parsed fields and stream states match, including malformed inputs.
+- Read-only PE verification passes for the isolated executable. Hashes confirm
+  the deployed loader, local INI and pre-existing IDE files remain unchanged.
+
+Evidence is in ignored `out/cleanup-{build,ctest,format-check}.log`,
+`out/const-return-audit.json`, `out/audit-*.log` and
+`out/window-settings-compatibility.log`. No game or settings window was launched;
+the panel lifecycle extraction has build, static-analysis and headless layout
+coverage, rather than a new native interaction check.
+
 ## LSB C++ style and implementation boundaries, 2026-09-27
 
 The loader now uses the sibling LandSandBoat repository's exact clang-format

@@ -16,7 +16,7 @@ using Microsoft::WRL::ComPtr;
 using namespace tmloader;
 
 template <class... Args>
-HRESULT call(void* object, int slot, Args... args)
+auto call(void* object, int slot, Args... args) -> HRESULT
 {
     using Method = HRESULT(WINAPI*)(void*, Args...);
     return reinterpret_cast<Method>((*static_cast<void***>(object))[slot])(object, args...);
@@ -43,7 +43,7 @@ struct Locked
     BYTE* data;
 };
 
-std::vector<DWORD> pixels(void* device, float factor)
+auto pixels(void* device, float factor) -> std::vector<DWORD>
 {
     ComPtr<IUnknown> surface;
     check(call(device, 16, 0, 0, surface.GetAddressOf()));
@@ -60,7 +60,7 @@ std::vector<DWORD> pixels(void* device, float factor)
     return result;
 }
 
-std::vector<DWORD> render(void* device, void* buffer, DWORD shader, float factor, bool reference)
+auto render(void* device, void* buffer, DWORD shader, float factor, bool reference) -> std::vector<DWORD>
 {
     // A clipped quad with unequal W, interpolated alpha/color and noninteger
     // positions. CPU-scaled fixed-function rendering is the independent oracle.
@@ -109,7 +109,7 @@ TEST_CASE("Scaled rendering matches independently scaled geometry", "[graphics-d
     }
     DWORD mode[4]{};
     check(call(d3d.Get(), 8, 0, mode));
-    for (float factor : renderScales)
+    for (const float factor : renderScales)
     {
         Present8 pp{};
         pp.width    = static_cast<UINT>(640 * factor);
@@ -141,7 +141,7 @@ TEST_CASE("Scaled rendering matches independently scaled geometry", "[graphics-d
         for (auto state : { std::pair<DWORD, DWORD>{ 1, 4 }, { 2, 2 }, { 3, 0 }, { 4, 4 }, { 5, 2 }, { 6, 0 }, { 16, 2 }, { 17, 2 }, { 18, 0 }, { 13, 3 }, { 14, 3 } })
             check(call(device.Get(), 63, 0, state.first, state.second));
         check(call(device.Get(), 63, 1, 1, 1));
-        for (bool textured : { false, true })
+        for (const bool textured : { false, true })
         {
             check(call(device.Get(), 61, 0, textured ? texture.Get() : nullptr));
             auto     expected  = render(device.Get(), buffer.Get(), shader, factor, true);
@@ -152,12 +152,12 @@ TEST_CASE("Scaled rendering matches independently scaled geometry", "[graphics-d
             {
                 if ((expected[i] & 0xffffff) != 0x123456)
                     ++painted;
-                for (int shift : { 0, 8, 16 })
+                for (const int shift : { 0, 8, 16 })
                 {
-                    unsigned delta = static_cast<unsigned>(std::abs(
+                    const unsigned delta = static_cast<unsigned>(std::abs(
                         static_cast<int>((expected[i] >> shift) & 255) -
                         static_cast<int>((actual[i] >> shift) & 255)));
-                    maxDelta       = (std::max)(delta, maxDelta);
+                    maxDelta             = (std::max)(delta, maxDelta);
                     if (delta > 2)
                     {
                         ++differing;

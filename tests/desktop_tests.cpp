@@ -6,13 +6,13 @@
 static int  keyboardHooks, parameterCalls;
 static UINT lastParameter;
 
-static HHOOK fakeKeyboardHook(int, HOOKPROC, HINSTANCE, DWORD)
+static auto fakeKeyboardHook(int, HOOKPROC, HINSTANCE, DWORD) -> HHOOK
 {
     ++keyboardHooks;
     return reinterpret_cast<HHOOK>(1);
 }
 
-static BOOL fakeParameters(UINT action, UINT, PVOID, UINT)
+static auto fakeParameters(UINT action, UINT, PVOID, UINT) -> BOOL
 {
     ++parameterCalls;
     lastParameter = action;
@@ -45,7 +45,7 @@ TEST_CASE("Desktop hooks preserve user input and system settings", "[desktop]")
 {
     using namespace tmloader;
     // In-memory fixture only: no game DLL, keyboard hook or desktop mutation.
-    auto* base = static_cast<BYTE*>(VirtualAlloc(nullptr, 0x310000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    auto* const base = static_cast<BYTE*>(VirtualAlloc(nullptr, 0x310000, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
     REQUIRE(base);
     auto module   = reinterpret_cast<HMODULE>(base);
     bool rejected = false;
@@ -58,11 +58,11 @@ TEST_CASE("Desktop hooks preserve user input and system settings", "[desktop]")
         rejected = true;
     }
     REQUIRE((rejected && base[0x185753] == 0));
-    BYTE* site    = base + 0x185753;
-    site[-1]      = 0xcc;
-    site[5]       = 0xcc;
-    site[0]       = 0xa1;
-    DWORD operand = reinterpret_cast<DWORD>(base + 0x2ff248);
+    BYTE* const site = base + 0x185753;
+    site[-1]         = 0xcc;
+    site[5]          = 0xcc;
+    site[0]          = 0xa1;
+    DWORD operand    = reinterpret_cast<DWORD>(base + 0x2ff248);
     std::memcpy(site + 1, &operand, sizeof(operand));
     installDesktopHooks(module);
     LONG displacement;
@@ -74,7 +74,7 @@ TEST_CASE("Desktop hooks preserve user input and system settings", "[desktop]")
     REQUIRE((keyHook(WH_KEYBOARD_LL, nullptr, nullptr, 0) == nullptr && keyboardHooks == 0));
     REQUIRE((keyHook(WH_GETMESSAGE, nullptr, nullptr, 123) != nullptr && keyboardHooks == 1));
     auto parameters = reinterpret_cast<decltype(&SystemParametersInfoA)>(imports.at(0x2041e8));
-    for (UINT action : { SPI_SETANIMATION, SPI_SETFOREGROUNDLOCKTIMEOUT, SPI_SETSCREENSAVEACTIVE, SPI_ICONHORIZONTALSPACING })
+    for (const UINT action : { SPI_SETANIMATION, SPI_SETFOREGROUNDLOCKTIMEOUT, SPI_SETSCREENSAVEACTIVE, SPI_ICONHORIZONTALSPACING })
         REQUIRE(parameters(action, 0, nullptr, SPIF_SENDCHANGE));
     REQUIRE(parameterCalls == 0);
     DWORD output = 0;

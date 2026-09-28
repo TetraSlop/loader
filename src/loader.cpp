@@ -10,7 +10,7 @@ namespace tmloader
 namespace
 {
 
-IUnknown* createObject(HMODULE module, REFCLSID clsid, REFIID iid)
+auto createObject(HMODULE module, REFCLSID clsid, REFIID iid) -> IUnknown*
 {
     const auto getClass = reinterpret_cast<abi::GetClass>(GetProcAddress(module, "DllGetClassObject"));
     if (!getClass)
@@ -36,7 +36,7 @@ void checked(HRESULT hr, const char* operation)
 
 } // namespace
 
-int launch(const Config& config)
+auto launch(const Config& config) -> int
 {
     options = config;
     openLog(config.log); // Open before dropping the integrity level.
@@ -47,19 +47,19 @@ int launch(const Config& config)
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
     SetUnhandledExceptionFilter(crash);
     logf("tmloader 0.1.0 x86; pid=%lu; runtime=%s", GetCurrentProcessId(), runtimeRoot);
-    BOOL dep = SetProcessDEPPolicy(0);
+    const auto dep = SetProcessDEPPolicy(0);
     logf("Legacy process DEP=%d error=%lu", dep, GetLastError());
     if (!lowerIntegrity())
         throw std::runtime_error("Cannot initialize low-integrity runtime");
     checked(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED), "COM initialization");
     ImGui_ImplWin32_EnableDpiAwareness();
 
-    HMODULE game = LoadLibraryExW(config.game.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+    const auto game = LoadLibraryExW(config.game.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!game)
         throw std::runtime_error("Cannot load game DLL");
-    gameBase             = reinterpret_cast<BYTE*>(game);
-    IUnknown* gameObject = createObject(game, abi::gameClass, abi::gameInterface);
-    void**    gameVtable = *reinterpret_cast<void***>(gameObject);
+    gameBase                = reinterpret_cast<BYTE*>(game);
+    auto* const  gameObject = createObject(game, abi::gameClass, abi::gameInterface);
+    void** const gameVtable = *reinterpret_cast<void***>(gameObject);
     if (gameVtable[9] != gameBase + 0x8210)
         throw std::runtime_error("Unsupported live GameStart layout");
     installFileHooks(game, true);
@@ -70,12 +70,12 @@ int launch(const Config& config)
     setSlot(game, 0x20401c, reinterpret_cast<void*>(tracedSound8));
     initializeTextureReplacements(gameBase, config.texturePack);
 
-    HMODULE coreModule = LoadLibraryExW(config.core.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+    const auto coreModule = LoadLibraryExW(config.core.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!coreModule)
         throw std::runtime_error("Cannot load Viewer DLL");
     installFileHooks(coreModule, false);
     installNetworkHooks(coreModule);
-    IUnknown* core = createObject(coreModule, abi::coreClass, abi::coreInterface);
+    auto* const core = createObject(coreModule, abi::coreClass, abi::coreInterface);
     checked(abi::coreCall<abi::SetAreaCode>(core, 1L), "Viewer area");
     static char cmd[] = " /game DdcMLbB";
     checked(abi::coreCall<abi::SetParamInit>(core, GetModuleHandleW(nullptr), cmd), "Viewer parameters");
@@ -92,7 +92,7 @@ int launch(const Config& config)
 
     abi::LaunchDescriptor descriptor{ sizeof(descriptor), 0x200, abi::coreInterface, nullptr };
     logf("Entering original online GameStart");
-    HRESULT result = reinterpret_cast<abi::GameStart>(gameVtable[9])(gameObject, core, &descriptor);
+    const auto result = reinterpret_cast<abi::GameStart>(gameVtable[9])(gameObject, core, &descriptor);
     logf("GameStart returned %08lX", result);
     stopSettingsPanel();
     gameObject->Release();

@@ -22,14 +22,14 @@ static LONG  virtualX = 0, virtualY = 0;
 static int   mappedSamples  = 0;
 static BYTE  latchedPresses = 0;
 
-static BYTE fakePresses()
+static auto fakePresses() -> BYTE
 {
-    BYTE value     = latchedPresses;
-    latchedPresses = 0;
+    const auto value = latchedPresses;
+    latchedPresses   = 0;
     return value;
 }
 
-static bool fakeMapper(LONG x, LONG y, LONG* dx, LONG* dy)
+static auto fakeMapper(LONG x, LONG y, LONG* dx, LONG* dy) -> bool
 {
     *dx      = x - virtualX;
     *dy      = y - virtualY;
@@ -42,42 +42,42 @@ static bool fakeMapper(LONG x, LONG y, LONG* dx, LONG* dy)
 static HWND testWindow     = reinterpret_cast<HWND>(1);
 static HWND testForeground = testWindow;
 
-static HWND fakeForeground()
+static auto fakeForeground() -> HWND
 {
     return testForeground;
 }
 
 static bool panelOpen = false;
 
-static bool fakeBlocked()
+static auto fakeBlocked() -> bool
 {
     return panelOpen;
 }
 
-static bool fakeViewport(RECT* rect)
+static auto fakeViewport(RECT* rect) -> bool
 {
     *rect = tmloader::contentRect(testWidth, testHeight, true);
     return true;
 }
 
-static DWORD fakeWindowThread(HWND, LPDWORD pid)
+static auto fakeWindowThread(HWND, LPDWORD pid) -> DWORD
 {
     *pid = testFocused ? GetCurrentProcessId() : 0;
     return 1;
 }
 
-static BOOL fakeCursor(LPPOINT p)
+static auto fakeCursor(LPPOINT p) -> BOOL
 {
     *p = testPointer;
     return TRUE;
 }
 
-static BOOL fakeToClient(HWND, LPPOINT)
+static auto fakeToClient(HWND, LPPOINT) -> BOOL
 {
     return TRUE;
 }
 
-static BOOL fakeClientRect(HWND, LPRECT r)
+static auto fakeClientRect(HWND, LPRECT r) -> BOOL
 {
     *r = { 0, 0, testWidth, testHeight };
     return TRUE;
@@ -85,7 +85,7 @@ static BOOL fakeClientRect(HWND, LPRECT r)
 
 static int pressedKey = 0;
 
-static SHORT fakeKey(int key)
+static auto fakeKey(int key) -> SHORT
 {
     return key == VK_LBUTTON ? testButton : key == pressedKey ? static_cast<SHORT>(0x8000)
                                                               : 0;
@@ -189,11 +189,11 @@ TEST_CASE("Input bridge maps focused input and preserves cursor transitions", "[
     LocalInputDevice keyboard(true);
     keyboard.SetCooperativeLevel(testWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
     BYTE keys[256]{};
-    for (int key : { VK_F10, VK_F12 })
+    for (const int key : { VK_F10, VK_F12 })
     {
         pressedKey = key;
         REQUIRE(keyboard.GetDeviceState(sizeof(keys), keys) == S_OK);
-        for (BYTE value : keys)
+        for (const BYTE value : keys)
             REQUIRE(value == 0);
     }
     pressedKey = 'A';

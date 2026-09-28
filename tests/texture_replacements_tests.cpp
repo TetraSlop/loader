@@ -36,7 +36,7 @@ struct Locked
 static_assert(sizeof(Vertex) == 32);
 
 template <class... Args>
-HRESULT call(void* object, int slot, Args... args)
+auto call(void* object, int slot, Args... args) -> HRESULT
 {
     using Method = HRESULT(WINAPI*)(void*, Args...);
     return reinterpret_cast<Method>((*static_cast<void***>(object))[slot])(object, args...);
@@ -55,7 +55,7 @@ void check(HRESULT result, const char* operation)
     REQUIRE(SUCCEEDED(result));
 }
 
-DWORD sourcePixel(UINT x, UINT y, bool highResolution)
+auto sourcePixel(UINT x, UINT y, bool highResolution) -> DWORD
 {
     const UINT scale = highResolution ? 4 : 1;
     if (x >= 72 * scale || y >= 96 * scale)
@@ -66,7 +66,7 @@ DWORD sourcePixel(UINT x, UINT y, bool highResolution)
     return alpha << 24 | color;
 }
 
-ComPtr<IUnknown> texture(void* device, bool highResolution)
+auto texture(void* device, bool highResolution) -> ComPtr<IUnknown>
 {
     const UINT       extent = highResolution ? 512 : 128;
     ComPtr<IUnknown> result;
@@ -80,7 +80,7 @@ ComPtr<IUnknown> texture(void* device, bool highResolution)
     return result;
 }
 
-ComPtr<IUnknown> defaultPoolTexture(void* device)
+auto defaultPoolTexture(void* device) -> ComPtr<IUnknown>
 {
     ComPtr<IUnknown> result;
     check(call(device, 20, 128U, 128U, 1U, 0UL, 21UL, 0UL, result.GetAddressOf()),
@@ -88,7 +88,7 @@ ComPtr<IUnknown> defaultPoolTexture(void* device)
     return result;
 }
 
-std::array<DWORD, 8> description(void* texture)
+auto description(void* texture) -> std::array<DWORD, 8>
 {
     std::array<DWORD, 8> result{};
     check(call(texture, 14, 0U, result.data()), "Get texture level description");
@@ -110,7 +110,7 @@ void checkBinding(void* device, void* expected)
     require(actual.Get() == expected, "Unexpected native texture binding");
 }
 
-std::vector<DWORD> pixels(void* device, UINT width = frameWidth, UINT height = frameHeight)
+auto pixels(void* device, UINT width = frameWidth, UINT height = frameHeight) -> std::vector<DWORD>
 {
     ComPtr<IUnknown> surface;
     check(call(device, 16, 0U, 0UL, surface.GetAddressOf()), "Get backbuffer");
@@ -151,14 +151,14 @@ void draw(void* device)
     check(call(device, 72, 5UL, 2U, vertices.data(), static_cast<UINT>(sizeof(Vertex))), "Draw textured quad");
 }
 
-std::vector<DWORD> render(void* device, void* original, bool useScope, bool enabled, void* expectedDuringDraw, bool fontsEnabled = true)
+auto render(void* device, void* original, bool useScope, bool enabled, void* expectedDuringDraw, bool fontsEnabled = true) -> std::vector<DWORD>
 {
     check(call(device, 61, 0U, original), "Bind original texture");
     check(call(device, 36, 0UL, nullptr, 1UL, background, 1.0f, 0UL), "Clear offscreen frame");
     check(call(device, 34), "Begin scene");
     if (useScope)
     {
-        TextureDrawBinding binding(device, enabled, fontsEnabled);
+        const TextureDrawBinding binding(device, enabled, fontsEnabled);
         checkBinding(device, expectedDuringDraw);
         draw(device);
     }
@@ -173,7 +173,7 @@ std::vector<DWORD> render(void* device, void* original, bool useScope, bool enab
     return pixels(device);
 }
 
-size_t differences(const std::vector<DWORD>& first, const std::vector<DWORD>& second)
+auto differences(const std::vector<DWORD>& first, const std::vector<DWORD>& second) -> size_t
 {
     require(first.size() == second.size(), "Frame sizes differ");
     size_t count = 0;
@@ -186,6 +186,7 @@ size_t differences(const std::vector<DWORD>& first, const std::vector<DWORD>& se
 void checkAlphaAndCrop(const std::vector<DWORD>& frame)
 {
     const auto at = [&](UINT x, UINT y)
+        -> unsigned long
     {
         return frame[y * frameWidth + x] & 0xffffff;
     };
@@ -194,7 +195,7 @@ void checkAlphaAndCrop(const std::vector<DWORD>& frame)
     require(at(240, 200) == (sourcePixel(208, 168, true) & 0xffffff), "POT crop samples the wrong HD texel");
     require(at(240, 200) != at(241, 200), "One-pixel HD detail was lost");
     const DWORD source = sourcePixel(20, 68, true), actual = at(52, 100);
-    for (int shift : { 0, 8, 16 })
+    for (const int shift : { 0, 8, 16 })
     {
         const int expected = ((((source >> shift) & 255) * 128) + (((background >> shift) & 255) * 127) + 127) / 255;
         const int observed = (actual >> shift) & 255;
@@ -212,7 +213,7 @@ public:
     {
     }
 
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** output) override
+    auto STDMETHODCALLTYPE QueryInterface(REFIID iid, void** output) -> HRESULT override
     {
         if (!output)
             return E_POINTER;
@@ -224,12 +225,12 @@ public:
         return S_OK;
     }
 
-    ULONG STDMETHODCALLTYPE AddRef() override
+    auto STDMETHODCALLTYPE AddRef() -> ULONG override
     {
         return ++references_;
     }
 
-    ULONG STDMETHODCALLTYPE Release() override
+    auto STDMETHODCALLTYPE Release() -> ULONG override
     {
         const ULONG left = --references_;
         if (!left)
@@ -249,10 +250,10 @@ void checkOwnership(void* device, bool defaultPool)
 {
     for (auto category : { TextureCategory::artwork, TextureCategory::font })
     {
-        bool          destroyed = false;
-        auto          original  = defaultPool ? defaultPoolTexture(device) : texture(device, false);
-        auto*         probe     = new LifetimeProbe(destroyed);
-        const HRESULT result    = attachTextureReplacement(original.Get(), probe, category);
+        bool        destroyed = false;
+        auto        original  = defaultPool ? defaultPoolTexture(device) : texture(device, false);
+        auto* const probe     = new LifetimeProbe(destroyed);
+        const auto  result    = attachTextureReplacement(original.Get(), probe, category);
         probe->Release();
         check(result, "Attach ownership probe");
         require(!destroyed, "Original failed to retain replacement after caller Release");
@@ -272,7 +273,7 @@ void checkDefaultPoolLifecycle(void* device, Present8& parameters, const std::ve
         const auto originalDescription = description(original.Get());
         auto       replacement         = texture(device, true);
         check(attachTextureReplacement(original.Get(), replacement.Get()), "Attach to default-pool original");
-        auto* borrowedReplacement = replacement.Get();
+        auto* const borrowedReplacement = replacement.Get();
         replacement.Reset();
         const auto actual = render(device, original.Get(), true, true, borrowedReplacement);
         require(differences(actual, expected) == 0, "Reloaded default-pool original lost HD replacement");
@@ -286,7 +287,7 @@ void checkDefaultPoolLifecycle(void* device, Present8& parameters, const std::ve
     check(call(device, 14, &parameters), "Reset after default-pool ownership probe");
 }
 
-ComPtr<IUnknown> fontTexture(void* device, UINT scale)
+auto fontTexture(void* device, UINT scale) -> ComPtr<IUnknown>
 {
     // Synthetic glyph masks exercise the native white-RGB/alpha-floor-1 atlas,
     // including soft coverage, 18px cells and high-frequency HD edge detail.
@@ -307,7 +308,7 @@ ComPtr<IUnknown> fontTexture(void* device, UINT scale)
     return result;
 }
 
-std::vector<DWORD> renderFont(void* device, void* buffer, void* source, DWORD shader, float scale, bool reference, bool artworkEnabled = true, bool fontsEnabled = true)
+auto renderFont(void* device, void* buffer, void* source, DWORD shader, float scale, bool reference, bool artworkEnabled = true, bool fontsEnabled = true) -> std::vector<DWORD>
 {
     check(call(device, 61, 0U, source), "Bind font atlas");
     if (!reference)
@@ -315,7 +316,7 @@ std::vector<DWORD> renderFont(void* device, void* buffer, void* source, DWORD sh
     check(call(device, 76, reference ? gameVertexFormat : shader), "Select font shader");
     check(call(device, 36, 0UL, nullptr, 1UL, background, 1.0f, 0UL), "Clear font frame");
     check(call(device, 34), "Begin font scene");
-    for (bool shadow : { true, false })
+    for (const bool shadow : { true, false })
         for (int glyph = 0; glyph < 3; ++glyph)
         {
             float x = 52.25f + glyph * 12.0f + (shadow ? 1 : 0), y = 48.5f + (shadow ? 1 : 0);
@@ -336,7 +337,7 @@ std::vector<DWORD> renderFont(void* device, void* buffer, void* source, DWORD sh
             std::memcpy(data, vertices.data(), sizeof(vertices));
             check(call(buffer, 12), "Unlock font vertices");
             {
-                TextureDrawBinding replacement(device, !reference && artworkEnabled, !reference && fontsEnabled);
+                const TextureDrawBinding replacement(device, !reference && artworkEnabled, !reference && fontsEnabled);
                 check(call(device, 70, 5UL, 0U, 2U), "Draw font glyph");
             }
             checkBinding(device, source);
@@ -350,7 +351,7 @@ void checkFontRendering(void* device, Present8& parameters)
     auto original = fontTexture(device, 1), replacement = fontTexture(device, 4);
     check(attachTextureReplacement(original.Get(), replacement.Get(), TextureCategory::font), "Attach font replacement");
     const auto nativeDescription = description(original.Get());
-    for (float scale : { 3.0f, 4.5f })
+    for (const float scale : { 3.0f, 4.5f })
     {
         parameters.width  = static_cast<UINT>(640 * scale);
         parameters.height = static_cast<UINT>(480 * scale);
@@ -377,7 +378,7 @@ void checkFontRendering(void* device, Present8& parameters)
         require(differences(native, renderFont(device, buffer.Get(), original.Get(), shader, scale, false, false, false)) == 0,
                 "Disabling both categories did not retain original fonts");
         size_t visible = 0;
-        for (DWORD pixel : actual)
+        for (const DWORD pixel : actual)
             if ((pixel & 0xffffff) != (background & 0xffffff))
                 ++visible;
         require(visible > 1000, "Font comparison contains no visible glyphs");
@@ -441,7 +442,7 @@ TEST_CASE("Replacement textures preserve native rendering and lifecycle", "[grap
     check(attachTextureReplacement(original.Get(), replacement.Get()), "Attach HD texture");
     checkLogicalSize(original.Get());
     require(description(original.Get()) == originalDescription, "Original level description changed after attachment");
-    auto* borrowedReplacement = replacement.Get();
+    auto* const borrowedReplacement = replacement.Get();
     replacement.Reset(); // The original's private data must keep the real HD texture alive.
     const auto enabled = render(device.Get(), original.Get(), true, true, borrowedReplacement);
     require(differences(enabled, expected) == 0, "Replacement rendering differs from directly bound HD texture");
@@ -460,7 +461,7 @@ TEST_CASE("Replacement textures preserve native rendering and lifecycle", "[grap
             "Missing replacement did not retain original artwork");
     check(call(device.Get(), 61, 0U, static_cast<void*>(nullptr)), "Unbind texture");
     {
-        TextureDrawBinding empty(device.Get(), true);
+        const TextureDrawBinding empty(device.Get(), true);
         checkBinding(device.Get(), nullptr);
     }
     missing.Reset();

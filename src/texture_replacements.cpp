@@ -20,7 +20,7 @@ constexpr GUID replacementKey{ 0x75b28fd7, 0x62b1, 0x48a8, { 0x93, 0x28, 0x4e, 0
 using detail::Replacement;
 
 template <class... Args>
-HRESULT call(void* object, int slot, Args... args)
+auto call(void* object, int slot, Args... args) -> HRESULT
 {
     using Method = HRESULT(WINAPI*)(void*, Args...);
     return reinterpret_cast<Method>((*static_cast<void***>(object))[slot])(object, args...);
@@ -45,7 +45,7 @@ Replacement::Replacement(IUnknown* texture, TextureCategory category) noexcept
 {
 }
 
-HRESULT STDMETHODCALLTYPE Replacement::QueryInterface(REFIID iid, void** output)
+auto STDMETHODCALLTYPE Replacement::QueryInterface(REFIID iid, void** output) -> HRESULT
 {
     if (!output)
     {
@@ -61,12 +61,12 @@ HRESULT STDMETHODCALLTYPE Replacement::QueryInterface(REFIID iid, void** output)
     return S_OK;
 }
 
-ULONG STDMETHODCALLTYPE Replacement::AddRef()
+auto STDMETHODCALLTYPE Replacement::AddRef() -> ULONG
 {
     return ++references_;
 }
 
-ULONG STDMETHODCALLTYPE Replacement::Release()
+auto STDMETHODCALLTYPE Replacement::Release() -> ULONG
 {
     const auto remaining = --references_;
     if (!remaining)
@@ -92,12 +92,12 @@ auto Replacement::enabled(bool artwork, bool fonts) const noexcept -> bool
 
 } // namespace detail
 
-size_t texturePackCount()
+auto texturePackCount() -> size_t
 {
     return packCount;
 }
 
-unsigned textureReplacementCount()
+auto textureReplacementCount() -> unsigned
 {
     return loadedCount;
 }
@@ -134,20 +134,20 @@ void initializeTextureReplacements(BYTE* game, const std::filesystem::path& mani
     }
 }
 
-HRESULT attachTextureReplacement(void* original, void* replacement, TextureCategory category)
+auto attachTextureReplacement(void* original, void* replacement, TextureCategory category) -> HRESULT
 {
     if (!original || !replacement || original == replacement ||
         (category != TextureCategory::artwork && category != TextureCategory::font))
     {
         return E_INVALIDARG;
     }
-    auto* attachment = new (std::nothrow) Replacement(static_cast<IUnknown*>(replacement), category);
+    auto* const attachment = new (std::nothrow) Replacement(static_cast<IUnknown*>(replacement), category);
     if (!attachment)
     {
         return E_OUTOFMEMORY;
     }
     using SetPrivateData = HRESULT(WINAPI*)(void*, REFGUID, const void*, DWORD, DWORD);
-    auto          set    = reinterpret_cast<SetPrivateData>((*static_cast<void***>(original))[4]);
+    const auto    set    = reinterpret_cast<SetPrivateData>((*static_cast<void***>(original))[4]);
     const HRESULT hr     = set(original, replacementKey, attachment, sizeof(IUnknown*), 1);
     attachment->Release();
     if (SUCCEEDED(hr))
@@ -157,7 +157,7 @@ HRESULT attachTextureReplacement(void* original, void* replacement, TextureCateg
     return hr;
 }
 
-HRESULT WINAPI uploadTextureWithReplacement(void* device, const void* source, UINT bytes, UINT width, UINT height, UINT levels, DWORD usage, DWORD format, DWORD pool, DWORD filter, DWORD mipFilter, DWORD colorKey, void* info, void* palette, void** output)
+auto WINAPI uploadTextureWithReplacement(void* device, const void* source, UINT bytes, UINT width, UINT height, UINT levels, DWORD usage, DWORD format, DWORD pool, DWORD filter, DWORD mipFilter, DWORD colorKey, void* info, void* palette, void** output) -> HRESULT
 {
     // Always create and return the original resource. Native GetLevelDesc,
     // UV calculations, font metadata, reference counts and reset code stay valid.
@@ -172,7 +172,7 @@ HRESULT WINAPI uploadTextureWithReplacement(void* device, const void* source, UI
     }
     try
     {
-        const auto* asset = pack.match(source, bytes);
+        const auto* const asset = pack.match(source, bytes);
         if (!asset || levels != 1 || usage || colorKey || (filter & 0xffff) != 1)
         {
             return originalResult;
@@ -235,12 +235,12 @@ TextureDrawBinding::TextureDrawBinding(void* device, bool artworkEnabled, bool f
     }
     DWORD size           = sizeof(IUnknown*);
     using GetPrivateData = HRESULT(WINAPI*)(void*, REFGUID, void*, DWORD*);
-    auto get             = reinterpret_cast<GetPrivateData>((*static_cast<void***>(original_))[5]);
+    const auto get       = reinterpret_cast<GetPrivateData>((*static_cast<void***>(original_))[5]);
     if (FAILED(get(original_, replacementKey, &attachment_, &size)) || !attachment_)
     {
         return;
     }
-    auto* replacement = static_cast<Replacement*>(attachment_);
+    auto* const replacement = static_cast<Replacement*>(attachment_);
     if (replacement->enabled(artworkEnabled, fontsEnabled))
     {
         bound_ = SUCCEEDED(call(device_, 61, 0U, replacement->texture()));

@@ -1,4 +1,6 @@
 #include "runtime.h"
+#include <cstring>
+#include <string_view>
 
 namespace tmloader
 {
@@ -7,9 +9,31 @@ namespace
 
 const auto virtualRegistryKey = reinterpret_cast<HKEY>(0x5a5a0001);
 
+auto registryValue(DWORD valueType, const void* value, DWORD size, LPDWORD type, LPBYTE data, LPDWORD length) -> LSTATUS
+{
+    if (type)
+    {
+        *type = valueType;
+    }
+    if (!length)
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+    const auto capacity = *length;
+    *length             = size;
+    if (!data)
+    {
+        return ERROR_SUCCESS;
+    }
+    if (capacity < size)
+    {
+        return ERROR_MORE_DATA;
+    }
+    std::memcpy(data, value, size);
+    return ERROR_SUCCESS;
 }
 
-static HANDLE WINAPI tracedFile(const char* path, DWORD access, DWORD sharing, LPSECURITY_ATTRIBUTES sec, DWORD create, DWORD flags, HANDLE tmpl)
+auto WINAPI tracedFile(const char* path, DWORD access, DWORD sharing, LPSECURITY_ATTRIBUTES sec, DWORD create, DWORD flags, HANDLE tmpl) -> HANDLE
 {
     char       full[MAX_PATH] = {};
     const auto length         = GetFullPathNameA(path, MAX_PATH, full, nullptr);
@@ -33,61 +57,32 @@ static HANDLE WINAPI tracedFile(const char* path, DWORD access, DWORD sharing, L
     return handle;
 }
 
-static LSTATUS WINAPI tracedQuery(HKEY key, const char* name, LPDWORD reserved, LPDWORD type, LPBYTE data, LPDWORD length)
+auto WINAPI tracedQuery(HKEY key, const char* name, LPDWORD reserved, LPDWORD type, LPBYTE data, LPDWORD length) -> LSTATUS
 {
     if (key == virtualRegistryKey)
     {
-        logf("Virtual registry query: %s", name ? name : "(default)");
-        if (name && !strcmp(name, "LOADDIR"))
+        if (!name)
         {
-            // TM scans for the FIRST dot when deriving gW archive numbers.
-            // An empty prefix makes paths "data/gW201.dat" relative to our
-            // runtime working directory. ".\\" silently corrupts that index.
-            if (type)
-                *type = REG_SZ;
-            if (!length)
-                return ERROR_INVALID_PARAMETER;
-            const auto capacity = *length;
-            *length             = 1;
-            if (data && capacity < 1)
-                return ERROR_MORE_DATA;
-            if (data)
-                *data = 0;
-            return ERROR_SUCCESS;
+            logf("Virtual registry query: (default)");
+            return ERROR_FILE_NOT_FOUND;
         }
-        if (name && (!strcmp(name, "0002") || !strcmp(name, "Path") || !strcmp(name, "InstallFolder")))
+        logf("Virtual registry query: %s", name);
+        const auto valueName = std::string_view{ name };
+        if (valueName == "LOADDIR")
         {
-            const auto size = static_cast<DWORD>(strlen(runtimeRoot) + 1);
-            if (type)
-                *type = REG_SZ;
-            if (!length)
-                return ERROR_INVALID_PARAMETER;
-            const auto capacity = *length;
-            *length             = size;
-            if (data && capacity < size)
-                return ERROR_MORE_DATA;
-            if (data)
-                memcpy(data, runtimeRoot, size);
-            return ERROR_SUCCESS;
+            // An empty prefix preserves TM's first-dot archive-number parser.
+            return registryValue(REG_SZ, "", 1, type, data, length);
         }
-        if (name && (!strcmp(name, "SOUND") || !strcmp(name, "FULLSCREEN")))
+        if (valueName == "0002" || valueName == "Path" || valueName == "InstallFolder")
         {
-            if (type)
-                *type = REG_DWORD;
-            if (!length)
-                return ERROR_INVALID_PARAMETER;
-            const auto capacity = *length;
-            *length             = sizeof(DWORD);
-            if (data && capacity < sizeof(DWORD))
-                return ERROR_MORE_DATA;
-            // SOUND=0 was intentional in the original startup-only experiment.
-            // TM +180E40 uses zero to skip its entire native sound engine.
-            if (data)
-            {
-                const DWORD value = !strcmp(name, "SOUND") ? 1 : 0;
-                memcpy(data, &value, sizeof(value));
-            }
-            return ERROR_SUCCESS;
+            const auto size = static_cast<DWORD>(std::strlen(runtimeRoot) + 1);
+            return registryValue(REG_SZ, runtimeRoot, size, type, data, length);
+        }
+        if (valueName == "SOUND" || valueName == "FULLSCREEN")
+        {
+            // TM +180E40 skips its native sound engine when SOUND is zero.
+            const auto value = static_cast<DWORD>(valueName == "SOUND");
+            return registryValue(REG_DWORD, &value, sizeof(value), type, data, length);
         }
         return ERROR_FILE_NOT_FOUND;
     }
@@ -96,7 +91,7 @@ static LSTATUS WINAPI tracedQuery(HKEY key, const char* name, LPDWORD reserved, 
     return result;
 }
 
-static LSTATUS WINAPI virtualCreate(HKEY, const char* subkey, DWORD, LPSTR, DWORD, REGSAM, const LPSECURITY_ATTRIBUTES, PHKEY result, LPDWORD disposition)
+auto WINAPI virtualCreate(HKEY, const char* subkey, DWORD, LPSTR, DWORD, REGSAM, const LPSECURITY_ATTRIBUTES, PHKEY result, LPDWORD disposition) -> LSTATUS
 {
     logf("Virtual registry create: %s", subkey ? subkey : "");
     if (result)
@@ -106,7 +101,7 @@ static LSTATUS WINAPI virtualCreate(HKEY, const char* subkey, DWORD, LPSTR, DWOR
     return ERROR_SUCCESS;
 }
 
-static LSTATUS WINAPI virtualOpen(HKEY, const char* subkey, PHKEY result)
+auto WINAPI virtualOpen(HKEY, const char* subkey, PHKEY result) -> LSTATUS
 {
     logf("Virtual registry open: %s", subkey ? subkey : "");
     if (result)
@@ -114,10 +109,12 @@ static LSTATUS WINAPI virtualOpen(HKEY, const char* subkey, PHKEY result)
     return ERROR_SUCCESS;
 }
 
-static LSTATUS WINAPI virtualClose(HKEY key)
+auto WINAPI virtualClose(HKEY key) -> LSTATUS
 {
     return key == virtualRegistryKey ? ERROR_SUCCESS : RegCloseKey(key);
 }
+
+} // namespace
 
 void installFileHooks(HMODULE module, bool game)
 {

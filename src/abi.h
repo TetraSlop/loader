@@ -32,7 +32,7 @@ enum CoreMethod
 };
 
 template <unsigned Slot, typename... Args>
-HRESULT coreCall(IUnknown* object, Args... args)
+auto coreCall(IUnknown* object, Args... args) -> HRESULT
 {
     using Fn = HRESULT(__stdcall*)(IUnknown*, Args...);
     return reinterpret_cast<Fn>((*reinterpret_cast<void***>(object))[Slot])(object, args...);

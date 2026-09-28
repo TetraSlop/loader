@@ -18,7 +18,7 @@ constexpr auto coreHash  = "73B1864BF522D3AA6EC28E9F4BB226FCEE956F7F4848A238C9C2
 
 } // namespace
 
-std::string sha256File(const std::filesystem::path& path)
+auto sha256File(const std::filesystem::path& path) -> std::string
 {
     std::ifstream file(path, std::ios::binary);
     if (!file)

@@ -32,7 +32,7 @@ constexpr DWORD                   uploadReturnRva = 0x1b9ae1;
 
 // Query every region before reading: a missing or protected image is an ordinary
 // unsupported-build error, not an access violation during signature checking.
-MEMORY_BASIC_INFORMATION readableRange(const BYTE* begin, SIZE_T size, bool uniformProtection = false)
+auto readableRange(const BYTE* begin, SIZE_T size, bool uniformProtection = false) -> MEMORY_BASIC_INFORMATION
 {
     const auto firstAddress = reinterpret_cast<std::uintptr_t>(begin);
     const auto end          = firstAddress + size;
@@ -68,7 +68,7 @@ void restoreCalls(BYTE* image) noexcept
 
 } // namespace
 
-TextureUploadFn installTextureCallHooks(BYTE* image, TextureUploadFn replacement)
+auto installTextureCallHooks(BYTE* image, TextureUploadFn replacement) -> TextureUploadFn
 {
     static_assert(sizeof(void*) == 4, "Native texture hooks require x86");
     if (!image || !replacement)
@@ -82,7 +82,7 @@ TextureUploadFn installTextureCallHooks(BYTE* image, TextureUploadFn replacement
         std::memcmp(image + uploadReturnRva, uploadReturn, sizeof(uploadReturn)))
         throw std::runtime_error("Unsupported native texture upload function");
 
-    BYTE*        begin = image + callSites.front().rva;
+    BYTE* const  begin = image + callSites.front().rva;
     const SIZE_T span  = callSites.back().rva + 5 - callSites.front().rva;
     readableRange(begin, span, true);
     for (const auto& site : callSites)

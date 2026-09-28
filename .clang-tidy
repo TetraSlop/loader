@@ -1,4 +1,10 @@
-Checks: '-*,google-readability-casting,modernize-use-nullptr,modernize-use-using'
-WarningsAsErrors: 'google-readability-casting,modernize-use-nullptr,modernize-use-using'
+Checks: '-*,google-readability-casting,modernize-use-nullptr,modernize-use-using,modernize-use-trailing-return-type,misc-const-correctness'
+WarningsAsErrors: 'google-readability-casting,modernize-use-nullptr,modernize-use-using,modernize-use-trailing-return-type,misc-const-correctness'
 HeaderFilterRegex: '[/\\](src|tests)[/\\]'
 ExcludeHeaderFilterRegex: '[/\\](_deps|third_party)[/\\]'
+CheckOptions:
+  modernize-use-trailing-return-type.TransformLambdas: none
+  misc-const-correctness.WarnPointersAsValues: true
+  misc-const-correctness.TransformPointersAsValues: true
+  misc-const-correctness.WarnPointersAsPointers: false
+  misc-const-correctness.TransformPointersAsPointers: false

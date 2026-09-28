@@ -25,7 +25,7 @@ SetVertexShaderFn originalVertexShader;
 using VertexBufferFn = HRESULT(WINAPI*)(void*, UINT, DWORD, DWORD, DWORD, void**);
 VertexBufferFn originalVertexBuffer;
 
-HRESULT WINAPI vertexBuffer(void* device, UINT size, DWORD usage, DWORD format, DWORD pool, void** output)
+auto WINAPI vertexBuffer(void* device, UINT size, DWORD usage, DWORD format, DWORD pool, void** output) -> HRESULT
 {
     // D3D8 treats an XYZRHW-tagged buffer as already transformed and bypasses
     // shader input preparation. Use an untyped buffer for our explicit layout.
@@ -34,7 +34,7 @@ HRESULT WINAPI vertexBuffer(void* device, UINT size, DWORD usage, DWORD format, 
     return originalVertexBuffer(device, size, usage, format, pool, output);
 }
 
-HRESULT WINAPI setVertexShader(void* device, DWORD format)
+auto WINAPI setVertexShader(void* device, DWORD format) -> HRESULT
 {
     if (format == gameVertexFormat && renderingFactor > 1)
     {
@@ -61,7 +61,7 @@ void windowedParameters(Present8& pp)
     pp.flags |= 1;
 }
 
-HRESULT WINAPI resetDevice(void* self, Present8* pp)
+auto WINAPI resetDevice(void* self, Present8* pp) -> HRESULT
 {
     deleteScaleShader(self, scaleShader);
     windowedParameters(*pp);
@@ -93,7 +93,7 @@ void rememberOriginal(T& destination, void* entry, T wrapper)
         destination = reinterpret_cast<T>(entry);
 }
 
-HRESULT countDraw(HRESULT hr)
+auto countDraw(HRESULT hr) -> HRESULT
 {
     drawCalls++;
     if (FAILED(hr) && drawErrors++ < 6)
@@ -101,35 +101,35 @@ HRESULT countDraw(HRESULT hr)
     return hr;
 }
 
-HRESULT WINAPI draw(void* d, DWORD t, UINT s, UINT n)
+auto WINAPI draw(void* d, DWORD t, UINT s, UINT n) -> HRESULT
 {
-    const auto         settings = currentWindowSettings();
-    TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
+    const auto               settings = currentWindowSettings();
+    const TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
     return countDraw(realDraw(d, t, s, n));
 }
 
-HRESULT WINAPI drawUP(void* d, DWORD t, UINT n, const void* data, UINT stride)
+auto WINAPI drawUP(void* d, DWORD t, UINT n, const void* data, UINT stride) -> HRESULT
 {
-    const auto         settings = currentWindowSettings();
-    TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
+    const auto               settings = currentWindowSettings();
+    const TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
     return countDraw(realDrawUP(d, t, n, data, stride));
 }
 
-HRESULT WINAPI drawIdx(void* d, DWORD t, UINT m, UINT v, UINT s, UINT n)
+auto WINAPI drawIdx(void* d, DWORD t, UINT m, UINT v, UINT s, UINT n) -> HRESULT
 {
-    const auto         settings = currentWindowSettings();
-    TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
+    const auto               settings = currentWindowSettings();
+    const TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
     return countDraw(realDrawIdx(d, t, m, v, s, n));
 }
 
-HRESULT WINAPI drawIdxUP(void* d, DWORD t, UINT m, UINT v, UINT n, const void* i, DWORD f, const void* p, UINT stride)
+auto WINAPI drawIdxUP(void* d, DWORD t, UINT m, UINT v, UINT n, const void* i, DWORD f, const void* p, UINT stride) -> HRESULT
 {
-    const auto         settings = currentWindowSettings();
-    TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
+    const auto               settings = currentWindowSettings();
+    const TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
     return countDraw(realDrawIdxUP(d, t, m, v, n, i, f, p, stride));
 }
 
-HRESULT WINAPI texture(void* d, UINT w, UINT h, UINT l, DWORD u, DWORD f, DWORD pool, void** out)
+auto WINAPI texture(void* d, UINT w, UINT h, UINT l, DWORD u, DWORD f, DWORD pool, void** out) -> HRESULT
 {
     const auto hr = realTexture(d, w, h, l, u, f, pool, out);
     if (++textureCalls <= 8 || FAILED(hr))
@@ -163,8 +163,8 @@ void captureFrame(void* device, DWORD frame)
     {
         char name[40];
         sprintf_s(name, "frame_%05lu.bmp", frame);
-        const auto path = options.runtimeDir / "logs/captures" / name;
-        FILE*      f    = outputPathAllowed(options, path) ? _wfopen(path.c_str(), L"wb") : nullptr;
+        const auto  path = options.runtimeDir / "logs/captures" / name;
+        FILE* const f    = outputPathAllowed(options, path) ? _wfopen(path.c_str(), L"wb") : nullptr;
         if (!f)
             logf("Diagnostic capture skipped: unsafe or unwritable destination");
         if (f)
@@ -193,7 +193,7 @@ void captureFrame(void* device, DWORD frame)
     static_cast<IUnknown*>(surface)->Release();
 }
 
-HRESULT WINAPI presentFrame(void* self, const RECT* source, const RECT* dest, HWND window, const RGNDATA* dirty)
+auto WINAPI presentFrame(void* self, const RECT* source, const RECT* dest, HWND window, const RGNDATA* dirty) -> HRESULT
 {
     const auto frame = ++frames;
     if (frame == 1)
@@ -205,7 +205,7 @@ HRESULT WINAPI presentFrame(void* self, const RECT* source, const RECT* dest, HW
         SetFocus(gameWindow);
         const auto active = SetForegroundWindow(gameWindow);
         logf("Activate game window=%p result=%d foreground=%p active=%p", gameWindow, active, GetForegroundWindow(), GetActiveWindow());
-        auto* sound = reinterpret_cast<DWORD*>(gameValue(0x2ff164));
+        auto* const sound = reinterpret_cast<DWORD*>(gameValue(0x2ff164));
         logf("Native sound engine initialized=%lu", sound ? sound[1] : 0);
     }
     if (options.diagnostics && (frame == 60 || frame == 300 || frame == 600 || frame == 900 || frame == 1200 || frame == 1440 || frame == 1500 || frame == 1800 || (frame > 1800 && frame % 600 == 0)))
@@ -237,7 +237,7 @@ HRESULT WINAPI presentFrame(void* self, const RECT* source, const RECT* dest, HW
     return hr;
 }
 
-float monitorRenderScale(HWND window, UINT fallbackWidth, UINT fallbackHeight)
+auto monitorRenderScale(HWND window, UINT fallbackWidth, UINT fallbackHeight) -> float
 {
     MONITORINFOEXW monitor{};
     monitor.cbSize = sizeof(monitor);
@@ -251,7 +251,7 @@ float monitorRenderScale(HWND window, UINT fallbackWidth, UINT fallbackHeight)
     return automaticRenderScale(fallbackWidth, fallbackHeight);
 }
 
-HRESULT WINAPI windowedDevice(void* self, UINT adapter, DWORD type, HWND window, DWORD behavior, Present8* pp, void** device)
+auto WINAPI windowedDevice(void* self, UINT adapter, DWORD type, HWND window, DWORD behavior, Present8* pp, void** device) -> HRESULT
 {
     logf("D3D8 CreateDevice adapter=%u type=%lu behavior=%lX window=%p %lux%lu format=%lu windowed=%d", adapter, type, behavior, window, pp->width, pp->height, pp->format, pp->windowed);
     initializeGameWindow(window);
@@ -318,12 +318,12 @@ HRESULT WINAPI windowedDevice(void* self, UINT adapter, DWORD type, HWND window,
 
 } // namespace
 
-float activeRenderScale()
+auto activeRenderScale() -> float
 {
     return renderingFactor;
 }
 
-void* WINAPI localD3D8(UINT version)
+auto WINAPI localD3D8(UINT version) -> void*
 {
     using Factory       = void*(WINAPI*)(UINT);
     const auto  factory = reinterpret_cast<Factory>(GetProcAddress(LoadLibraryA("d3d8.dll"), "Direct3DCreate8"));

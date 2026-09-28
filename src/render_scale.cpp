@@ -50,14 +50,14 @@ constexpr DWORD program[] = {
 
 } // namespace
 
-HRESULT createScaleShader(void* device, DWORD* shader)
+auto createScaleShader(void* device, DWORD* shader) -> HRESULT
 {
     using Create = HRESULT(WINAPI*)(void*, const DWORD*, const DWORD*, DWORD*, DWORD);
     auto table   = *static_cast<void***>(device);
     return reinterpret_cast<Create>(table[75])(device, declaration, program, shader, 0);
 }
 
-HRESULT setScaleConstants(void* device, float factor)
+auto setScaleConstants(void* device, float factor) -> HRESULT
 {
     // Map pixel edges: (x + 0.5) * factor - 0.5. This also preserves the
     // original rasterization exactly at 1x, including half-pixel aligned quads.

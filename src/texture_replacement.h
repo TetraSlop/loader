@@ -19,11 +19,11 @@ public:
     Replacement(Replacement&&)                         = delete;
     auto operator=(Replacement&&) -> Replacement&      = delete;
 
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** output) override;
-    ULONG STDMETHODCALLTYPE   AddRef() override;
-    ULONG STDMETHODCALLTYPE   Release() override;
-    auto                      texture() const noexcept -> IUnknown*;
-    auto                      enabled(bool artwork, bool fonts) const noexcept -> bool;
+    auto STDMETHODCALLTYPE QueryInterface(REFIID iid, void** output) -> HRESULT override;
+    auto STDMETHODCALLTYPE AddRef() -> ULONG override;
+    auto STDMETHODCALLTYPE Release() -> ULONG override;
+    auto                   texture() const noexcept -> IUnknown*;
+    auto                   enabled(bool artwork, bool fonts) const noexcept -> bool;
 
 private:
     std::atomic<ULONG>               references_{ 1 };

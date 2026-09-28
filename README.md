@@ -118,8 +118,9 @@ builds, and report unavailable audio/graphics devices as skipped. For example,
 runs the guarded x86 call-site tests. Use `-DBUILD_TESTING=OFF` when configuring
 a loader-only build; Catch2 is then neither downloaded nor linked. For an isolated
 build that leaves the deployed loader alone, use `-B build-modernize` in the same
-commands. The checked-in `.clang-tidy` rules reject C-style casts, `NULL` and
-`typedef` in project code; native signatures retain explicit Windows ABI types.
+commands. The checked-in `.clang-tidy` rules enforce const local bindings and
+trailing returns on non-void functions, and reject C-style casts, `NULL` and
+`typedef`. Native signatures retain their Windows calling conventions and types.
 The loader also uses the LandSandBoat clang-format 22 rules. Run
 `py tools/run_clang_format.py --check` to verify first-party source and test
 formatting, or omit `--check` to apply it. See [C++ style](docs/CPP_STYLE.md) for

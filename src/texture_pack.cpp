@@ -20,7 +20,7 @@ constexpr char    fontPrefix[]     = "gW000/0090/font_";
 constexpr auto    fontPrefixLength = sizeof(fontPrefix) - 1;
 constexpr uint8_t pngSignature[]{ 137, 80, 78, 71, 13, 10, 26, 10 };
 
-unsigned bigEndian(const uint8_t* p)
+auto bigEndian(const uint8_t* p) -> unsigned
 {
     static_assert(std::endian::native == std::endian::little);
     uint32_t value;
@@ -28,7 +28,7 @@ unsigned bigEndian(const uint8_t* p)
     return std::byteswap(value);
 }
 
-std::vector<uint8_t> readBounded(const std::filesystem::path& path, size_t limit)
+auto readBounded(const std::filesystem::path& path, size_t limit) -> std::vector<uint8_t>
 {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     const auto    length = file.tellg();
@@ -41,7 +41,7 @@ std::vector<uint8_t> readBounded(const std::filesystem::path& path, size_t limit
     return result;
 }
 
-std::string hashText(std::string text)
+auto hashText(std::string text) -> std::string
 {
     if (text.size() != 64 || text.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos)
         throw std::runtime_error("Texture manifest requires SHA256 hashes");
@@ -51,7 +51,7 @@ std::string hashText(std::string text)
     return text;
 }
 
-unsigned dimension(const nlohmann::json& value)
+auto dimension(const nlohmann::json& value) -> unsigned
 {
     if (!value.is_number_integer())
         throw std::runtime_error("Invalid texture dimension");
@@ -61,7 +61,7 @@ unsigned dimension(const nlohmann::json& value)
     return static_cast<unsigned>(n);
 }
 
-TextureCategory categoryFor(const std::string& id)
+auto categoryFor(const std::string& id) -> TextureCategory
 {
     // Only these verified bitmap atlases use the native font renderer. Menu
     // labels, card digits and other embedded lettering remain artwork.
@@ -74,11 +74,11 @@ TextureCategory categoryFor(const std::string& id)
 
 } // namespace
 
-PngInfo pngInfo(const void* data, size_t bytes)
+auto pngInfo(const void* data, size_t bytes) -> PngInfo
 {
     if (!data || bytes < 45 || bytes > 64 * 1024 * 1024)
         return {};
-    const auto* p = static_cast<const uint8_t*>(data);
+    const auto* const p = static_cast<const uint8_t*>(data);
     if (std::memcmp(p, pngSignature, sizeof(pngSignature)) || bigEndian(p + 8) != 13 || std::memcmp(p + 12, "IHDR", 4))
         return {};
     const unsigned width = bigEndian(p + 16), height = bigEndian(p + 20);
@@ -96,7 +96,7 @@ PngInfo pngInfo(const void* data, size_t bytes)
     return {};
 }
 
-std::string sha256Bytes(const void* data, size_t bytes)
+auto sha256Bytes(const void* data, size_t bytes) -> std::string
 {
     if (bytes > ULONG_MAX)
         throw std::runtime_error("SHA256 input too large");
@@ -161,7 +161,7 @@ void TexturePack::load(const std::filesystem::path& manifest)
     assets_ = std::move(assets);
 }
 
-const TextureAsset* TexturePack::match(const void* png, size_t bytes) const
+auto TexturePack::match(const void* png, size_t bytes) const -> const TextureAsset*
 {
     if (assets_.empty())
         return nullptr;
@@ -174,7 +174,7 @@ const TextureAsset* TexturePack::match(const void* png, size_t bytes) const
     return &found->second;
 }
 
-std::vector<uint8_t> TexturePack::read(const TextureAsset& asset) const
+auto TexturePack::read(const TextureAsset& asset) const -> std::vector<uint8_t>
 {
     // Recheck after indexing so a subsequently replaced junction cannot escape.
     if (!pathIsWithin(asset.file, root_))

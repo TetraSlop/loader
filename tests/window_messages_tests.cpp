@@ -14,34 +14,34 @@ static bool    testPanelOpen;
 static POINT   testPointer{ 320, 240 };
 static HCURSOR shownCursor = reinterpret_cast<HCURSOR>(99);
 
-static HCURSOR fakeSetCursor(HCURSOR cursor)
+static auto fakeSetCursor(HCURSOR cursor) -> HCURSOR
 {
     shownCursor = cursor;
     return nullptr;
 }
 
-static HCURSOR fakeLoadCursor(HINSTANCE, LPCWSTR)
+static auto fakeLoadCursor(HINSTANCE, LPCWSTR) -> HCURSOR
 {
     return reinterpret_cast<HCURSOR>(1);
 }
 
-static HWND fakeForeground()
+static auto fakeForeground() -> HWND
 {
     return testForeground;
 }
 
-static BOOL fakeCursorPos(POINT* point)
+static auto fakeCursorPos(POINT* point) -> BOOL
 {
     *point = testPointer;
     return TRUE;
 }
 
-static BOOL fakeToClient(HWND, POINT*)
+static auto fakeToClient(HWND, POINT*) -> BOOL
 {
     return TRUE;
 }
 
-static BOOL fakeClientRect(HWND, RECT* rect)
+static auto fakeClientRect(HWND, RECT* rect) -> BOOL
 {
     *rect = { 0, 0, 640, 480 };
     return TRUE;
@@ -52,14 +52,14 @@ static void fakeQuit(int)
     ++quitRequests;
 }
 
-static LRESULT fakeDefault(HWND, UINT message, WPARAM command, LPARAM)
+static auto fakeDefault(HWND, UINT message, WPARAM command, LPARAM) -> LRESULT
 {
     defaultMessage = message;
     defaultCommand = command;
     return 123;
 }
 
-static LRESULT fakeLegacy(WNDPROC, HWND, UINT, WPARAM, LPARAM)
+static auto fakeLegacy(WNDPROC, HWND, UINT, WPARAM, LPARAM) -> LRESULT
 {
     ++legacyMessages;
     return 321;
@@ -68,13 +68,13 @@ static LRESULT fakeLegacy(WNDPROC, HWND, UINT, WPARAM, LPARAM)
 static LONG_PTR      installedProcedure;
 static volatile bool forbidSubclass = true;
 
-static LONG_PTR fakeGetWindowLongPtr(HWND hwnd, int index)
+static auto fakeGetWindowLongPtr(HWND hwnd, int index) -> LONG_PTR
 {
     REQUIRE((hwnd == testWindow && index == GWLP_WNDPROC));
     return installedProcedure;
 }
 
-static LONG_PTR fakeSetWindowLongPtr(HWND, int, LONG_PTR)
+static auto fakeSetWindowLongPtr(HWND, int, LONG_PTR) -> LONG_PTR
 {
     if (forbidSubclass)
         throw std::runtime_error("Repeated initialization tried to subclass the window again");
@@ -119,7 +119,7 @@ void stopSettingsPanel()
     ++panelStops;
 }
 
-bool settingsPanelOpen()
+auto settingsPanelOpen() -> bool
 {
     return testPanelOpen;
 }
@@ -136,7 +136,7 @@ TEST_CASE("Window messages preserve settings and close behavior", "[window_messa
     using namespace tmloader;
     options = parseConfig({ "--runtime-dir", (std::filesystem::current_path() / "window-message-fixture").string() });
     REQUIRE(!std::filesystem::exists(options.runtimeDir));
-    for (WPARAM command : { SC_SIZE, SC_MOVE, SC_MINIMIZE, SC_MAXIMIZE, SC_RESTORE })
+    for (const WPARAM command : { SC_SIZE, SC_MOVE, SC_MINIMIZE, SC_MAXIMIZE, SC_RESTORE })
     {
         REQUIRE(wrapperWindow(nullptr, WM_SYSCOMMAND, command, 0) == 123);
         REQUIRE((defaultMessage == WM_SYSCOMMAND && defaultCommand == command));
@@ -146,6 +146,7 @@ TEST_CASE("Window messages preserve settings and close behavior", "[window_messa
     wrapperWindow(testWindow, 0x64, 0, 0);
     REQUIRE(legacyMessages == 0);
     auto cursor = [&]
+        -> LRESULT
     {
         return wrapperWindow(testWindow, WM_SETCURSOR, reinterpret_cast<WPARAM>(testWindow), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
     };

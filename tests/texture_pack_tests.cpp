@@ -22,11 +22,11 @@ void logf(const char*, ...)
 
 // Structural PNG fixtures: decoding is deliberately left to the upload callback.
 // This checks bounded matching independently of any PNG codec.
-std::vector<uint8_t> png(unsigned width, unsigned height)
+auto png(unsigned width, unsigned height) -> std::vector<uint8_t>
 {
     std::vector<uint8_t> bytes{ 137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 'I', 'H', 'D', 'R' };
-    for (unsigned value : { width, height })
-        for (int shift : { 24, 16, 8, 0 })
+    for (const unsigned value : { width, height })
+        for (const int shift : { 24, 16, 8, 0 })
             bytes.push_back(static_cast<uint8_t>(value >> shift));
     bytes.insert(bytes.end(), { 8, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'I', 'E', 'N', 'D', 0, 0, 0, 0 });
     return bytes;
@@ -53,17 +53,17 @@ struct FakeTexture
 
 bool failAttachment = false;
 
-ULONG WINAPI addRef(FakeTexture* self)
+auto WINAPI addRef(FakeTexture* self) -> ULONG
 {
     return ++self->references;
 }
 
-ULONG WINAPI release(FakeTexture* self)
+auto WINAPI release(FakeTexture* self) -> ULONG
 {
     return --self->references;
 }
 
-HRESULT WINAPI description(FakeTexture* self, UINT level, DWORD* desc)
+auto WINAPI description(FakeTexture* self, UINT level, DWORD* desc) -> HRESULT
 {
     REQUIRE(level == 0);
     desc[0] = 21;
@@ -72,7 +72,7 @@ HRESULT WINAPI description(FakeTexture* self, UINT level, DWORD* desc)
     return S_OK;
 }
 
-HRESULT WINAPI privateData(FakeTexture* self, REFGUID, const void* object, DWORD size, DWORD flags)
+auto WINAPI privateData(FakeTexture* self, REFGUID, const void* object, DWORD size, DWORD flags) -> HRESULT
 {
     REQUIRE((size == sizeof(void*) && flags == 1));
     if (failAttachment)
@@ -84,7 +84,7 @@ HRESULT WINAPI privateData(FakeTexture* self, REFGUID, const void* object, DWORD
     return S_OK;
 }
 
-HRESULT WINAPI getPrivateData(FakeTexture* self, REFGUID, void* object, DWORD* size)
+auto WINAPI getPrivateData(FakeTexture* self, REFGUID, void* object, DWORD* size) -> HRESULT
 {
     REQUIRE(*size == sizeof(void*));
     if (!self->attachment)
@@ -107,7 +107,7 @@ struct FakeDevice
     FakeTexture* bound = nullptr;
 };
 
-HRESULT WINAPI getTexture(FakeDevice* self, UINT stage, FakeTexture** output)
+auto WINAPI getTexture(FakeDevice* self, UINT stage, FakeTexture** output) -> HRESULT
 {
     REQUIRE(stage == 0);
     *output = self->bound;
@@ -116,7 +116,7 @@ HRESULT WINAPI getTexture(FakeDevice* self, UINT stage, FakeTexture** output)
     return S_OK;
 }
 
-HRESULT WINAPI setTexture(FakeDevice* self, UINT stage, FakeTexture* texture)
+auto WINAPI setTexture(FakeDevice* self, UINT stage, FakeTexture* texture) -> HRESULT
 {
     REQUIRE(stage == 0);
     if (texture)
@@ -132,7 +132,7 @@ FakeTexture original{ vtable, 128, 128 }, replacement{ vtable, 512, 512 };
 unsigned    uploads      = 0;
 bool        failOriginal = false, failHd = false;
 
-HRESULT WINAPI upload(void*, const void*, UINT, UINT width, UINT height, UINT levels, DWORD usage, DWORD format, DWORD pool, DWORD filter, DWORD mipFilter, DWORD color, void* info, void* palette, void** output)
+auto WINAPI upload(void*, const void*, UINT, UINT width, UINT height, UINT levels, DWORD usage, DWORD format, DWORD pool, DWORD filter, DWORD mipFilter, DWORD color, void* info, void* palette, void** output) -> HRESULT
 {
     ++uploads;
     REQUIRE((levels == 1 && usage == 0 && format == 21 && filter == 0x80001 && mipFilter == 0xffffffff));
@@ -148,7 +148,7 @@ HRESULT WINAPI upload(void*, const void*, UINT, UINT width, UINT height, UINT le
     return failHd ? E_FAIL : S_OK;
 }
 
-HRESULT invoke(const std::vector<uint8_t>& bytes, void** output)
+auto invoke(const std::vector<uint8_t>& bytes, void** output) -> HRESULT
 {
     return uploadTextureWithReplacement(nullptr, bytes.data(), static_cast<UINT>(bytes.size()), 0xffffffff, 0xffffffff, 1, 0, 21, 0, 0x80001, 0xffffffff, 0, nullptr, nullptr, output);
 }
@@ -160,20 +160,20 @@ void checkSelection(TextureCategory category)
     table[61] = reinterpret_cast<void*>(setTexture);
     FakeDevice device{ table };
     setTexture(&device, 0, &original);
-    for (bool artwork : { false, true })
-        for (bool fonts : { false, true })
+    for (const bool artwork : { false, true })
+        for (const bool fonts : { false, true })
         {
             {
-                TextureDrawBinding binding(&device, artwork, fonts);
-                const bool         enabled = category == TextureCategory::font ? fonts : artwork;
+                const TextureDrawBinding binding(&device, artwork, fonts);
+                const bool               enabled = category == TextureCategory::font ? fonts : artwork;
                 REQUIRE(device.bound == (enabled ? &replacement : &original));
             }
             REQUIRE(device.bound == &original);
         }
-    for (bool enabled : { false, true })
+    for (const bool enabled : { false, true })
     {
         {
-            TextureDrawBinding combined(&device, enabled);
+            const TextureDrawBinding combined(&device, enabled);
             REQUIRE(device.bound == (enabled ? &replacement : &original));
         }
         REQUIRE(device.bound == &original);
@@ -202,7 +202,7 @@ TEST_CASE("Texture packs validate sources and retain replacement ownership", "[t
     TexturePack pack;
     pack.load(manifest);
     REQUIRE(pack.size() == 1);
-    auto* match = pack.match(source.data(), source.size());
+    auto* const match = pack.match(source.data(), source.size());
     REQUIRE((match && match->scale == 4 && match->category == TextureCategory::artwork && pack.read(*match) == hd));
     for (unsigned pad = 0; pad <= 15; ++pad)
     {
@@ -338,7 +338,7 @@ TEST_CASE("Texture manifests retain UTF-8 filenames", "[texture_pack]")
     }
     TexturePack pack;
     pack.load(manifest);
-    const auto* match = pack.match(source.data(), source.size());
+    const auto* const match = pack.match(source.data(), source.size());
     REQUIRE(match);
     REQUIRE(match->file.filename() == filename);
     REQUIRE(pack.read(*match) == hd);

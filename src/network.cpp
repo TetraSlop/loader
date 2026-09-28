@@ -11,7 +11,7 @@ BYTE*   coreBase      = nullptr;
 bool    profileLoaded = false;
 BYTE    profileContext[0x68]{}, profileMatrix[0x1000]{};
 
-int WSAAPI serviceConnect(SOCKET socket, const sockaddr* address, int length)
+auto WSAAPI serviceConnect(SOCKET socket, const sockaddr* address, int length) -> int
 {
     if (!address || length < sizeof(sockaddr_in) || address->sa_family != AF_INET)
     {
@@ -35,7 +35,7 @@ int WSAAPI serviceConnect(SOCKET socket, const sockaddr* address, int length)
     return connect(socket, reinterpret_cast<const sockaddr*>(&target), sizeof(target));
 }
 
-hostent* WSAAPI serviceHost(const char* host)
+auto WSAAPI serviceHost(const char* host) -> hostent*
 {
     if (isProfileAlias(host) || (host && options.server == host))
     {
@@ -47,19 +47,19 @@ hostent* WSAAPI serviceHost(const char* host)
     return nullptr;
 }
 
-int __cdecl gameOpen(const char*, const char*, const char*, const char* version, int mode, void* callbacks, void* cipher, void* queue, int count)
+auto __cdecl gameOpen(const char*, const char*, const char*, const char* version, int mode, void* callbacks, void* cipher, void* queue, int count) -> int
 {
     logf("GameIRC open to configured server; version=%s mode=%d", version, mode);
     return original[132](options.server.c_str(), options.polId.c_str(), options.password.c_str(), version, mode, callbacks, cipher, queue, count);
 }
 
-int __cdecl gameOpenCheck(int slot)
+auto __cdecl gameOpenCheck(int slot) -> int
 {
     const int result = original[133](slot);
     if (result == 1 && !profileLoaded)
     {
-        profileLoaded = true;
-        BYTE* irc     = coreBase + 0x3e58a0 + slot * 0x3a00;
+        profileLoaded   = true;
+        BYTE* const irc = coreBase + 0x3e58a0 + slot * 0x3a00;
         // The Viewer profile cipher must survive GameIRC slot reuse. Copy both
         // the 0x68-byte context AND the matrix referenced by context+0x48.
         std::memcpy(profileContext, irc + 0x2c0, sizeof(profileContext));
@@ -70,11 +70,11 @@ int __cdecl gameOpenCheck(int slot)
                                                       *reinterpret_cast<DWORD*>(irc + 0x2bc));
         reinterpret_cast<Command>(coreBase + 0x1e980)();
         const unsigned requests[] = { 171, 175, 193 };
-        for (unsigned index : requests)
+        for (const unsigned index : requests)
         {
-            int   ticket  = original[index]();
-            int   status  = 0;
-            DWORD started = GetTickCount();
+            const int  ticket  = original[index]();
+            int        status  = 0;
+            const auto started = GetTickCount();
             while (ticket >= 0 && !status && GetTickCount() - started < 5000)
             {
                 status = original[index + 1](ticket);
@@ -86,7 +86,7 @@ int __cdecl gameOpenCheck(int slot)
     return result;
 }
 
-int __cdecl readCheck(int ticket)
+auto __cdecl readCheck(int ticket) -> int
 {
     const int result = original[349](ticket);
     if (options.diagnostics)

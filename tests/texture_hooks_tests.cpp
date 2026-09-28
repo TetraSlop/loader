@@ -19,7 +19,7 @@ constexpr std::array<DWORD, 7> sites{
 };
 unsigned calls = 0;
 
-HRESULT WINAPI replacement(void* device, const void* source, UINT bytes, UINT width, UINT height, UINT levels, DWORD usage, DWORD format, DWORD pool, DWORD filter, DWORD mipFilter, DWORD key, void* info, void* palette, void** output)
+auto WINAPI replacement(void* device, const void* source, UINT bytes, UINT width, UINT height, UINT levels, DWORD usage, DWORD format, DWORD pool, DWORD filter, DWORD mipFilter, DWORD key, void* info, void* palette, void** output) -> HRESULT
 {
     REQUIRE((device == reinterpret_cast<void*>(1) && source == reinterpret_cast<void*>(2)));
     REQUIRE((bytes == 3 && width == 4 && height == 5 && levels == 6 && usage == 7));
@@ -37,9 +37,9 @@ void initialize(BYTE* image)
     const BYTE end[]{ 0xc2, 0x3c, 0x00 };
     std::memcpy(image + uploadRva, prologue, sizeof(prologue));
     std::memcpy(image + 0x1b9ae1, end, sizeof(end));
-    for (DWORD rva : sites)
+    for (const DWORD rva : sites)
     {
-        BYTE*      entry = image + rva - 48;
+        auto*      entry = image + rva - 48;
         const BYTE frame[]{ 0x55, 0x8b, 0xec };
         std::memcpy(entry, frame, sizeof(frame));
         entry += sizeof(frame);
@@ -83,7 +83,7 @@ struct Image
     }
 };
 
-DWORD protection(const BYTE* address)
+auto protection(const BYTE* address) -> DWORD
 {
     MEMORY_BASIC_INFORMATION memory{};
     REQUIRE(VirtualQuery(address, &memory, sizeof(memory)));
@@ -102,7 +102,7 @@ void successfulDispatch()
     image.seal();
     const auto original = installTextureCallHooks(image.data, replacement);
     REQUIRE(original == reinterpret_cast<TextureUploadFn>(image.data + uploadRva));
-    for (DWORD rva : sites)
+    for (const DWORD rva : sites)
     {
         REQUIRE(protection(image.data + rva) == PAGE_EXECUTE_READ);
         std::uint32_t displacement{};
@@ -125,9 +125,9 @@ void successfulDispatch()
 void unsupportedCodeIsUntouched()
 {
     std::vector<DWORD> corrupt{ uploadRva, 0x1b9ae1 };
-    for (DWORD rva : sites)
+    for (const DWORD rva : sites)
         corrupt.push_back(rva + 1);
-    for (DWORD rva : corrupt)
+    for (const DWORD rva : corrupt)
     {
         Image image;
         image.data[rva] ^= 1;
@@ -138,7 +138,7 @@ void unsupportedCodeIsUntouched()
                      installTextureCallHooks(image.data, replacement);
                  });
         REQUIRE(std::memcmp(image.data, before.data(), imageSize) == 0);
-        for (DWORD site : sites)
+        for (const DWORD site : sites)
             REQUIRE(protection(image.data + site) == PAGE_EXECUTE_READ);
     }
     rejected([&]
@@ -164,21 +164,21 @@ void protectionFailureIsUntouched()
 {
     // This mapping supports reading/writing but not executable protection. A
     // read-only view remains readable for guards; the patch acquisition fails.
-    HANDLE mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, imageSize, nullptr);
+    const auto mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, imageSize, nullptr);
     REQUIRE(mapping);
-    BYTE* writable = static_cast<BYTE*>(MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, imageSize));
+    auto* const writable = static_cast<BYTE*>(MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, imageSize));
     REQUIRE(writable);
     initialize(writable);
     std::vector<BYTE> before(writable, writable + imageSize);
     REQUIRE(UnmapViewOfFile(writable));
-    BYTE* readonly = static_cast<BYTE*>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, imageSize));
+    auto* const readonly = static_cast<BYTE*>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, imageSize));
     REQUIRE((readonly && protection(readonly + sites[0]) == PAGE_READONLY));
     rejected([&]
              {
                  installTextureCallHooks(readonly, replacement);
              });
     REQUIRE(std::memcmp(readonly, before.data(), imageSize) == 0);
-    for (DWORD site : sites)
+    for (const DWORD site : sites)
         REQUIRE(protection(readonly + site) == PAGE_READONLY);
     REQUIRE(UnmapViewOfFile(readonly));
     REQUIRE(CloseHandle(mapping));
