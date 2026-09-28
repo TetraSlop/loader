@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "package-name": "tmloader",
+  "include-component-in-tag": false,
+  "bump-minor-pre-major": true,
+  "draft": true,
+  "bootstrap-sha": "607c16f2a272197ac69a07c00032816fe6188bee",
+  "packages": {
+    ".": {}
+  }
+}

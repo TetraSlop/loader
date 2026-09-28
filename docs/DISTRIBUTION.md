@@ -5,6 +5,10 @@ nor Python is included.** The server is built/deployed separately, and Play
 only opens the client against the configured endpoint. Windows PowerShell
 handles optional asset import and setup; recipients need no developer tools.
 
+GitHub CI builds both archive variants from the private repository's `assets/`
+inputs. See [release automation](RELEASING.md), or run
+`python tools/build_release.py --loader build/Release/tmloader.exe` locally.
+
 ```powershell
 py -3 tools/package_app.py --loader build-browser/Release/tmloader.exe
 ```

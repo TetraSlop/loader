@@ -4,3 +4,10 @@
 *.md text eol=lf
 *.py text eol=lf
 *.ini text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+/assets/** -text
+/assets/runtime/** binary
+/assets/viewer-defaults/** binary
+/assets/**/*.json text eol=lf
+/assets/**/*.md text eol=lf

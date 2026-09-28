@@ -1,0 +1,4 @@
+clang-format==22.1.8
+numpy==2.5.2
+Pillow==12.3.0
+opencv-python-headless==4.13.0.92

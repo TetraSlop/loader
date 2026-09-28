@@ -14,7 +14,7 @@ auto main(int argc, char** argv) -> int
         }
         if (config.version)
         {
-            std::puts("tmloader 0.1.0");
+            std::puts("tmloader " TMLOADER_VERSION);
             return 0;
         }
         tmloader::validateRuntime(config);

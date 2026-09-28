@@ -4,6 +4,10 @@ A standalone 32-bit host for the original Tetra Master PC client, arranged into
 small loader modules in the style of xiloader. It opens the original online
 startup and connects to a separately running compatible game/profile server.
 
+Download the minimal client or full-assets client from
+[Releases](https://github.com/sruon/tmloader/releases). Both connect to a separately
+deployed server. See [release automation](docs/RELEASING.md) for the build flow.
+
 For the integrated local setup, the sibling `tmserver` project now provides
 `Play.cmd` and a [native test checklist](../tmserver/docs/NATIVE_TEST_CHECKLIST.md).
 It starts the packaged services, passes their free ports and account IDs to this

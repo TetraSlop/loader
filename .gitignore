@@ -12,3 +12,8 @@
 *.bin
 *.bmp
 __pycache__/
+/.idea/
+/.PVS-Studio/
+/cmake-build-*/
+/.ruff_cache/
+!/assets/**

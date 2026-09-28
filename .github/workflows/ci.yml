@@ -1,0 +1,110 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release please
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: write
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+      sha: ${{ steps.release.outputs.sha }}
+    steps:
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      # GITHUB_TOKEN-created PRs do not trigger pull_request workflows.
+      - name: Check the generated release PR
+        if: steps.release.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_PR: ${{ steps.release.outputs.pr }}
+        run: |
+          number=$(jq -r '.number' <<< "$RELEASE_PR")
+          branch=$(gh pr view "$number" --json headRefName --jq '.headRefName')
+          gh workflow run ci.yml --ref "$branch"
+
+  build:
+    name: Windows x86
+    needs: release
+    if: ${{ !cancelled() && (needs.release.result == 'success' || needs.release.result == 'skipped') }}
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A release can target an earlier merged PR; build its exact commit.
+          ref: ${{ needs.release.outputs.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: tools/ci_requirements.txt
+      - name: Install test tools
+        run: python -m pip install -r tools/ci_requirements.txt
+      - name: Check C++ formatting
+        run: python tools/run_clang_format.py --check
+      - name: Configure C++23 x86 build
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A Win32 -DBUILD_TESTING=ON
+      - name: Build loader and tests
+        run: cmake --build build --config Release --parallel 4
+      - name: Run C++ tests without a graphics device
+        run: ctest --test-dir build -C Release --output-on-failure --timeout 60 -LE graphics-device
+      - name: Run Python tool and packaging tests
+        run: python -m unittest discover -s tests/tools -v
+      - name: Verify executable format and privileges
+        run: python tools/verify_build.py build/Release/tmloader.exe
+      - name: Build and verify both client archives
+        run: python tools/build_release.py --loader build/Release/tmloader.exe
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-client-archives
+          path: out/release/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    name: Publish verified archives
+    needs: [release, build]
+    if: needs.release.outputs.created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-client-archives
+          path: release
+      - name: Attach archives and publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+        working-directory: release
+        run: |
+          sha256sum --check SHA256SUMS.txt
+          gh release upload "$RELEASE_TAG" ./*.zip SHA256SUMS.txt validation.json --clobber
+          gh release edit "$RELEASE_TAG" --draft=false

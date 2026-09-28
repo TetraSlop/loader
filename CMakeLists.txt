@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.29)
-project(tmloader VERSION 0.1.0 LANGUAGES CXX)
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/version.txt" TMLOADER_VERSION LIMIT_COUNT 1)
+project(tmloader VERSION ${TMLOADER_VERSION} LANGUAGES CXX)
 if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 4)
     message(FATAL_ERROR "tmloader requires MSVC x86. Configure with -A Win32.")
 endif()

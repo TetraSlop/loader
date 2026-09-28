@@ -46,6 +46,7 @@ add_executable(tmloader WIN32
 target_link_libraries(tmloader PRIVATE
     loader_config loader_imgui loader_textures
     ole32 windowscodecs advapi32 user32 gdi32 ws2_32)
+target_compile_definitions(tmloader PRIVATE TMLOADER_VERSION="${PROJECT_VERSION}")
 # Keep the executable where existing launchers expect it after add_subdirectory.
 set_target_properties(tmloader PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 # The protected original DLL executes legacy generated code; preserve the

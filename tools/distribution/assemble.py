@@ -101,6 +101,7 @@ def assemble(args):
         "kind": "client-only",
         "platform": "windows (x86 game client)",
         "loader_revision": revision(root),
+        "loader_version": (root / "version.txt").read_text().strip(),
         "components": {
             "dlls": args.include_dlls,
             "originals": args.include_originals,
