@@ -1,5 +1,34 @@
 # Refactor validation
 
+## Subsystem directory layout, 2026-09-27
+
+Source now lives in `src/app`, `config`, `graphics`, `input`, `platform`,
+`textures` and `ui`, with matching C++ test directories. Python asset-tool tests
+live in `tests/tools` and remain discoverable from `tests`. The root build file
+keeps toolchain and project options; dependency declarations, loader targets and
+test targets have their own CMake files. The loader retains its existing
+`<build>/RelWithDebInfo/tmloader.exe` output path.
+
+- A fresh MSVC x86 C++23 build in `build-layout/` passes. **24/24 CTest cases
+  pass**, with no skipped cases; the asset-processing environment passes all
+  **18 Python tests** after their move.
+- A separate `BUILD_TESTING=OFF` build passes in `build-layout-loader-only/`
+  without configuring Catch2. Both build modes retain the executable location
+  and pass the PE compatibility checks.
+- Comparing all 51 C++ files to the previous revision finds no changes outside
+  include directives and formatting. The three Python test changes only adjust
+  their import root. Dependency versions/hashes and both style configurations
+  remain identical.
+- All 51 C++ files pass clang-format 22. Read-only PE checks confirm x86 PE32,
+  the GUI subsystem, `asInvoker` and the legacy compatibility flags.
+- The deployed loader, local INI and pre-existing IDE files retain their
+  baseline hashes. No native game session was started for this organization
+  change.
+
+Local evidence is in ignored `out/layout-build.log`, `out/layout-ctest.log`,
+`out/layout-loader-only-build.log`, `out/layout-baseline.json` and
+`out/verify_layout.py`.
+
 ## Const, trailing returns and simplification, 2026-09-27
 
 Non-void functions now use trailing return types throughout first-party C++,

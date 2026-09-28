@@ -29,6 +29,11 @@ cmake --build build-modernize --target format-check --config RelWithDebInfo
 
 For new or refactored code:
 
+- Place files in their owning `src/` subsystem and mirror that folder under
+  `tests/`. Keep related headers and implementations together. First-party
+  includes use the source-root path, for example `"ui/window.h"`, including
+  references between files in the same folder. Avoid relative `../src` paths
+  and adding each subsystem separately to the include search path.
 - Put class declarations in self-contained `.h` files and ordinary method bodies
   in `.cpp` files. Templates and small shared inline helpers can remain in headers.
   Private helper types use a named `tmloader::detail` namespace; do not define

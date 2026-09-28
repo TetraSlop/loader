@@ -15,6 +15,28 @@ rendering resolutions are now available in F10 settings. These pass actual
 Direct3D 8 pixel comparisons; the complete game still needs a user test at the
 new resolutions. See [validation](docs/VALIDATION.md).
 
+## Source layout
+
+```text
+cmake/Dependencies.cmake  Pinned third-party libraries
+src/
+  app/                   Entry point, native bootstrap, ABI and shared runtime
+  config/                Configuration, endpoint rules and validation
+  graphics/              Direct3D bridge, render scaling and screenshots
+  input/                 DirectInput and keyboard/mouse fallback
+  platform/              Windows audio, desktop, file, network and patch hooks
+  textures/              Replacement packs, manifests and texture hooks
+  ui/                    Game window, preferences and ImGui settings
+tests/                   Matching subsystem folders; Python tool tests in tools/
+tools/                   Build/runtime helpers and asset preparation scripts
+docs/                    Architecture, protocol research and validation
+```
+
+The root `CMakeLists.txt` selects the toolchain and build options;
+`src/CMakeLists.txt` owns loader targets and `tests/CMakeLists.txt` owns tests.
+Headers live beside their implementations and includes name their subsystem.
+See [architecture](docs/ARCHITECTURE.md) and [C++ style](docs/CPP_STYLE.md).
+
 ## Window controls
 
 - **F10** opens/closes the Dear ImGui settings panel; Escape closes the panel.
@@ -126,6 +148,11 @@ The loader also uses the LandSandBoat clang-format 22 rules. Run
 formatting, or omit `--check` to apply it. See [C++ style](docs/CPP_STYLE.md) for
 the declaration/header layout and CMake format targets.
 
+Python asset-tool tests are discovered with
+`python -m unittest discover -s tests -p "test_*.py"`. Use the asset-processing
+environment described in [texture upscaling](docs/texture-upscaling.md), which
+contains NumPy, Pillow and OpenCV; these are not loader runtime dependencies.
+
 Output: `build/RelWithDebInfo/tmloader.exe`. The executable has an explicit
 **asInvoker** manifest; it does not request administrator privileges.
 
@@ -142,7 +169,7 @@ data/utf/env.dat             (Viewer environment data)
 pub/home00/option.bin        (Viewer local settings)
 ```
 
-The known DLL SHA256 hashes are pinned in `src/validation.cpp`. Unknown builds
+The known DLL SHA256 hashes are pinned in `src/config/validation.cpp`. Unknown builds
 are rejected before loading; fixed offsets require the matching original
 builds. The loader executable does not discover installed files or copy assets.
 The optional `python tools/prepare_runtime.py --source PATH` setup helper copies

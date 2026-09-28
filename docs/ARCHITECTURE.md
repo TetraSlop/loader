@@ -7,19 +7,27 @@ generation, hidden environment navigation switches or probe header is needed.
 
 | Module | Responsibility |
 |---|---|
-| main/config/validation | CLI and config precedence, file checks, pinned DLL SHA256, headless --check |
-| loader/abi | Direct COM factories, original GameStart descriptor, Viewer setup/order |
-| network/endpoints | Account identity, profile cipher lifetime, initial profile requests, DNS/endpoint routing |
-| files | Virtual registry, correct empty LOADDIR, runtime write boundary |
-| graphics/render_scale | D3D8 device/reset, optional higher-resolution rasterization, scaled presentation, captures |
-| screenshot | User-requested backbuffer capture, WIC PNG encoding, unique output files and status |
-| window/window_settings | Desktop system commands, fullscreen/resize, shared viewport, account-scoped preferences, short-click latch |
-| settings_ui | Dear ImGui panel using official Win32/DX9 backends on an owned UI thread |
-| audio | DirectSound 8 factory and diagnostics; game retains music/effect mixing |
-| desktop | Disable native global shortcut interception, cursor warping and forced activation |
-| input/input_bridge | Native DirectInput factory plus existing keyboard/mouse fallback |
-| patch | Process-local pointer/import replacement |
-| log/runtime | Logging, exception capture, reduced-integrity token, shared native context |
+| app/main, config/ | CLI and config precedence, file checks, pinned DLL SHA256, headless --check |
+| app/loader, app/abi | Direct COM factories, original GameStart descriptor, Viewer setup/order |
+| platform/network, config/endpoints | Account identity, profile cipher lifetime, initial profile requests, DNS/endpoint routing |
+| platform/files | Virtual registry, correct empty LOADDIR, runtime write boundary |
+| graphics/graphics, graphics/render_scale | D3D8 device/reset, optional higher-resolution rasterization, scaled presentation, captures |
+| graphics/screenshot | User-requested backbuffer capture, WIC PNG encoding, unique output files and status |
+| textures/ | Replacement manifests, texture ownership and guarded native texture hooks |
+| ui/window, ui/window_settings | Desktop system commands, fullscreen/resize, shared viewport, account-scoped preferences, short-click latch |
+| ui/settings_ui | Dear ImGui panel using official Win32/DX9 backends on an owned UI thread |
+| platform/audio | DirectSound 8 factory and diagnostics; game retains music/effect mixing |
+| platform/desktop | Disable native global shortcut interception, cursor warping and forced activation |
+| input/ | Native DirectInput factory plus existing keyboard/mouse fallback |
+| platform/patch | Process-local pointer/import replacement |
+| app/log, app/runtime | Logging, exception capture, reduced-integrity token, shared native context |
+
+All module paths above are relative to `src/`. Headers sit beside their source;
+includes use paths relative to that root, such as `app/runtime.h`. `tests/`
+mirrors these folders and keeps Python asset-tool tests under `tests/tools/`.
+Build configuration is split between root toolchain/options,
+`cmake/Dependencies.cmake`, `src/CMakeLists.txt` and `tests/CMakeLists.txt`.
+The executable output remains `<build>/<configuration>/tmloader.exe`.
 
 Normal loader fixes preserved from the working harness:
 
