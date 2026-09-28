@@ -1,3 +1,4 @@
+#include "app/log.h"
 #include "app/runtime.h"
 #include "graphics/render_scale.h"
 #include "graphics/screenshot.h"
@@ -32,8 +33,6 @@ void configurePanel(const float scale)
     io.IniFilename = nullptr; // Our account-scoped preferences are separate.
     io.LogFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    // Keep ImGui's normal cursor handling. Native cursor visibility is now
-    // isolated to the game client area by the desktop adapter.
     ImGui::StyleColorsDark();
     auto& style         = ImGui::GetStyle();
     style.WindowPadding = ImVec2(18, 16);
@@ -51,20 +50,24 @@ auto CALLBACK panelProc(const HWND hwnd, const UINT message, const WPARAM wparam
         closeRequested = true;
         return 0;
     }
+
     if (ImGui_ImplWin32_WndProcHandler(hwnd, message, wparam, lparam))
     {
         return 1;
     }
+
     if (message == WM_SIZE && wparam != SIZE_MINIMIZED)
     {
         resizedWidth  = LOWORD(lparam);
         resizedHeight = HIWORD(lparam);
         return 0;
     }
+
     if (message == WM_SYSCOMMAND && (wparam & 0xfff0) == SC_KEYMENU)
     {
         return 0;
     }
+
     return DefWindowProcW(hwnd, message, wparam, lparam);
 }
 
@@ -75,26 +78,31 @@ void displaySettings(WindowSettings value)
     {
         postWindowAction(WindowAction::fullscreen, value.fullscreen);
     }
+
     if (ImGui::Checkbox("Keep original 4:3 proportions", &value.preserveAspect))
     {
         postWindowAction(WindowAction::aspect, value.preserveAspect);
     }
+
     ImGui::Spacing();
     ImGui::TextUnformatted("Window size");
     if (ImGui::Button("640 x 480"))
     {
         postWindowAction(WindowAction::size, MAKELPARAM(640, 480));
     }
+
     ImGui::SameLine();
     if (ImGui::Button("960 x 720"))
     {
         postWindowAction(WindowAction::size, MAKELPARAM(960, 720));
     }
+
     ImGui::SameLine();
     if (ImGui::Button("1280 x 960"))
     {
         postWindowAction(WindowAction::size, MAKELPARAM(1280, 960));
     }
+
     ImGui::TextWrapped("You can also drag the game window's edges or maximize it.");
     ImGui::Spacing();
     ImGui::Separator();
@@ -128,6 +136,7 @@ void displaySettings(WindowSettings value)
             postWindowAction(WindowAction::renderScale, resolution - 1);
         }
     }
+
     const auto active = activeRenderScale();
     ImGui::TextDisabled("Currently rendering at %.0f x %.0f", 640 * active, 480 * active);
     ImGui::TextWrapped("Applies after relaunch. Automatic chooses the resolution for your monitor, up to 4K height.");
@@ -142,10 +151,12 @@ void artworkSettings(WindowSettings value)
     {
         postWindowAction(WindowAction::hdTextures, value.hdTextures);
     }
+
     if (ImGui::Checkbox("Enhanced fonts", &value.hdFonts))
     {
         postWindowAction(WindowAction::hdFonts, value.hdFonts);
     }
+
     if (const auto images = texturePackCount())
     {
         ImGui::TextDisabled("%zu images available; %u replacements loaded", images, textureReplacementCount());
@@ -154,6 +165,7 @@ void artworkSettings(WindowSettings value)
     {
         ImGui::TextDisabled("No HD texture pack loaded");
     }
+
     ImGui::TextWrapped("Switches immediately. Images missing from the pack use their originals.");
     ImGui::TextWrapped("Font selection affects in-game text. Lettering painted into menus or card images follows the artwork setting.");
 }
@@ -168,6 +180,7 @@ void screenshotSettings()
         requestScreenshot();
         closeRequested = true;
     }
+
     const auto status = screenshotStatus();
     if (!status.empty())
     {
@@ -190,6 +203,7 @@ void settingsFooter()
     {
         closeRequested = true;
     }
+
     ImGui::SameLine();
     if (ImGui::Button("Quit game"))
     {
@@ -203,8 +217,6 @@ void settingsContents()
     const auto* const viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
-    // Keep ImGui's vertical scrolling available when the monitor's work area
-    // is shorter than the preferred panel; controls must remain reachable.
     ImGui::Begin("Wrapper settings", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
     ImGui::TextUnformatted("TETRA MASTER");
     ImGui::TextDisabled("Game settings");
@@ -217,18 +229,22 @@ void settingsContents()
             displaySettings(value);
             ImGui::EndTabItem();
         }
+
         if (ImGui::BeginTabItem("Artwork & text"))
         {
             artworkSettings(value);
             ImGui::EndTabItem();
         }
+
         if (ImGui::BeginTabItem("Screenshots"))
         {
             screenshotSettings();
             ImGui::EndTabItem();
         }
+
         ImGui::EndTabBar();
     }
+
     settingsFooter();
     ImGui::End();
 }
@@ -255,7 +271,7 @@ void runPanel(const HWND hwnd, const float scale)
 
     if (FAILED(hr))
     {
-        logf("Settings panel graphics initialization failed: %08lX", hr);
+        logLine("Settings panel graphics initialization failed: {:08X}", hex(hr));
         return;
     }
 
@@ -268,12 +284,14 @@ void runPanel(const HWND hwnd, const float scale)
     {
         closeRequested = true;
     }
+
     if (!closeRequested)
     {
         ShowWindow(hwnd, SW_SHOW);
         SetForegroundWindow(hwnd);
         SetFocus(hwnd);
     }
+
     bool lost = false;
     while (!closeRequested && IsWindow(gameWindow))
     {
@@ -283,10 +301,12 @@ void runPanel(const HWND hwnd, const float scale)
             TranslateMessage(&message);
             DispatchMessageW(&message);
         }
+
         if (closeRequested)
         {
             break;
         }
+
         if (lost)
         {
             hr = device->TestCooperativeLevel();
@@ -296,6 +316,7 @@ void runPanel(const HWND hwnd, const float scale)
                 continue;
             }
         }
+
         if (resizedWidth || hr == D3DERR_DEVICENOTRESET)
         {
             if (resizedWidth)
@@ -303,6 +324,7 @@ void runPanel(const HWND hwnd, const float scale)
                 pp.BackBufferWidth  = resizedWidth;
                 pp.BackBufferHeight = resizedHeight;
             }
+
             ImGui_ImplDX9_InvalidateDeviceObjects();
             hr = device->Reset(&pp);
             if (FAILED(hr))
@@ -311,10 +333,13 @@ void runPanel(const HWND hwnd, const float scale)
                 Sleep(20);
                 continue;
             }
+
             ImGui_ImplDX9_CreateDeviceObjects();
-            resizedWidth = resizedHeight = 0;
-            lost                         = false;
+            resizedWidth  = 0;
+            resizedHeight = 0;
+            lost          = false;
         }
+
         ImGui_ImplDX9_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
@@ -326,31 +351,34 @@ void runPanel(const HWND hwnd, const float scale)
             ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
             device->EndScene();
         }
+
         hr   = device->Present(nullptr, nullptr, nullptr, nullptr);
         lost = hr == D3DERR_DEVICELOST;
     }
+
     if (renderer)
     {
         ImGui_ImplDX9_Shutdown();
     }
+
     if (platform)
     {
         ImGui_ImplWin32_Shutdown();
     }
+
     ImGui::DestroyContext();
 }
 
 void panelMain()
 {
-    // The supported ImGui Win32/DX9 backends own a separate settings window.
-    // Its message/render loop stays responsive if the legacy D3D8 game pauses.
+    // A separate D3D9 window keeps the panel responsive while the game is inactive.
     ImGui_ImplWin32_EnableDpiAwareness();
     const auto  instance = GetModuleHandleW(nullptr);
     WNDCLASSEXW wc{ sizeof(WNDCLASSEXW) };
     wc.style         = CS_CLASSDC;
     wc.lpfnWndProc   = panelProc;
     wc.hInstance     = instance;
-    wc.hCursor       = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
+    wc.hCursor       = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512)); // IDC_ARROW
     wc.lpszClassName = L"TMLoaderSettings";
     RegisterClassExW(&wc);
     const auto scale = ImGui_ImplWin32_GetDpiScaleForHwnd(gameWindow);
@@ -364,11 +392,12 @@ void panelMain()
     if (GetMonitorInfoW(MonitorFromWindow(gameWindow, MONITOR_DEFAULTTONEAREST), &monitor))
     {
         const auto& work = monitor.rcWork;
-        width            = (std::min)(width, static_cast<int>(work.right - work.left));
-        height           = (std::min)(height, static_cast<int>(work.bottom - work.top));
+        width            = std::min(width, static_cast<int>(work.right - work.left));
+        height           = std::min(height, static_cast<int>(work.bottom - work.top));
         x                = std::clamp(x, static_cast<int>(work.left), static_cast<int>(work.right) - width);
         y                = std::clamp(y, static_cast<int>(work.top), static_cast<int>(work.bottom) - height);
     }
+
     const auto hwnd = CreateWindowExW(0, wc.lpszClassName, L"Tetra Master settings", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, x, y, width, height, gameWindow, nullptr, instance, nullptr);
     panelWindow     = hwnd;
     runPanel(hwnd, scale);
@@ -377,6 +406,7 @@ void panelMain()
     {
         DestroyWindow(hwnd);
     }
+
     UnregisterClassW(wc.lpszClassName, instance);
     running = false;
 }
@@ -405,6 +435,7 @@ void toggleSettingsPanel()
         stopSettingsPanel();
         return;
     }
+
     closeRequested = false;
     try
     {
@@ -413,7 +444,7 @@ void toggleSettingsPanel()
     catch (const std::exception& e)
     {
         running = false;
-        logf("Cannot open settings: %s", e.what());
+        logLine("Cannot open settings: {}", e.what());
     }
 }
 

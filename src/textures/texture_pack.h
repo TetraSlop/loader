@@ -10,12 +10,12 @@ namespace tmloader
 
 struct PngInfo
 {
-    unsigned width = 0, height = 0;
-    size_t   bytes = 0; // Through IEND, excluding archive alignment bytes.
+    unsigned width  = 0;
+    unsigned height = 0;
+    size_t   bytes  = 0; // Through IEND; archives pad PNGs with alignment bytes.
 };
 
 auto pngInfo(const void* data, size_t bytes) -> PngInfo;
-auto sha256Bytes(const void* data, size_t bytes) -> std::string;
 
 enum class TextureCategory
 {
@@ -25,9 +25,13 @@ enum class TextureCategory
 
 struct TextureAsset
 {
-    std::string           id, sourceHash, imageHash;
+    std::string           id;
+    std::string           sourceHash;
+    std::string           imageHash;
     std::filesystem::path file;
-    unsigned              width = 0, height = 0, scale = 0;
+    unsigned              width    = 0;
+    unsigned              height   = 0;
+    unsigned              scale    = 0;
     TextureCategory       category = TextureCategory::artwork;
 };
 

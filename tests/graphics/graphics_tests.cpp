@@ -1,5 +1,6 @@
 #include "app/runtime.h"
 #include "ui/window.h"
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 
@@ -8,8 +9,10 @@ static auto fakeIconic(HWND) -> BOOL
     return FALSE;
 }
 
-static bool  monitorAvailable = true, displayAvailable = true;
-static DWORD displayWidth = 3840, displayHeight = 2160;
+static bool  monitorAvailable = true;
+static bool  displayAvailable = true;
+static DWORD displayWidth     = 3840;
+static DWORD displayHeight    = 2160;
 
 static auto fakeMonitor(HWND, DWORD) -> HMONITOR
 {
@@ -43,9 +46,12 @@ namespace tmloader
 Config options;
 BYTE*  gameBase{};
 HWND   gameWindow = reinterpret_cast<HWND>(1);
-DWORD  frames     = 10;
 
-void logf(const char*, ...)
+void writeLog(std::string_view)
+{
+}
+
+void setImport(HMODULE, DWORD, void*)
 {
 }
 
@@ -56,6 +62,10 @@ void initializeGameWindow(HWND)
 auto currentWindowSettings() -> WindowSettings
 {
     return {};
+}
+
+void requestScreenshot() noexcept
+{
 }
 
 void saveRequestedScreenshot(void*) noexcept
@@ -70,12 +80,12 @@ auto gameContentRect() -> RECT
 
 } // namespace tmloader
 
-static auto WINAPI reset(void*, tmloader::Present8* pp) -> HRESULT
+static auto WINAPI reset(void*, tmloader::d3d8::PresentParameters* pp) -> HRESULT
 {
     // Emulate D3D8's presentation contract: explicit rectangles require COPY.
-    const float scale = tmloader::activeRenderScale();
+    const auto scale = tmloader::activeRenderScale();
     REQUIRE((pp->windowed && pp->width == 640U * scale && pp->height == 480U * scale));
-    REQUIRE((pp->swap == 3 && pp->count == 1 && pp->multisample == 0));
+    REQUIRE((pp->swap == tmloader::d3d8::swapEffectCopy && pp->count == 1 && pp->multisample == 0));
     REQUIRE((pp->window == tmloader::gameWindow && pp->refresh == 0));
     return S_OK;
 }
@@ -85,15 +95,19 @@ static auto WINAPI present(void*, const RECT* source, const RECT* dest, HWND, co
     REQUIRE((dest && dest->left == 240 && dest->top == 0 && dest->right == 1680 && dest->bottom == 1080));
     if (source)
     {
-        const int quarters = static_cast<int>(tmloader::activeRenderScale() * 4);
+        const auto quarters = static_cast<int>(tmloader::activeRenderScale() * 4);
         REQUIRE((source->left == MulDiv(11, quarters, 4) && source->top == MulDiv(21, quarters, 4) &&
                  source->right == MulDiv(631, quarters, 4) && source->bottom == MulDiv(471, quarters, 4)));
     }
+
     return S_OK;
 }
 
-static DWORD selectedShader, bufferFormat;
-static int   shaderCreates, shaderDeletes, constantsCalls;
+static DWORD selectedShader;
+static DWORD bufferFormat;
+static int   shaderCreates;
+static int   shaderDeletes;
+static int   constantsCalls;
 
 static auto WINAPI createShader(void*, const DWORD* declaration, const DWORD* code, DWORD* shader, DWORD) -> HRESULT
 {
@@ -113,7 +127,7 @@ static auto WINAPI deleteShader(void*, DWORD shader) -> HRESULT
 static auto WINAPI constants(void*, DWORD index, const void* data, DWORD count) -> HRESULT
 {
     REQUIRE((index == 0 && count == 2));
-    auto* const values = static_cast<const float*>(data);
+    const auto* const values = static_cast<const float*>(data);
     REQUIRE((std::abs(values[0] - 2.0f / 640) < 0.000001f && values[3] == 1));
     ++constantsCalls;
     return S_OK;
@@ -145,39 +159,59 @@ TEST_CASE("Graphics hooks preserve presentation and device lifecycle", "[graphic
     displayAvailable = false;
     REQUIRE(monitorRenderScale(nullptr, 1280, 720) == 1.5f);
     REQUIRE(monitorRenderScale(nullptr, 0, 0) == 1);
-    Present8 pp{};
+    auto pp         = d3d8::PresentParameters{};
     pp.width        = 1920;
     pp.height       = 1080;
     pp.swap         = 1;
     pp.refresh      = 60;
     originalReset   = reset;
     originalPresent = present;
-    rememberOriginal(originalPresent, reinterpret_cast<void*>(presentFrame), presentFrame);
-    rememberOriginal(originalReset, reinterpret_cast<void*>(resetDevice), resetDevice);
+    rememberOriginal(originalPresent, reinterpret_cast<void*>(hookedPresent), hookedPresent);
+    rememberOriginal(originalReset, reinterpret_cast<void*>(hookedReset), hookedReset);
     REQUIRE((originalPresent == present && originalReset == reset));
-    REQUIRE(resetDevice(nullptr, &pp) == S_OK);
-    REQUIRE(presentFrame(nullptr, nullptr, nullptr, nullptr, nullptr) == S_OK);
-    void* table[97]{};
-    table[75]            = reinterpret_cast<void*>(createShader);
-    table[78]            = reinterpret_cast<void*>(deleteShader);
-    table[79]            = reinterpret_cast<void*>(constants);
-    void** device        = table;
-    originalVertexShader = selectShader;
-    originalVertexBuffer = makeBuffer;
+    REQUIRE(hookedReset(nullptr, &pp) == S_OK);
+    frames = 10; // Past first-frame window activation, which reads game memory.
+    REQUIRE(hookedPresent(nullptr, nullptr, nullptr, nullptr, nullptr) == S_OK);
+    auto table                           = std::array<void*, d3d8::DeviceMethodCount>{};
+    table[d3d8::CreateVertexShader]      = reinterpret_cast<void*>(createShader);
+    table[d3d8::DeleteVertexShader]      = reinterpret_cast<void*>(deleteShader);
+    table[d3d8::SetVertexShaderConstant] = reinterpret_cast<void*>(constants);
+    void** device                        = table.data();
+    originalSetVertexShader              = selectShader;
+    originalCreateVertexBuffer           = makeBuffer;
     for (const float factor : renderScales)
     {
         renderingFactor = factor;
-        REQUIRE(resetDevice(&device, &pp) == S_OK);
-        REQUIRE(setVertexShader(&device, gameVertexFormat) == S_OK);
-        REQUIRE(selectedShader == (factor == 1 ? gameVertexFormat : 0x123));
-        REQUIRE(vertexBuffer(&device, 128, 0x238, gameVertexFormat, 0, nullptr) == S_OK);
-        REQUIRE(bufferFormat == (factor == 1 ? gameVertexFormat : 0));
-        REQUIRE((vertexBuffer(&device, 128, 0x238, 0x142, 0, nullptr) == S_OK && bufferFormat == 0x142));
-        REQUIRE((setVertexShader(&device, 0x142) == S_OK && selectedShader == 0x142));
+        REQUIRE(hookedReset(&device, &pp) == S_OK);
+        REQUIRE(hookedSetVertexShader(&device, gameVertexFormat) == S_OK);
+        const auto expectedShader = [&]() -> DWORD
+        {
+            if (factor == 1)
+            {
+                return gameVertexFormat;
+            }
+
+            return 0x123;
+        }();
+        const auto expectedFormat = [&]() -> DWORD
+        {
+            if (factor == 1)
+            {
+                return gameVertexFormat;
+            }
+
+            return 0;
+        }();
+        REQUIRE(selectedShader == expectedShader);
+        REQUIRE(hookedCreateVertexBuffer(&device, 128, 0x238, gameVertexFormat, 0, nullptr) == S_OK);
+        REQUIRE(bufferFormat == expectedFormat);
+        REQUIRE((hookedCreateVertexBuffer(&device, 128, 0x238, 0x142, 0, nullptr) == S_OK && bufferFormat == 0x142));
+        REQUIRE((hookedSetVertexShader(&device, 0x142) == S_OK && selectedShader == 0x142));
         const auto source = RECT{ 11, 21, 631, 471 };
-        REQUIRE(presentFrame(nullptr, &source, nullptr, nullptr, nullptr) == S_OK);
+        REQUIRE(hookedPresent(nullptr, &source, nullptr, nullptr, nullptr) == S_OK);
         REQUIRE((source.left == 11 && source.right == 631));
     }
+
     deleteScaleShader(&device, scaleShader);
     REQUIRE((shaderCreates == static_cast<int>(renderScales.size()) - 1 && shaderDeletes == shaderCreates && constantsCalls == shaderCreates));
     REQUIRE(screenshotChecks == renderScales.size() + 1);

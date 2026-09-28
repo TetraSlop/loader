@@ -1,52 +1,57 @@
-#include "app/runtime.h"
+#include "app/hooks.h"
+#include "app/log.h"
 #include "input/input_bridge.h"
-#include "ui/window.h"
+#include "platform/patch.h"
 
 namespace tmloader
 {
 namespace
 {
 
-auto inputContentRect(RECT* rect) -> bool
+constexpr DWORD directInputCreateImport = 0x204014;
+
+// Native input object; +0x2C/+0x2E hold the software cursor position and
+// +0x14/+0x18 select keyboard-driven cursor animation over relative movement.
+constexpr DWORD inputState     = 0x2ff570;
+constexpr DWORD cursorAnimate  = 0x14;
+constexpr DWORD cursorAnimateY = 0x18;
+constexpr DWORD cursorX        = 0x2c;
+constexpr DWORD cursorY        = 0x2e;
+
+// The game only reads the mouse through DirectInput; keyboard input arrives as window messages.
+auto WINAPI hookedDirectInput8Create(HINSTANCE, DWORD version, REFIID iid, void** output, IUnknown* outer) -> HRESULT
 {
-    *rect = gameContentRect();
-    return rect->right > rect->left && rect->bottom > rect->top;
+    logLine("DirectInput8Create version={:X} IID={:08X}", version, iid.Data1);
+    if (outer || !LocalInput::supports(iid))
+    {
+        return DIERR_NOINTERFACE;
+    }
+
+    *output = new LocalInput();
+    return S_OK;
 }
 
-auto mapTetraMouse(LONG x, LONG y, LONG* dx, LONG* dy) -> bool
+} // namespace
+
+auto mapGameMouse(LONG x, LONG y, LONG* dx, LONG* dy) -> bool
 {
     if (!gameBase || !gameWindow)
     {
         return false;
     }
-    // TM 1.6.11.0: input object102FF570; signed cursor words+2C/+2E.
-    // 10189270 chooses animation(+14) or integrates the relative axes.
-    // Cancel only for physical mouse movement/click, retaining keyboard focus
-    // animation while the pointer is stationary.
-    auto* const input                      = gameBase + 0x2ff570;
-    *reinterpret_cast<LONG*>(input + 0x14) = 0;
-    *reinterpret_cast<LONG*>(input + 0x18) = 0;
-    *dx                                    = x - *reinterpret_cast<const SHORT*>(input + 0x2c);
-    *dy                                    = y - *reinterpret_cast<const SHORT*>(input + 0x2e);
+
+    // Real pointer input cancels keyboard-driven cursor animation.
+    auto* const input                                = gameBase + inputState;
+    *reinterpret_cast<LONG*>(input + cursorAnimate)  = 0;
+    *reinterpret_cast<LONG*>(input + cursorAnimateY) = 0;
+    *dx                                              = x - *reinterpret_cast<const SHORT*>(input + cursorX);
+    *dy                                              = y - *reinterpret_cast<const SHORT*>(input + cursorY);
     return true;
 }
 
-} // namespace
-
-auto WINAPI tracedInput(HINSTANCE instance, DWORD version, REFIID iid, void** output, IUnknown* outer) -> HRESULT
+void installInputHooks(HMODULE game)
 {
-    using Factory   = HRESULT(WINAPI*)(HINSTANCE, DWORD, REFIID, void**, IUnknown*);
-    const auto real = reinterpret_cast<Factory>(GetProcAddress(LoadLibraryA("dinput8.dll"), "DirectInput8Create"));
-    const auto hr   = real(instance, version, iid, output, outer);
-    logf("DirectInput8Create instance=%p version=%lX IID=%08lX hr=%08lX obj=%p", instance, version, iid.Data1, hr, *output);
-    if (FAILED(hr) && LocalInput::supports(iid) && !outer)
-    {
-        configureInputBridge({ mapTetraMouse, takeMousePresses, settingsPanelOpen, inputContentRect });
-        *output = new LocalInput();
-        logf("Using local keyboard/mouse bridge");
-        return S_OK;
-    }
-    return hr;
+    setImport(game, directInputCreateImport, reinterpret_cast<void*>(hookedDirectInput8Create));
 }
 
 } // namespace tmloader

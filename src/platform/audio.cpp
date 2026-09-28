@@ -1,19 +1,40 @@
-#include "app/runtime.h"
+#include "app/hooks.h"
+#include "app/log.h"
+#include "platform/patch.h"
+
+#include <mmsystem.h>
+
 #include <dsound.h>
 
 namespace tmloader
 {
-
-auto WINAPI tracedSound8(LPCGUID guid, LPDIRECTSOUND8* output, LPUNKNOWN outer) -> HRESULT
+namespace
 {
-    // TM imports dsound ordinal 11 (DirectSoundCreate8) and requires
-    // IDirectSoundBuffer8 for both music and effects. DirectSoundCreate can
-    // succeed here but its buffers reject that interface with E_NOINTERFACE.
-    static const auto factory = reinterpret_cast<decltype(&DirectSoundCreate8)>(
-        GetProcAddress(LoadLibraryW(L"dsound.dll"), "DirectSoundCreate8"));
-    const auto result = factory ? factory(guid, output, outer) : E_NOINTERFACE;
-    logf("DirectSoundCreate8=%08lX", result);
+
+constexpr DWORD directSoundCreateImport = 0x20401c;
+
+// Music and effects need IDirectSoundBuffer8, which only DirectSoundCreate8 devices provide.
+auto WINAPI hookedDirectSoundCreate8(LPCGUID device, LPDIRECTSOUND8* output, LPUNKNOWN outer) -> HRESULT
+{
+    static const auto factory = reinterpret_cast<decltype(&DirectSoundCreate8)>(GetProcAddress(LoadLibraryW(L"dsound.dll"), "DirectSoundCreate8"));
+    const auto        result  = [&]() -> HRESULT
+    {
+        if (!factory)
+        {
+            return E_NOINTERFACE;
+        }
+
+        return factory(device, output, outer);
+    }();
+    logLine("DirectSoundCreate8={:08X}", hex(result));
     return result;
+}
+
+} // namespace
+
+void installAudioHooks(HMODULE game)
+{
+    setImport(game, directSoundCreateImport, reinterpret_cast<void*>(hookedDirectSoundCreate8));
 }
 
 } // namespace tmloader

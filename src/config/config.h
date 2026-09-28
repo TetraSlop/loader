@@ -25,9 +25,10 @@ struct Config
 };
 
 auto parseConfig(const std::vector<std::string>& args) -> Config;
-auto usage() -> const char*;
+auto usage() -> std::string;
 // Reads only; never loads a DLL, creates a window or changes the token.
 void validateRuntime(const Config& config);
+auto sha256Bytes(const void* data, size_t bytes) -> std::string;
 auto sha256File(const std::filesystem::path& path) -> std::string;
 auto isProfileAlias(const char* host) -> bool;
 auto isIpv4Address(const std::string& host) -> bool;

@@ -6,28 +6,20 @@
 namespace tmloader
 {
 
-using LocalMouseMapper = bool (*)(LONG x, LONG y, LONG* dx, LONG* dy);
+// Moves the game's cursor to an absolute 640x480 position through its relative
+// motion (input/input.cpp); returns false before the game is running.
+auto mapGameMouse(LONG x, LONG y, LONG* dx, LONG* dy) -> bool;
 
-struct InputBridgeCallbacks
-{
-    LocalMouseMapper mouseMapper = nullptr;
-    BYTE (*mousePresses)()       = nullptr;
-    bool (*inputBlocked)()       = nullptr;
-    bool (*contentRect)(RECT*)   = nullptr;
-};
-
-void configureInputBridge(const InputBridgeCallbacks& callbacks) noexcept;
-
-// Focus-aware fallback for the immediate keyboard/mouse path used by the client.
-class LocalInputDevice final : public IDirectInputDevice8A
+// DirectInput mouse backed by the Windows pointer, mapped into the 640x480 game area.
+class LocalMouse final : public IDirectInputDevice8A
 {
 public:
-    ~LocalInputDevice()                                          = default;
-    LocalInputDevice(const LocalInputDevice&)                    = delete;
-    auto operator=(const LocalInputDevice&) -> LocalInputDevice& = delete;
-    LocalInputDevice(LocalInputDevice&&)                         = delete;
-    auto operator=(LocalInputDevice&&) -> LocalInputDevice&      = delete;
-    explicit LocalInputDevice(bool key) noexcept;
+    ~LocalMouse()                                    = default;
+    LocalMouse(const LocalMouse&)                    = delete;
+    auto operator=(const LocalMouse&) -> LocalMouse& = delete;
+    LocalMouse(LocalMouse&&)                         = delete;
+    auto operator=(LocalMouse&&) -> LocalMouse&      = delete;
+    LocalMouse()                                     = default;
     auto STDMETHODCALLTYPE QueryInterface(REFIID, void** out) -> HRESULT override;
     auto STDMETHODCALLTYPE AddRef() -> ULONG override;
     auto STDMETHODCALLTYPE Release() -> ULONG override;
@@ -62,14 +54,13 @@ public:
     auto STDMETHODCALLTYPE GetImageInfo(LPDIDEVICEIMAGEINFOHEADERA) -> HRESULT override;
 
 private:
-    ULONG      references_ = 1;
-    const bool keyboard_;
-    HWND       window_           = nullptr;
-    POINT      previous_         = {};
-    bool       mouseSampleValid_ = false;
-    LONG       previousWidth_    = 0;
-    LONG       previousHeight_   = 0;
-    BYTE       previousButtons_  = 0;
+    ULONG references_       = 1;
+    HWND  window_           = nullptr;
+    POINT previous_         = {};
+    bool  mouseSampleValid_ = false;
+    LONG  previousWidth_    = 0;
+    LONG  previousHeight_   = 0;
+    BYTE  previousButtons_  = 0;
 };
 
 class LocalInput final : public IDirectInput8A

@@ -1,8 +1,11 @@
 #include <windows.h>
 
 #include "config/config.h"
+#include <array>
 #include <bcrypt.h>
+#include <format>
 #include <fstream>
+#include <iterator>
 #include <stdexcept>
 #include <vector>
 #include <wil/resource.h>
@@ -12,58 +15,83 @@ namespace tmloader
 namespace
 {
 
-constexpr auto hexDigits = "0123456789ABCDEF";
-constexpr auto gameHash  = "29C965A835FAD561A94860262F780BC087B7BCC89BE9E3E89DA8F08D57F52003";
-constexpr auto coreHash  = "73B1864BF522D3AA6EC28E9F4BB226FCEE956F7F4848A238C9C2D756DC703B06";
+constexpr auto gameHash = "29C965A835FAD561A94860262F780BC087B7BCC89BE9E3E89DA8F08D57F52003";
+constexpr auto coreHash = "73B1864BF522D3AA6EC28E9F4BB226FCEE956F7F4848A238C9C2D756DC703B06";
 
 } // namespace
 
-auto sha256File(const std::filesystem::path& path) -> std::string
+auto sha256Bytes(const void* data, size_t bytes) -> std::string
 {
-    std::ifstream file(path, std::ios::binary);
-    if (!file)
-        throw std::runtime_error("Cannot read file: " + path.string());
+    if (bytes > ULONG_MAX)
+    {
+        throw std::runtime_error("SHA256 input too large");
+    }
+
     wil::unique_bcrypt_algorithm algorithm;
-    wil::unique_bcrypt_hash      hash;
     if (BCryptOpenAlgorithmProvider(algorithm.put(), BCRYPT_SHA256_ALGORITHM, nullptr, 0) < 0)
+    {
         throw std::runtime_error("Cannot initialize SHA256");
-    if (BCryptCreateHash(algorithm.get(), hash.put(), nullptr, 0, nullptr, 0, 0) < 0)
-        throw std::runtime_error("Cannot create SHA256");
-    char buffer[65536];
-    while (file.read(buffer, sizeof(buffer)) || file.gcount())
-        if (BCryptHashData(hash.get(), reinterpret_cast<PUCHAR>(buffer), static_cast<ULONG>(file.gcount()), 0) < 0)
-            throw std::runtime_error("SHA256 update failed");
-    if (!file.eof())
-        throw std::runtime_error("File read failed");
-    BYTE digest[32];
-    if (BCryptFinishHash(hash.get(), digest, sizeof(digest), 0) < 0)
-        throw std::runtime_error("SHA256 finalization failed");
-    std::string out;
+    }
+
+    auto digest = std::array<BYTE, 32>{};
+    if (BCryptHash(algorithm.get(), nullptr, 0, static_cast<PUCHAR>(const_cast<void*>(data)), static_cast<ULONG>(bytes), digest.data(), static_cast<ULONG>(digest.size())) < 0)
+    {
+        throw std::runtime_error("SHA256 failed");
+    }
+
+    auto text = std::string{};
     for (const auto byte : digest)
     {
-        out += hexDigits[byte >> 4];
-        out += hexDigits[byte & 15];
+        text += std::format("{:02X}", byte);
     }
-    return out;
+
+    return text;
+}
+
+auto sha256File(const std::filesystem::path& path) -> std::string
+{
+    auto file = std::ifstream(path, std::ios::binary);
+    if (!file)
+    {
+        throw std::runtime_error("Cannot read file: " + path.string());
+    }
+
+    const auto bytes = std::vector<char>(std::istreambuf_iterator<char>(file), {});
+    return sha256Bytes(bytes.data(), bytes.size());
 }
 
 void validateRuntime(const Config& config)
 {
     namespace fs = std::filesystem;
     if (!fs::is_directory(config.runtimeDir))
+    {
         throw std::runtime_error("Runtime directory does not exist");
+    }
+
     if (config.runtimeDir.string().size() >= MAX_PATH - 40)
+    {
         throw std::runtime_error("Runtime path is too long for legacy client paths");
+    }
+
     const std::pair<fs::path, const char*> binaries[] = {
         { config.game, gameHash },
         { config.core, coreHash },
     };
     for (const auto& entry : binaries)
+    {
         if (sha256File(entry.first) != entry.second)
+        {
             throw std::runtime_error("Unsupported DLL hash: " + entry.first.string());
+        }
+    }
+
     for (const auto& name : { "data/gW201.dat", "data/utf/env.dat", "pub/home00/option.bin" })
+    {
         if (!fs::is_regular_file(config.runtimeDir / name))
+        {
             throw std::runtime_error("Missing runtime asset: " + std::string(name));
+        }
+    }
 }
 
 } // namespace tmloader

@@ -4,11 +4,13 @@
 namespace tmloader
 {
 
-// TM's single vertex layout: XYZRHW, diffuse, specular, one UV pair (32 bytes).
+// The game's only vertex layout: XYZRHW, diffuse, specular, one UV pair (32 bytes).
 constexpr DWORD gameVertexFormat = 0x1c4;
-auto            createScaleShader(void* device, DWORD* shader) -> HRESULT;
-auto            setScaleConstants(void* device, float factor) -> HRESULT;
-void            deleteScaleShader(void* device, DWORD& shader);
-auto            activeRenderScale() -> float;
+
+// Above 1x the game's pretransformed vertices are scaled by a small vertex shader.
+auto createScaleShader(void* device, DWORD* shader) -> HRESULT;
+auto setScaleConstants(void* device, float factor) -> HRESULT;
+void deleteScaleShader(void* device, DWORD& shader);
+auto activeRenderScale() -> float;
 
 } // namespace tmloader

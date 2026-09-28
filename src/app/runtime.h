@@ -3,41 +3,25 @@
 
 #include <windows.h>
 
-#include <mmsystem.h>
-
 #include "config/config.h"
-#include <cstdio>
-#include <dinput.h>
-#include <dsound.h>
-#include <objbase.h>
 
 namespace tmloader
 {
 
+// Entries of the Viewer's common-function table are cdecl and variadic.
 using Command = int(__cdecl*)(...);
+
+// Legacy native state is process-wide; one game session runs per process.
 extern Config options;
 extern BYTE*  gameBase;
 extern HWND   gameWindow;
-extern DWORD  frames;
 extern char   runtimeRoot[MAX_PATH];
 
-void        openLog(const std::filesystem::path& path);
-void        logf(const char* format, ...);
-auto WINAPI crash(EXCEPTION_POINTERS* ep) -> LONG;
-auto        lowerIntegrity() -> bool;
-void        replacePointer(HMODULE image, void* oldValue, void* newValue);
-void        setSlot(HMODULE module, DWORD rva, void* function);
-void        installFileHooks(HMODULE module, bool game);
-void        installNetworkHooks(HMODULE module);
-void        installDesktopHooks(HMODULE module);
-void        initializeViewerSession(HMODULE core, Command* table);
-auto WINAPI tracedInput(HINSTANCE, DWORD, REFIID, void**, IUnknown*) -> HRESULT;
-auto WINAPI tracedSound8(LPCGUID, LPDIRECTSOUND8*, LPUNKNOWN) -> HRESULT;
-auto WINAPI localD3D8(UINT) -> void*;
-auto        takeMousePresses() -> BYTE;
-auto WINAPI loggedMessage(HWND, const char*, const char*, UINT) -> int;
-auto WINAPI loggedMessageW(HWND, const wchar_t*, const wchar_t*, UINT) -> int;
-auto        launch(const Config& config) -> int;
+auto launch(const Config& config) -> int;
+auto lowerIntegrity() -> bool;
+// Labels the folders the game writes to (saves, logs, settings) as writable at low integrity.
+void        allowLowIntegrityWrites(const std::filesystem::path& runtimeDir);
+auto WINAPI logUnhandledException(EXCEPTION_POINTERS* exception) -> LONG;
 
 inline auto gameValue(DWORD rva) -> DWORD&
 {

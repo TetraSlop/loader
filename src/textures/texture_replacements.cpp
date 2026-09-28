@@ -1,5 +1,6 @@
 #include "textures/texture_replacements.h"
-#include "app/runtime.h"
+#include "app/log.h"
+#include "graphics/d3d8_abi.h"
 #include "textures/texture_pack.h"
 #include "textures/texture_replacement.h"
 #include <atomic>
@@ -11,20 +12,15 @@ namespace tmloader
 namespace
 {
 
+// Private-data key under which each original texture owns its replacement.
+constexpr GUID replacementKey{ 0x75b28fd7, 0x62b1, 0x48a8, { 0x93, 0x28, 0x4e, 0x98, 0xa8, 0xca, 0x47, 0x6d } };
+
 TexturePack           pack;
 TextureUploadFn       nativeUpload = nullptr;
 std::atomic<size_t>   packCount{ 0 };
 std::atomic<unsigned> loadedCount{ 0 };
-// The original resource owns its replacement through D3DSPD_IUNKNOWN.
-constexpr GUID replacementKey{ 0x75b28fd7, 0x62b1, 0x48a8, { 0x93, 0x28, 0x4e, 0x98, 0xa8, 0xca, 0x47, 0x6d } };
-using detail::Replacement;
 
-template <class... Args>
-auto call(void* object, int slot, Args... args) -> HRESULT
-{
-    using Method = HRESULT(WINAPI*)(void*, Args...);
-    return reinterpret_cast<Method>((*static_cast<void***>(object))[slot])(object, args...);
-}
+using detail::Replacement;
 
 void release(void* object)
 {
@@ -51,11 +47,13 @@ auto STDMETHODCALLTYPE Replacement::QueryInterface(REFIID iid, void** output) ->
     {
         return E_POINTER;
     }
+
     *output = nullptr;
     if (iid != __uuidof(IUnknown))
     {
         return E_NOINTERFACE;
     }
+
     *output = this;
     AddRef();
     return S_OK;
@@ -73,6 +71,7 @@ auto STDMETHODCALLTYPE Replacement::Release() -> ULONG
     {
         delete this;
     }
+
     return remaining;
 }
 
@@ -87,6 +86,7 @@ auto Replacement::enabled(bool artwork, bool fonts) const noexcept -> bool
     {
         return fonts;
     }
+
     return artwork;
 }
 
@@ -116,21 +116,23 @@ void initializeTextureReplacements(BYTE* game, const std::filesystem::path& mani
     {
         if (!std::filesystem::exists(manifest))
         {
-            logf("HD artwork: no texture pack installed");
+            logLine("HD artwork: no texture pack installed");
             return;
         }
+
         pack.load(manifest);
         if (!pack.size())
         {
             return;
         }
+
         nativeUpload = installTextureCallHooks(game, uploadTextureWithReplacement);
         packCount    = pack.size();
-        logf("HD artwork: indexed %zu source images from %ls", pack.size(), manifest.c_str());
+        logLine("HD artwork: indexed {} source images from {}", pack.size(), narrow(manifest.native()));
     }
     catch (const std::exception& e)
     {
-        logf("HD artwork disabled; originals retained: %s", e.what());
+        logLine("HD artwork disabled; originals retained: {}", e.what());
     }
 }
 
@@ -141,35 +143,37 @@ auto attachTextureReplacement(void* original, void* replacement, TextureCategory
     {
         return E_INVALIDARG;
     }
+
     auto* const attachment = new (std::nothrow) Replacement(static_cast<IUnknown*>(replacement), category);
     if (!attachment)
     {
         return E_OUTOFMEMORY;
     }
-    using SetPrivateData = HRESULT(WINAPI*)(void*, REFGUID, const void*, DWORD, DWORD);
-    const auto    set    = reinterpret_cast<SetPrivateData>((*static_cast<void***>(original))[4]);
-    const HRESULT hr     = set(original, replacementKey, attachment, sizeof(IUnknown*), 1);
+
+    const auto hr = callMethod(original, d3d8::SetPrivateData, &replacementKey, static_cast<const void*>(attachment), DWORD{ sizeof(IUnknown*) }, d3d8::privateDataObject);
     attachment->Release();
     if (SUCCEEDED(hr))
     {
         ++loadedCount;
     }
+
     return hr;
 }
 
 auto WINAPI uploadTextureWithReplacement(void* device, const void* source, UINT bytes, UINT width, UINT height, UINT levels, DWORD usage, DWORD format, DWORD pool, DWORD filter, DWORD mipFilter, DWORD colorKey, void* info, void* palette, void** output) -> HRESULT
 {
-    // Always create and return the original resource. Native GetLevelDesc,
-    // UV calculations, font metadata, reference counts and reset code stay valid.
+    // The game always gets its original texture; the replacement is only bound while drawing.
     if (!nativeUpload)
     {
         return E_UNEXPECTED;
     }
+
     const HRESULT originalResult = nativeUpload(device, source, bytes, width, height, levels, usage, format, pool, filter, mipFilter, colorKey, info, palette, output);
     if (FAILED(originalResult) || !output || !*output)
     {
         return originalResult;
     }
+
     try
     {
         const auto* const asset = pack.match(source, bytes);
@@ -177,49 +181,49 @@ auto WINAPI uploadTextureWithReplacement(void* device, const void* source, UINT 
         {
             return originalResult;
         }
-        DWORD desc[8]{};
-        if (FAILED(call(*output, 14, 0U, desc)) || desc[6] < asset->width || desc[7] < asset->height ||
-            desc[6] > 8192 / asset->scale || desc[7] > 8192 / asset->scale)
+
+        auto desc = d3d8::SurfaceDesc{};
+        if (FAILED(callMethod(*output, d3d8::GetLevelDesc, 0U, &desc)) || desc.width < asset->width || desc.height < asset->height ||
+            desc.width > 8192 / asset->scale || desc.height > 8192 / asset->scale)
         {
             return originalResult;
         }
+
         const auto                       replacementPng = pack.read(*asset);
         Microsoft::WRL::ComPtr<IUnknown> replacement;
-        // FILTER_NONE keeps the PNG at the top left and pads the remainder.
-        // Scale the original GPU footprint, including POT padding, not just IHDR.
-        HRESULT hr = nativeUpload(device, replacementPng.data(), static_cast<UINT>(replacementPng.size()), desc[6] * asset->scale, desc[7] * asset->scale, 1, 0, desc[0], 1 /* MANAGED */, filter, mipFilter, 0, nullptr, nullptr, reinterpret_cast<void**>(replacement.GetAddressOf()));
-        DWORD   actual[8]{};
+        // Scale the padded power-of-two footprint so the game's UVs stay valid.
+        auto hr     = nativeUpload(device, replacementPng.data(), static_cast<UINT>(replacementPng.size()), desc.width * asset->scale, desc.height * asset->scale, 1, 0, desc.format, d3d8::poolManaged, filter, mipFilter, 0, nullptr, nullptr, reinterpret_cast<void**>(replacement.GetAddressOf()));
+        auto actual = d3d8::SurfaceDesc{};
         if (SUCCEEDED(hr) && replacement)
         {
-            hr = call(replacement.Get(), 14, 0U, actual);
+            hr = callMethod(replacement.Get(), d3d8::GetLevelDesc, 0U, &actual);
         }
-        if (SUCCEEDED(hr) && (actual[6] != desc[6] * asset->scale || actual[7] != desc[7] * asset->scale))
+
+        if (SUCCEEDED(hr) && (actual.width != desc.width * asset->scale || actual.height != desc.height * asset->scale))
         {
             hr = E_FAIL;
         }
+
         if (SUCCEEDED(hr))
         {
             hr = attachTextureReplacement(*output, replacement.Get(), asset->category);
         }
+
         if (SUCCEEDED(hr))
         {
-            logf("HD artwork: %s logical=%lux%lu GPU=%lux%lu", asset->id.c_str(), desc[6], desc[7], actual[6], actual[7]);
+            logLine("HD artwork: {} logical={}x{} GPU={}x{}", asset->id, desc.width, desc.height, actual.width, actual.height);
         }
         else
         {
-            logf("HD artwork fallback: %s upload=%08lX", asset->id.c_str(), hr);
+            logLine("HD artwork fallback: {} upload={:08X}", asset->id, hex(hr));
         }
     }
     catch (const std::exception& e)
     {
-        logf("HD artwork fallback: %s", e.what());
+        logLine("HD artwork fallback: {}", e.what());
     }
-    return originalResult;
-}
 
-TextureDrawBinding::TextureDrawBinding(void* device, bool enabled)
-: TextureDrawBinding(device, enabled, enabled)
-{
+    return originalResult;
 }
 
 TextureDrawBinding::TextureDrawBinding(void* device, bool artworkEnabled, bool fontsEnabled)
@@ -229,30 +233,32 @@ TextureDrawBinding::TextureDrawBinding(void* device, bool artworkEnabled, bool f
     {
         return;
     }
-    if (FAILED(call(device_, 60, 0U, &original_)) || !original_)
+
+    if (FAILED(callMethod(device_, d3d8::GetTexture, 0U, &original_)) || !original_)
     {
         return;
     }
-    DWORD size           = sizeof(IUnknown*);
-    using GetPrivateData = HRESULT(WINAPI*)(void*, REFGUID, void*, DWORD*);
-    const auto get       = reinterpret_cast<GetPrivateData>((*static_cast<void***>(original_))[5]);
-    if (FAILED(get(original_, replacementKey, &attachment_, &size)) || !attachment_)
+
+    auto size = DWORD{ sizeof(IUnknown*) };
+    if (FAILED(callMethod(original_, d3d8::GetPrivateData, &replacementKey, static_cast<void*>(&attachment_), &size)) || !attachment_)
     {
         return;
     }
+
     auto* const replacement = static_cast<Replacement*>(attachment_);
     if (replacement->enabled(artworkEnabled, fontsEnabled))
     {
-        bound_ = SUCCEEDED(call(device_, 61, 0U, replacement->texture()));
+        bound_ = SUCCEEDED(callMethod(device_, d3d8::SetTexture, 0U, replacement->texture()));
     }
 }
 
 TextureDrawBinding::~TextureDrawBinding()
 {
-    if (bound_ && FAILED(call(device_, 61, 0U, original_)))
+    if (bound_ && FAILED(callMethod(device_, d3d8::SetTexture, 0U, original_)))
     {
-        logf("HD artwork: could not restore native texture binding");
+        logLine("HD artwork: could not restore native texture binding");
     }
+
     release(attachment_);
     release(original_);
 }

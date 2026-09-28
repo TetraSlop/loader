@@ -1,10 +1,19 @@
-#include "app/runtime.h"
+#include "platform/audio.cpp"
 #include <catch2/catch_test_macros.hpp>
 #include <cstdio>
 #include <stdexcept>
 #include <wrl/client.h>
 
 using Microsoft::WRL::ComPtr;
+
+namespace tmloader
+{
+
+void setImport(HMODULE, DWORD, void*)
+{
+}
+
+} // namespace tmloader
 
 static void checked(HRESULT result, const char* operation)
 {
@@ -15,8 +24,8 @@ static void checked(HRESULT result, const char* operation)
 
 static void checkBuffer(IDirectSound8* sound, DWORD flags, DWORD bytes)
 {
-    WAVEFORMATEX format{ WAVE_FORMAT_PCM, 2, 44100, 176400, 4, 16, 0 };
-    DSBUFFERDESC desc{};
+    auto format        = WAVEFORMATEX{ WAVE_FORMAT_PCM, 2, 44100, 176400, 4, 16, 0 };
+    auto desc          = DSBUFFERDESC{};
     desc.dwSize        = sizeof(desc);
     desc.dwFlags       = flags;
     desc.dwBufferBytes = bytes;
@@ -44,11 +53,12 @@ TEST_CASE("Native music and effect buffers support required interfaces", "[audio
     // Match the game's process-local integrity setting as well as its buffers.
     REQUIRE(tmloader::lowerIntegrity());
     ComPtr<IDirectSound8> sound;
-    const auto            result = tmloader::tracedSound8(nullptr, sound.GetAddressOf(), nullptr);
+    const auto            result = tmloader::hookedDirectSoundCreate8(nullptr, sound.GetAddressOf(), nullptr);
     if (result == DSERR_NODRIVER)
     {
         SKIP("no audio output device");
     }
+
     checked(result, "Audio device");
     checked(sound->SetCooperativeLevel(GetDesktopWindow(), DSSCL_NORMAL), "SetCooperativeLevel");
     // Exact flags/sizes at TM +1AAF9C/+1AAFA9 (BGM), +1AA901/+1AA90E (SE).

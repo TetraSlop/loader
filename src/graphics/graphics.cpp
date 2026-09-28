@@ -1,319 +1,358 @@
-#include "app/runtime.h"
+#include "app/hooks.h"
+#include "app/log.h"
 #include "graphics/d3d8_abi.h"
 #include "graphics/render_scale.h"
 #include "graphics/screenshot.h"
+#include "platform/patch.h"
 #include "textures/texture_replacements.h"
 #include "ui/window.h"
+#include <algorithm>
 #include <atomic>
 
+// Runs the fullscreen D3D8 renderer in a window, optionally above its fixed 640x480.
 namespace tmloader
 {
 namespace
 {
 
-using CreateDevice8 = HRESULT(WINAPI*)(void*, UINT, DWORD, HWND, DWORD, Present8*, void**);
-CreateDevice8 originalDevice;
-using PresentFn = HRESULT(WINAPI*)(void*, const RECT*, const RECT*, HWND, const RGNDATA*);
-PresentFn originalPresent;
-using ResetFn = HRESULT(WINAPI*)(void*, Present8*);
-ResetFn            originalReset;
-DWORD              desktopFormat = 22;
+constexpr DWORD direct3DCreateImport = 0x204260;
+constexpr DWORD graphicsGate         = 0x2ff22c;
+constexpr DWORD batchGate            = 0x2fe8ec;
+constexpr DWORD windowedFlag         = 0x2ff248;
+constexpr DWORD soundEngine          = 0x2ff164;
+constexpr DWORD gameState            = 0x2ff270;
+constexpr DWORD gameActive           = 0x2ff228;
+constexpr DWORD gameTask             = 0x306adc;
+constexpr DWORD gameManager          = 0x2ff1fc;
+
+// D3DCREATE_PUREDEVICE, HARDWARE_ and MIXED_VERTEXPROCESSING; the scale shader needs software.
+constexpr DWORD hardwareVertexFlags = 0x10 | 0x40 | 0x80;
+
+using CreateDeviceFn       = HRESULT(WINAPI*)(void*, UINT, DWORD, HWND, DWORD, d3d8::PresentParameters*, void**);
+using ResetFn              = HRESULT(WINAPI*)(void*, d3d8::PresentParameters*);
+using PresentFn            = HRESULT(WINAPI*)(void*, const RECT*, const RECT*, HWND, const RGNDATA*);
+using SetVertexShaderFn    = HRESULT(WINAPI*)(void*, DWORD);
+using CreateVertexBufferFn = HRESULT(WINAPI*)(void*, UINT, DWORD, DWORD, DWORD, void**);
+using DrawFn               = HRESULT(WINAPI*)(void*, DWORD, UINT, UINT);
+using DrawIndexedFn        = HRESULT(WINAPI*)(void*, DWORD, UINT, UINT, UINT, UINT);
+using DrawUPFn             = HRESULT(WINAPI*)(void*, DWORD, UINT, const void*, UINT);
+using DrawIndexedUPFn      = HRESULT(WINAPI*)(void*, DWORD, UINT, UINT, UINT, const void*, DWORD, const void*, UINT);
+
+CreateDeviceFn       originalCreateDevice;
+ResetFn              originalReset;
+PresentFn            originalPresent;
+SetVertexShaderFn    originalSetVertexShader;
+CreateVertexBufferFn originalCreateVertexBuffer;
+DrawFn               originalDraw;
+DrawIndexedFn        originalDrawIndexed;
+DrawUPFn             originalDrawUP;
+DrawIndexedUPFn      originalDrawIndexedUP;
+
 std::atomic<float> renderingFactor{ 1 };
-DWORD              scaleShader;
-using SetVertexShaderFn = HRESULT(WINAPI*)(void*, DWORD);
-SetVertexShaderFn originalVertexShader;
-using VertexBufferFn = HRESULT(WINAPI*)(void*, UINT, DWORD, DWORD, DWORD, void**);
-VertexBufferFn originalVertexBuffer;
+DWORD              desktopFormat = d3d8::formatX8R8G8B8;
+DWORD              scaleShader   = 0;
+DWORD              frames        = 0;
+DWORD              drawErrors    = 0;
 
-auto WINAPI vertexBuffer(void* device, UINT size, DWORD usage, DWORD format, DWORD pool, void** output) -> HRESULT
+auto WINAPI hookedCreateVertexBuffer(void* device, UINT size, DWORD usage, DWORD format, DWORD pool, void** output) -> HRESULT
 {
-    // D3D8 treats an XYZRHW-tagged buffer as already transformed and bypasses
-    // shader input preparation. Use an untyped buffer for our explicit layout.
+    // D3D8 skips vertex shaders for XYZRHW-tagged buffers, so the scale shader needs untyped ones.
     if (renderingFactor > 1 && format == gameVertexFormat)
-        format = 0;
-    return originalVertexBuffer(device, size, usage, format, pool, output);
-}
-
-auto WINAPI setVertexShader(void* device, DWORD format) -> HRESULT
-{
-    if (format == gameVertexFormat && renderingFactor > 1)
     {
-        const auto hr = setScaleConstants(device, renderingFactor);
-        if (FAILED(hr))
-            return hr;
-        return originalVertexShader(device, scaleShader);
+        format = 0;
     }
-    return originalVertexShader(device, format);
+
+    return originalCreateVertexBuffer(device, size, usage, format, pool, output);
 }
 
-void windowedParameters(Present8& pp)
+auto WINAPI hookedSetVertexShader(void* device, DWORD shader) -> HRESULT
 {
-    pp.windowed    = TRUE;
-    pp.width       = static_cast<UINT>(640 * renderingFactor);
-    pp.height      = static_cast<UINT>(480 * renderingFactor);
-    pp.format      = desktopFormat;
-    pp.count       = 1;
-    pp.multisample = 0;
-    pp.swap        = 3; // D3DSWAPEFFECT_COPY permits a scaled destination rectangle.
-    pp.refresh     = 0;
-    pp.interval    = 0;
-    pp.window      = gameWindow;
-    pp.flags |= 1;
+    if (shader != gameVertexFormat || renderingFactor <= 1)
+    {
+        return originalSetVertexShader(device, shader);
+    }
+
+    const auto hr = setScaleConstants(device, renderingFactor);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    return originalSetVertexShader(device, scaleShader);
 }
 
-auto WINAPI resetDevice(void* self, Present8* pp) -> HRESULT
+void windowedParameters(d3d8::PresentParameters& parameters)
 {
-    deleteScaleShader(self, scaleShader);
-    windowedParameters(*pp);
-    HRESULT hr = originalReset(self, pp);
+    parameters.windowed    = TRUE;
+    parameters.width       = static_cast<UINT>(640 * renderingFactor);
+    parameters.height      = static_cast<UINT>(480 * renderingFactor);
+    parameters.format      = desktopFormat;
+    parameters.count       = 1;
+    parameters.multisample = 0;
+    // Copy swaps allow presenting into an explicit destination rectangle.
+    parameters.swap     = d3d8::swapEffectCopy;
+    parameters.refresh  = 0;
+    parameters.interval = 0;
+    parameters.window   = gameWindow;
+    parameters.flags |= 1; // D3DPRESENTFLAG_LOCKABLE_BACKBUFFER
+}
+
+auto WINAPI hookedReset(void* device, d3d8::PresentParameters* parameters) -> HRESULT
+{
+    deleteScaleShader(device, scaleShader);
+    windowedParameters(*parameters);
+    auto hr = originalReset(device, parameters);
     if (SUCCEEDED(hr) && renderingFactor > 1)
-        hr = createScaleShader(self, &scaleShader);
-    logf("D3D8 windowed Reset=%08lX", hr);
+    {
+        hr = createScaleShader(device, &scaleShader);
+    }
+
+    logLine("D3D8 windowed Reset={:08X}", hex(hr));
     return hr;
 }
 
-DWORD drawCalls, drawErrors, textureCalls;
-using DrawFn      = HRESULT(WINAPI*)(void*, DWORD, UINT, UINT);
-using DrawUPFn    = HRESULT(WINAPI*)(void*, DWORD, UINT, const void*, UINT);
-using DrawIdxFn   = HRESULT(WINAPI*)(void*, DWORD, UINT, UINT, UINT, UINT);
-using DrawIdxUPFn = HRESULT(WINAPI*)(void*, DWORD, UINT, UINT, UINT, const void*, DWORD, const void*, UINT);
-using TextureFn   = HRESULT(WINAPI*)(void*, UINT, UINT, UINT, DWORD, DWORD, DWORD, void**);
-DrawFn      realDraw;
-DrawUPFn    realDrawUP;
-DrawIdxFn   realDrawIdx;
-DrawIdxUPFn realDrawIdxUP;
-TextureFn   realTexture;
-
+// Devices may share a vtable; never record our own hook as the original.
 template <class T>
-void rememberOriginal(T& destination, void* entry, T wrapper)
+void rememberOriginal(T& destination, void* entry, T hook)
 {
-    // Some D3D8 implementations share method tables between device instances.
-    // A later native device creation must not record our own hook as its target.
-    if (entry != reinterpret_cast<void*>(wrapper))
+    if (entry != reinterpret_cast<void*>(hook))
+    {
         destination = reinterpret_cast<T>(entry);
+    }
 }
 
 auto countDraw(HRESULT hr) -> HRESULT
 {
-    drawCalls++;
     if (FAILED(hr) && drawErrors++ < 6)
-        logf("D3D8 draw failed %08lX", hr);
-    return hr;
-}
-
-auto WINAPI draw(void* d, DWORD t, UINT s, UINT n) -> HRESULT
-{
-    const auto               settings = currentWindowSettings();
-    const TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
-    return countDraw(realDraw(d, t, s, n));
-}
-
-auto WINAPI drawUP(void* d, DWORD t, UINT n, const void* data, UINT stride) -> HRESULT
-{
-    const auto               settings = currentWindowSettings();
-    const TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
-    return countDraw(realDrawUP(d, t, n, data, stride));
-}
-
-auto WINAPI drawIdx(void* d, DWORD t, UINT m, UINT v, UINT s, UINT n) -> HRESULT
-{
-    const auto               settings = currentWindowSettings();
-    const TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
-    return countDraw(realDrawIdx(d, t, m, v, s, n));
-}
-
-auto WINAPI drawIdxUP(void* d, DWORD t, UINT m, UINT v, UINT n, const void* i, DWORD f, const void* p, UINT stride) -> HRESULT
-{
-    const auto               settings = currentWindowSettings();
-    const TextureDrawBinding replacement(d, settings.hdTextures, settings.hdFonts);
-    return countDraw(realDrawIdxUP(d, t, m, v, n, i, f, p, stride));
-}
-
-auto WINAPI texture(void* d, UINT w, UINT h, UINT l, DWORD u, DWORD f, DWORD pool, void** out) -> HRESULT
-{
-    const auto hr = realTexture(d, w, h, l, u, f, pool, out);
-    if (++textureCalls <= 8 || FAILED(hr))
-        logf("D3D8 texture %ux%u format=%lu hr=%08lX", w, h, f, hr);
-    return hr;
-}
-
-void captureFrame(void* device, DWORD frame)
-{
-    logf("Render counters: draws=%lu errors=%lu textures=%lu", drawCalls, drawErrors, textureCalls);
-    auto* const vt      = *static_cast<void***>(device);
-    void*       surface = nullptr;
-    using Back          = HRESULT(WINAPI*)(void*, UINT, DWORD, void**);
-    HRESULT hr          = reinterpret_cast<Back>(vt[16])(device, 0, 0, &surface);
-    if (FAILED(hr) || !surface)
-        return;
-    auto* const sv      = *static_cast<void***>(surface);
-    DWORD       desc[8] = {};
-    using Desc          = HRESULT(WINAPI*)(void*, DWORD*);
-    reinterpret_cast<Desc>(sv[8])(surface, desc);
-
-    struct Locked
     {
-        INT   pitch;
-        void* pixels;
-    } locked = {};
-
-    using Lock = HRESULT(WINAPI*)(void*, Locked*, const RECT*, DWORD);
-    hr         = reinterpret_cast<Lock>(sv[9])(surface, &locked, nullptr, 0x10);
-    if (SUCCEEDED(hr) && (desc[0] == 21 || desc[0] == 22))
-    {
-        char name[40];
-        sprintf_s(name, "frame_%05lu.bmp", frame);
-        const auto  path = options.runtimeDir / "logs/captures" / name;
-        FILE* const f    = outputPathAllowed(options, path) ? _wfopen(path.c_str(), L"wb") : nullptr;
-        if (!f)
-            logf("Diagnostic capture skipped: unsafe or unwritable destination");
-        if (f)
-        {
-            BITMAPFILEHEADER bf = {};
-            BITMAPINFOHEADER bi = {};
-            bi.biSize           = sizeof(bi);
-            bi.biWidth          = desc[6];
-            bi.biHeight         = -static_cast<LONG>(desc[7]);
-            bi.biPlanes         = 1;
-            bi.biBitCount       = 32;
-            bi.biSizeImage      = desc[6] * desc[7] * 4;
-            bf.bfType           = 0x4d42;
-            bf.bfOffBits        = sizeof(bf) + sizeof(bi);
-            bf.bfSize           = bf.bfOffBits + bi.biSizeImage;
-            fwrite(&bf, sizeof(bf), 1, f);
-            fwrite(&bi, sizeof(bi), 1, f);
-            for (DWORD y = 0; y < desc[7]; y++)
-                fwrite(static_cast<const BYTE*>(locked.pixels) + y * locked.pitch, desc[6] * 4, 1, f);
-            fclose(f);
-            logf("Saved native rendered frame %lu: %s", frame, name);
-        }
-        using Unlock = HRESULT(WINAPI*)(void*);
-        reinterpret_cast<Unlock>(sv[10])(surface);
+        logLine("D3D8 draw failed {:08X}", hex(hr));
     }
-    static_cast<IUnknown*>(surface)->Release();
+
+    return hr;
 }
 
-auto WINAPI presentFrame(void* self, const RECT* source, const RECT* dest, HWND window, const RGNDATA* dirty) -> HRESULT
+auto bindReplacement(void* device) -> TextureDrawBinding
+{
+    const auto settings = currentWindowSettings();
+    return TextureDrawBinding(device, settings.hdTextures, settings.hdFonts);
+}
+
+auto WINAPI hookedDrawPrimitive(void* device, DWORD type, UINT start, UINT count) -> HRESULT
+{
+    const auto binding = bindReplacement(device);
+    return countDraw(originalDraw(device, type, start, count));
+}
+
+auto WINAPI hookedDrawIndexedPrimitive(void* device, DWORD type, UINT minIndex, UINT vertices, UINT start, UINT count) -> HRESULT
+{
+    const auto binding = bindReplacement(device);
+    return countDraw(originalDrawIndexed(device, type, minIndex, vertices, start, count));
+}
+
+auto WINAPI hookedDrawPrimitiveUP(void* device, DWORD type, UINT count, const void* data, UINT stride) -> HRESULT
+{
+    const auto binding = bindReplacement(device);
+    return countDraw(originalDrawUP(device, type, count, data, stride));
+}
+
+auto WINAPI hookedDrawIndexedPrimitiveUP(void* device, DWORD type, UINT minIndex, UINT vertices, UINT count, const void* indices, DWORD indexFormat, const void* data, UINT stride) -> HRESULT
+{
+    const auto binding = bindReplacement(device);
+    return countDraw(originalDrawIndexedUP(device, type, minIndex, vertices, count, indices, indexFormat, data, stride));
+}
+
+auto diagnosticFrame(DWORD frame) -> bool
+{
+    constexpr DWORD captures[] = { 60, 300, 600, 900, 1200, 1440, 1500, 1800 };
+    return std::ranges::contains(captures, frame) || (frame > 1800 && frame % 600 == 0);
+}
+
+void activateGameWindow()
+{
+    logLine("Initial graphics gate={} batch gate={}", gameValue(graphicsGate), gameValue(batchGate));
+    ShowWindow(gameWindow, SW_SHOW);
+    SetActiveWindow(gameWindow);
+    SetFocus(gameWindow);
+    const auto active = SetForegroundWindow(gameWindow);
+    logLine("Activate game window={} result={} foreground={} active={}", address(gameWindow), active, address(GetForegroundWindow()), address(GetActiveWindow()));
+    if (const auto* const sound = reinterpret_cast<const DWORD*>(gameValue(soundEngine)))
+    {
+        logLine("Native sound engine initialized={}", sound[1]);
+    }
+}
+
+auto WINAPI hookedPresent(void* device, const RECT* source, const RECT* destination, HWND window, const RGNDATA* dirty) -> HRESULT
 {
     const auto frame = ++frames;
     if (frame == 1)
-        logf("Initial graphics gate=%lu batch gate=%lu", gameValue(0x2ff22c), gameValue(0x2fe8ec));
-    if (frame == 1)
     {
-        ShowWindow(gameWindow, SW_SHOW);
-        SetActiveWindow(gameWindow);
-        SetFocus(gameWindow);
-        const auto active = SetForegroundWindow(gameWindow);
-        logf("Activate game window=%p result=%d foreground=%p active=%p", gameWindow, active, GetForegroundWindow(), GetActiveWindow());
-        auto* const sound = reinterpret_cast<DWORD*>(gameValue(0x2ff164));
-        logf("Native sound engine initialized=%lu", sound ? sound[1] : 0);
+        activateGameWindow();
     }
-    if (options.diagnostics && (frame == 60 || frame == 300 || frame == 600 || frame == 900 || frame == 1200 || frame == 1440 || frame == 1500 || frame == 1800 || (frame > 1800 && frame % 600 == 0)))
+
+    if (options.diagnostics && diagnosticFrame(frame))
     {
-        logf("TM state=%lu active=%lu task=%lu manager=%08lX", gameValue(0x2ff270), gameValue(0x2ff228), gameValue(0x306adc), gameValue(0x2ff1fc));
-        captureFrame(self, frame);
+        logLine("TM state={} active={} task={} manager={:08X}", gameValue(gameState), gameValue(gameActive), gameValue(gameTask), gameValue(gameManager));
+        requestScreenshot();
     }
-    saveRequestedScreenshot(self);
-    RECT scaledSource{};
-    if (source && renderingFactor > 1)
-    {
-        // Quarter-step presets include native 1080p height at 2.25x.
-        const auto quarters = static_cast<int>(renderingFactor * 4);
-        scaledSource        = { MulDiv(source->left, quarters, 4), MulDiv(source->top, quarters, 4), MulDiv(source->right, quarters, 4), MulDiv(source->bottom, quarters, 4) };
-        source              = &scaledSource;
-    }
+
+    saveRequestedScreenshot(device);
+    auto scaledSource = RECT{};
     if (renderingFactor > 1)
-        dirty = nullptr; // Native Present uses a complete frame.
+    {
+        if (source)
+        {
+            // Quarter steps cover every preset, including 2.25x (1080p).
+            const auto quarters = static_cast<int>(renderingFactor * 4);
+            scaledSource        = { MulDiv(source->left, quarters, 4), MulDiv(source->top, quarters, 4), MulDiv(source->right, quarters, 4), MulDiv(source->bottom, quarters, 4) };
+            source              = &scaledSource;
+        }
+
+        dirty = nullptr;
+    }
+
     if (IsIconic(gameWindow))
-        return originalPresent(self, source, dest, window, dirty);
+    {
+        return originalPresent(device, source, destination, window, dirty);
+    }
+
     const auto target = gameContentRect();
     if (target.right <= target.left || target.bottom <= target.top)
+    {
         return S_OK;
-    const auto     hr         = originalPresent(self, source, &target, window, dirty);
+    }
+
+    const auto     hr         = originalPresent(device, source, &target, window, dirty);
     static HRESULT lastResult = S_OK;
     if (FAILED(hr) && hr != lastResult)
-        logf("D3D8 Present=%08lX", hr);
+    {
+        logLine("D3D8 Present={:08X}", hex(hr));
+    }
+
     lastResult = hr;
     return hr;
 }
 
+// Display settings report physical pixels regardless of Windows DPI scaling.
 auto monitorRenderScale(HWND window, UINT fallbackWidth, UINT fallbackHeight) -> float
 {
-    MONITORINFOEXW monitor{};
+    auto monitor   = MONITORINFOEXW{};
     monitor.cbSize = sizeof(monitor);
-    DEVMODEW mode{};
-    mode.dmSize = sizeof(mode);
-    // Display settings report physical pixels, including when Windows scaling
-    // would otherwise virtualize window dimensions.
+    auto mode      = DEVMODEW{};
+    mode.dmSize    = sizeof(mode);
     if (GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor) &&
         EnumDisplaySettingsW(monitor.szDevice, ENUM_CURRENT_SETTINGS, &mode))
+    {
         return automaticRenderScale(mode.dmPelsWidth, mode.dmPelsHeight);
+    }
+
     return automaticRenderScale(fallbackWidth, fallbackHeight);
 }
 
-auto WINAPI windowedDevice(void* self, UINT adapter, DWORD type, HWND window, DWORD behavior, Present8* pp, void** device) -> HRESULT
+void hookDevice(void* device)
 {
-    logf("D3D8 CreateDevice adapter=%u type=%lu behavior=%lX window=%p %lux%lu format=%lu windowed=%d", adapter, type, behavior, window, pp->width, pp->height, pp->format, pp->windowed);
+    auto* const vtable = *static_cast<void***>(device);
+    rememberOriginal(originalReset, vtable[d3d8::Reset], hookedReset);
+    rememberOriginal(originalPresent, vtable[d3d8::Present], hookedPresent);
+    rememberOriginal(originalCreateVertexBuffer, vtable[d3d8::CreateVertexBuffer], hookedCreateVertexBuffer);
+    rememberOriginal(originalDraw, vtable[d3d8::DrawPrimitive], hookedDrawPrimitive);
+    rememberOriginal(originalDrawIndexed, vtable[d3d8::DrawIndexedPrimitive], hookedDrawIndexedPrimitive);
+    rememberOriginal(originalDrawUP, vtable[d3d8::DrawPrimitiveUP], hookedDrawPrimitiveUP);
+    rememberOriginal(originalDrawIndexedUP, vtable[d3d8::DrawIndexedPrimitiveUP], hookedDrawIndexedPrimitiveUP);
+    rememberOriginal(originalSetVertexShader, vtable[d3d8::SetVertexShader], hookedSetVertexShader);
+
+    auto protection = DWORD{};
+    VirtualProtect(vtable, d3d8::DeviceMethodCount * sizeof(void*), PAGE_READWRITE, &protection);
+    vtable[d3d8::Reset]              = reinterpret_cast<void*>(hookedReset);
+    vtable[d3d8::Present]            = reinterpret_cast<void*>(hookedPresent);
+    vtable[d3d8::CreateVertexBuffer] = reinterpret_cast<void*>(hookedCreateVertexBuffer);
+    vtable[d3d8::SetVertexShader]    = reinterpret_cast<void*>(hookedSetVertexShader);
+    if (options.diagnostics || texturePackCount())
+    {
+        vtable[d3d8::DrawPrimitive]          = reinterpret_cast<void*>(hookedDrawPrimitive);
+        vtable[d3d8::DrawIndexedPrimitive]   = reinterpret_cast<void*>(hookedDrawIndexedPrimitive);
+        vtable[d3d8::DrawPrimitiveUP]        = reinterpret_cast<void*>(hookedDrawPrimitiveUP);
+        vtable[d3d8::DrawIndexedPrimitiveUP] = reinterpret_cast<void*>(hookedDrawIndexedPrimitiveUP);
+    }
+
+    VirtualProtect(vtable, d3d8::DeviceMethodCount * sizeof(void*), protection, &protection);
+}
+
+auto WINAPI hookedCreateDevice(void* d3d, UINT adapter, DWORD type, HWND window, DWORD behavior, d3d8::PresentParameters* parameters, void** device) -> HRESULT
+{
+    logLine("D3D8 CreateDevice adapter={} type={} behavior={:X} window={} {}x{} format={} windowed={}", adapter, type, behavior, address(window), parameters->width, parameters->height, parameters->format, parameters->windowed);
     initializeGameWindow(window);
-    gameValue(0x2ff248) = 1;
-    DWORD mode[4]       = {};
-    using DisplayMode   = HRESULT(WINAPI*)(void*, UINT, DWORD*);
-    auto* const vt      = *static_cast<void***>(self);
-    const auto  modeHr  = reinterpret_cast<DisplayMode>(vt[8])(self, adapter, mode);
-    logf("D3D8 desktop mode=%08lX %lux%lu format=%lu", modeHr, mode[0], mode[1], mode[3]);
-    desktopFormat       = SUCCEEDED(modeHr) ? mode[3] : 22;
+    gameValue(windowedFlag) = 1;
+
+    auto       mode   = d3d8::DisplayMode{};
+    const auto modeHr = callMethod(d3d, d3d8::GetAdapterDisplayMode, adapter, &mode);
+    logLine("D3D8 desktop mode={:08X} {}x{} format={}", hex(modeHr), mode.width, mode.height, mode.format);
+    if (SUCCEEDED(modeHr))
+    {
+        desktopFormat = mode.format;
+    }
+
     const auto settings = currentWindowSettings();
-    renderingFactor     = settings.autoResolution ? monitorRenderScale(window, mode[0], mode[1]) : settings.renderScale;
-    windowedParameters(*pp);
-    HRESULT hr = originalDevice(self, adapter, type, window, (behavior & ~(0x40 | 0x80 | 0x10)) | 0x20, pp, device);
+    if (settings.autoResolution)
+    {
+        renderingFactor = monitorRenderScale(window, mode.width, mode.height);
+    }
+    else
+    {
+        renderingFactor = settings.renderScale;
+    }
+
+    const auto create = [&]() -> HRESULT
+    {
+        windowedParameters(*parameters);
+        return originalCreateDevice(d3d, adapter, type, window, (behavior & ~hardwareVertexFlags) | d3d8::softwareVertexProcessing, parameters, device);
+    };
+    auto hr = create();
     if (SUCCEEDED(hr) && renderingFactor > 1)
     {
         hr = createScaleShader(*device, &scaleShader);
         if (FAILED(hr))
         {
-            reinterpret_cast<IUnknown*>(*device)->Release();
+            static_cast<IUnknown*>(*device)->Release();
             *device = nullptr;
         }
     }
+
     if (FAILED(hr) && renderingFactor > 1)
     {
-        logf("Higher-resolution device/shader failed: %08lX; using original resolution", hr);
+        logLine("Higher-resolution device/shader failed: {:08X}; using original resolution", hex(hr));
         renderingFactor = 1;
-        windowedParameters(*pp);
-        hr = originalDevice(self, adapter, type, window, (behavior & ~(0x40 | 0x80 | 0x10)) | 0x20, pp, device);
+        hr              = create();
     }
-    logf("D3D8 windowed CreateDevice=%08lX device=%p", hr, *device);
+
+    logLine("D3D8 windowed CreateDevice={:08X} device={}", hex(hr), *device);
     if (SUCCEEDED(hr))
     {
-        auto* const dv = *static_cast<void***>(*device);
-        rememberOriginal(originalPresent, dv[15], presentFrame);
-        rememberOriginal(originalReset, dv[14], resetDevice);
-        rememberOriginal(originalVertexShader, dv[76], setVertexShader);
-        rememberOriginal(originalVertexBuffer, dv[23], vertexBuffer);
-        rememberOriginal(realDraw, dv[70], draw);
-        rememberOriginal(realDrawIdx, dv[71], drawIdx);
-        rememberOriginal(realDrawUP, dv[72], drawUP);
-        rememberOriginal(realDrawIdxUP, dv[73], drawIdxUP);
-        rememberOriginal(realTexture, dv[20], texture);
-        DWORD old;
-        VirtualProtect(dv, 97 * 4, PAGE_READWRITE, &old);
-        dv[14] = reinterpret_cast<void*>(resetDevice);
-        dv[15] = reinterpret_cast<void*>(presentFrame);
-        dv[76] = reinterpret_cast<void*>(setVertexShader);
-        dv[23] = reinterpret_cast<void*>(vertexBuffer);
-        if (options.diagnostics)
-            dv[20] = reinterpret_cast<void*>(texture);
-        if (options.diagnostics || texturePackCount())
-        {
-            dv[70] = reinterpret_cast<void*>(draw);
-            dv[71] = reinterpret_cast<void*>(drawIdx);
-            dv[72] = reinterpret_cast<void*>(drawUP);
-            dv[73] = reinterpret_cast<void*>(drawIdxUP);
-        }
-        VirtualProtect(dv, 97 * 4, old, &old);
-        logf("Rendering resolution: %lux%lu (%gx)", pp->width, pp->height, activeRenderScale());
+        hookDevice(*device);
+        logLine("Rendering resolution: {}x{} ({}x)", parameters->width, parameters->height, activeRenderScale());
     }
+
     return hr;
+}
+
+// Returns an IDirect3D8 whose private vtable copy routes CreateDevice through us.
+auto WINAPI hookedDirect3DCreate8(UINT version) -> void*
+{
+    using Factory       = void*(WINAPI*)(UINT);
+    const auto  factory = reinterpret_cast<Factory>(GetProcAddress(LoadLibraryA("d3d8.dll"), "Direct3DCreate8"));
+    auto* const d3d     = factory(version);
+    logLine("Direct3DCreate8 version={} object={}", version, d3d);
+    if (!d3d)
+    {
+        return nullptr;
+    }
+
+    // Intentionally leaked: the vtable must outlive every IDirect3D8 reference.
+    auto* const vtable = new void*[d3d8::Direct3DMethodCount];
+    std::copy_n(*static_cast<void***>(d3d), d3d8::Direct3DMethodCount, vtable);
+    originalCreateDevice       = reinterpret_cast<CreateDeviceFn>(vtable[d3d8::CreateDevice]);
+    vtable[d3d8::CreateDevice] = reinterpret_cast<void*>(hookedCreateDevice);
+    *static_cast<void***>(d3d) = vtable;
+    return d3d;
 }
 
 } // namespace
@@ -323,22 +362,9 @@ auto activeRenderScale() -> float
     return renderingFactor;
 }
 
-auto WINAPI localD3D8(UINT version) -> void*
+void installGraphicsHooks(HMODULE game)
 {
-    using Factory       = void*(WINAPI*)(UINT);
-    const auto  factory = reinterpret_cast<Factory>(GetProcAddress(LoadLibraryA("d3d8.dll"), "Direct3DCreate8"));
-    auto* const obj     = factory(version);
-    logf("Direct3DCreate8 version=%u object=%p", version, obj);
-    if (obj)
-    {
-        auto* const old = *static_cast<void***>(obj);
-        auto* const vt  = static_cast<void**>(HeapAlloc(GetProcessHeap(), 0, 16 * sizeof(void*)));
-        memcpy(vt, old, 16 * sizeof(void*));
-        originalDevice             = reinterpret_cast<CreateDevice8>(vt[15]);
-        vt[15]                     = reinterpret_cast<void*>(windowedDevice);
-        *static_cast<void***>(obj) = vt;
-    }
-    return obj;
+    setImport(game, direct3DCreateImport, reinterpret_cast<void*>(hookedDirect3DCreate8));
 }
 
 } // namespace tmloader

@@ -25,9 +25,15 @@ TEST_CASE("Configuration rejects unsafe paths and invalid endpoints", "[config]"
                 parseConfig({ "--runtime-dir" });
             });
     for (const auto* host : { "pp000.pol.com", "pp001.pol.com", "PP999.POL.COM" })
+    {
         REQUIRE(isProfileAlias(host));
+    }
+
     for (const auto* host : { "pp00.pol.com", "pp0000.pol.com", "ppA01.pol.com", "pp001.pol.com.evil", "other.pol.com", "" })
+    {
         REQUIRE(!isProfileAlias(host));
+    }
+
     REQUIRE(!isProfileAlias(nullptr));
     REQUIRE(isIpv4Address("127.0.0.1"));
     REQUIRE(isIpv4Address("192.0.2.1"));
@@ -40,10 +46,13 @@ TEST_CASE("Configuration rejects unsafe paths and invalid endpoints", "[config]"
     REQUIRE(parseConfig({ "--runtime-dir", ".", "--texture-pack", "custom/pack.json" }).texturePack == c.runtimeDir / "custom/pack.json");
     REQUIRE((c.checkOnly && c.polId == "EEEEEEEF" && c.gamePort == 51241 && c.profilePort == 51220));
     for (const auto* value : { "0", "65536", "-1", "x", "1x" })
+    {
         rejects([&]
                 {
                     parseConfig({ "--runtime-dir", ".", "--game-port", value });
                 });
+    }
+
     rejects([]
             {
                 parseConfig({ "--runtime-dir", ".", "--game-port", "51220" });
@@ -56,19 +65,13 @@ TEST_CASE("Configuration rejects unsafe paths and invalid endpoints", "[config]"
             {
                 parseConfig({ "--runtime-dir", ".", "--unknown", "a" });
             });
-    rejects([]
-            {
-                parseConfig({ "--runtime-dir", ".", "--log", "../outside.log" });
-            });
-    rejects([]
-            {
-                parseConfig({ "--runtime-dir", ".", "--log", "TM_native.dll" });
-            });
-    for (const auto* path : { "data/gW201.dat", "pub/home00/option.bin", "logs/../data/gW201.dat", "logs-other/output.log" })
-        rejects([&]
-                {
-                    parseConfig({ "--runtime-dir", ".", "--log", path });
-                });
+    const auto local = parseConfig({ "--runtime-dir", "." });
+    for (const auto* path : { "../outside.log", "TM_native.dll", "data/gW201.dat", "pub/home00/option.bin", "logs/../data/gW201.dat", "logs-other/output.log" })
+    {
+        CAPTURE(path);
+        REQUIRE_FALSE(outputPathAllowed(local, local.runtimeDir / path));
+    }
+
     rejects([]
             {
                 parseConfig({ "--runtime-dir", ".", "--pol-id", "invalid" });
@@ -84,12 +87,14 @@ TEST_CASE("Configuration rejects unsafe paths and invalid endpoints", "[config]"
         std::ofstream f(fixture);
         f << "runtime-dir=.\ngame-port=52000\npassword=abc=xyz\ndiagnostics=false\n";
     }
+
     c = parseConfig({ "--config", fixture.string(), "--game-port", "52001", "--diagnostics" });
     REQUIRE((c.gamePort == 52001 && c.password == "abc=xyz" && c.diagnostics));
     {
         std::ofstream f(fixture);
         f << "runtime-dir=.\nruntime-dir=.\n";
     }
+
     rejects([&]
             {
                 parseConfig({ "--config", fixture.string() });
@@ -98,6 +103,7 @@ TEST_CASE("Configuration rejects unsafe paths and invalid endpoints", "[config]"
         std::ofstream f(fixture, std::ios::binary);
         f << "abc";
     }
+
     REQUIRE(sha256File(fixture) == "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD");
     std::filesystem::remove(fixture);
 
@@ -105,41 +111,33 @@ TEST_CASE("Configuration rejects unsafe paths and invalid endpoints", "[config]"
     REQUIRE(!std::filesystem::exists(runtime)); // Never reuse/remove an unrelated existing directory.
     std::filesystem::create_directories(runtime / "data");
     std::filesystem::create_directories(runtime / "pub/home00");
-    std::filesystem::create_directories(runtime / "logs/captures");
+    std::filesystem::create_directories(runtime / "logs/screenshots");
+    const auto runtimeConfig = parseConfig({ "--runtime-dir", runtime.string() });
     for (const auto* relative : { "TM_native.dll", "polcore_native.dll", "data/gW201.dat", "pub/home00/option.bin" })
     {
         {
             std::ofstream f(runtime / relative);
             f << "read-only-fixture";
         }
-        rejects([&]
-                {
-                    parseConfig({ "--runtime-dir", runtime.string(), "--log", relative });
-                });
+
+        REQUIRE_FALSE(outputPathAllowed(runtimeConfig, runtime / relative));
     }
+
     c = parseConfig({ "--runtime-dir", runtime.string(), "--diagnostics" });
     REQUIRE(outputPathAllowed(c, c.log));
-    REQUIRE(outputPathAllowed(c, runtime / "logs/captures/frame_00060.bmp"));
-    REQUIRE(settingsPathAllowed(c, runtime / "settings/EEEEEEEF.window"));
+    REQUIRE(outputPathAllowed(c, runtime / "logs/screenshots/shot.png"));
+    REQUIRE(settingsPathAllowed(c, runtime / "settings/EEEEEEEF.json"));
     REQUIRE(!settingsPathAllowed(c, runtime / "data/gW201.dat"));
     REQUIRE(!settingsPathAllowed(c, runtime / "settings/../pub/home00/option.bin"));
-    REQUIRE(!outputPathAllowed(c, runtime / "settings/EEEEEEEF.window"));
+    REQUIRE(!outputPathAllowed(c, runtime / "settings/EEEEEEEF.json"));
     std::filesystem::create_directories(runtime / "settings");
-    const auto settingsAlias = runtime / "settings/EEEEEEEF.window";
+    const auto settingsAlias = runtime / "settings/EEEEEEEF.json";
     std::filesystem::create_hard_link(runtime / "pub/home00/option.bin", settingsAlias);
     REQUIRE(!settingsPathAllowed(c, settingsAlias));
     std::filesystem::remove(settingsAlias);
-    const auto alias = runtime / "logs/captures/frame_00060.bmp";
+    const auto alias = runtime / "logs/screenshots/shot.png";
     std::filesystem::create_hard_link(runtime / "data/gW201.dat", alias);
     REQUIRE(!outputPathAllowed(c, alias));
-    rejects([&]
-            {
-                parseConfig({ "--runtime-dir", runtime.string(), "--log", "logs/captures/frame_00060.bmp" });
-            });
-    rejects([&]
-            {
-                parseConfig({ "--runtime-dir", runtime.string(), "--diagnostics" });
-            });
     std::filesystem::remove(alias);
     for (const auto* relative : { "TM_native.dll", "polcore_native.dll", "data/gW201.dat", "pub/home00/option.bin" })
     {
@@ -148,6 +146,7 @@ TEST_CASE("Configuration rejects unsafe paths and invalid endpoints", "[config]"
         std::getline(f, text);
         REQUIRE(text == "read-only-fixture"); // Validation never truncated any fixture.
     }
+
     std::filesystem::remove_all(runtime);
     std::cout << "Config, endpoint aliases, path boundaries and SHA256 passed.\n";
 }

@@ -1,18 +1,20 @@
 #include "app/abi.h"
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <iostream>
 
-// A compiler-built mock follows the complete IPOLCoreCom method order from
-// the original C and C++ declarations. This independently tests the loader's
-// numerical dispatch; neither indices nor its helper construct this vtable.
+// Compiler-built vtable in IPOLCoreCom declaration order, independent of the loader's slot indices.
 class MockCore : public IUnknown
 {
 public:
-    unsigned      areaCalls = 0, paramCalls = 0, tableCalls = 0, wrongCalls = 0;
-    LONG          area     = -1;
-    HINSTANCE     instance = nullptr;
-    LPSTR         command  = nullptr;
-    unsigned long table[4]{ 11, 22, 33, 44 };
+    unsigned                     areaCalls  = 0;
+    unsigned                     paramCalls = 0;
+    unsigned                     tableCalls = 0;
+    unsigned                     wrongCalls = 0;
+    LONG                         area       = -1;
+    HINSTANCE                    instance   = nullptr;
+    LPSTR                        command    = nullptr;
+    std::array<unsigned long, 4> table{ 11, 22, 33, 44 };
 
     auto STDMETHODCALLTYPE QueryInterface(REFIID, void**) -> HRESULT override
     {
@@ -55,7 +57,7 @@ public:
     virtual auto __stdcall GetCommonFunctionTable(unsigned long** out) -> HRESULT
     {
         ++tableCalls;
-        *out = table;
+        *out = table.data();
         return S_OK;
     }
 
@@ -184,21 +186,21 @@ TEST_CASE("COM dispatch preserves native signatures and slots", "[abi]")
     IUnknown* const object    = &core;
     char            command[] = " /game DdcMLbB";
     const auto      instance  = reinterpret_cast<HINSTANCE>(0x12345678);
-    REQUIRE(abi::coreCall<abi::SetAreaCode>(object, 1L) == S_OK);
+    REQUIRE(callMethod(object, abi::SetAreaCode, 1L) == S_OK);
     REQUIRE((core.areaCalls == 1 && core.area == 1 && core.wrongCalls == 0));
     // Signed long matches the declared ABI as well as the usual value1.
-    REQUIRE((abi::coreCall<abi::SetAreaCode>(object, -7L) == S_OK && core.area == -7));
-    REQUIRE(abi::coreCall<abi::SetParamInit>(object, instance, command) == S_OK);
+    REQUIRE((callMethod(object, abi::SetAreaCode, -7L) == S_OK && core.area == -7));
+    REQUIRE(callMethod(object, abi::SetParamInit, instance, command) == S_OK);
     REQUIRE((core.paramCalls == 1 && core.instance == instance && core.command == command));
     Command* table = nullptr;
-    REQUIRE(abi::coreCall<abi::GetCommonTable>(object, reinterpret_cast<unsigned long**>(&table)) == S_OK);
-    REQUIRE((core.tableCalls == 1 && reinterpret_cast<unsigned long*>(table) == core.table));
+    REQUIRE(callMethod(object, abi::GetCommonTable, reinterpret_cast<unsigned long**>(&table)) == S_OK);
+    REQUIRE((core.tableCalls == 1 && reinterpret_cast<unsigned long*>(table) == core.table.data()));
     REQUIRE(core.wrongCalls == 0);
-    // Demonstrate that the old erroneous slot reaches a different method.
-    REQUIRE(abi::coreCall<25>(object, static_cast<LPWSTR*>(nullptr)) == E_UNEXPECTED);
+    // Neighbouring slot 25 (GetSquareEnixRegKeyNameW) must not reach SetAreaCode.
+    REQUIRE(callMethod(object, 25, static_cast<LPWSTR*>(nullptr)) == E_UNEXPECTED);
     REQUIRE((core.wrongCalls == 1 && core.areaCalls == 2));
-    abi::LaunchDescriptor descriptor{ sizeof(descriptor), 0x200, abi::coreInterface, nullptr };
-    const abi::GameStart  start = mockGameStart;
+    auto       descriptor = abi::LaunchDescriptor{ sizeof(abi::LaunchDescriptor), 0x200, abi::coreInterface, nullptr };
+    const auto start      = abi::GameStart{ mockGameStart };
     REQUIRE(start(object, object, &descriptor) == 123);
     std::cout << "COM slot/signature and launch descriptor regression checks passed.\n";
 }

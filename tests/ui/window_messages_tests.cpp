@@ -7,7 +7,11 @@
 // Exercise the actual subclass without creating or controlling any window.
 static UINT    defaultMessage;
 static WPARAM  defaultCommand;
-static int     quitRequests, panelToggles, panelStops, legacyMessages, screenshotRequests;
+static int     quitRequests;
+static int     panelToggles;
+static int     panelStops;
+static int     legacyMessages;
+static int     screenshotRequests;
 static HWND    testWindow     = reinterpret_cast<HWND>(1);
 static HWND    testForeground = testWindow;
 static bool    testPanelOpen;
@@ -77,7 +81,10 @@ static auto fakeGetWindowLongPtr(HWND hwnd, int index) -> LONG_PTR
 static auto fakeSetWindowLongPtr(HWND, int, LONG_PTR) -> LONG_PTR
 {
     if (forbidSubclass)
+    {
         throw std::runtime_error("Repeated initialization tried to subclass the window again");
+    }
+
     return installedProcedure;
 }
 
@@ -105,7 +112,7 @@ namespace tmloader
 Config options;
 HWND   gameWindow{};
 
-void logf(const char*, ...)
+void writeLog(std::string_view)
 {
 }
 
@@ -141,11 +148,12 @@ TEST_CASE("Window messages preserve settings and close behavior", "[window_messa
         REQUIRE(wrapperWindow(nullptr, WM_SYSCOMMAND, command, 0) == 123);
         REQUIRE((defaultMessage == WM_SYSCOMMAND && defaultCommand == command));
     }
+
     REQUIRE(legacyMessages == 0);
     // A lost-focus notification must not reach the native restore/foreground path.
     wrapperWindow(testWindow, 0x64, 0, 0);
     REQUIRE(legacyMessages == 0);
-    auto cursor = [&]
+    const auto cursor = [&]
         -> LRESULT
     {
         return wrapperWindow(testWindow, WM_SETCURSOR, reinterpret_cast<WPARAM>(testWindow), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
@@ -195,7 +203,7 @@ TEST_CASE("Window messages preserve settings and close behavior", "[window_messa
     wrapperWindow(nullptr, settingsMessage, static_cast<WPARAM>(WindowAction::hdFonts), 0);
     REQUIRE((!currentWindowSettings().hdFonts && currentWindowSettings().hdTextures));
     std::ifstream updated(settingsFile());
-    auto          preferences = readWindowSettings(updated);
+    const auto    preferences = readWindowSettings(updated);
     REQUIRE((preferences.autoResolution && !preferences.hdFonts && preferences.hdTextures));
     updated.close();
     gameWindow         = testWindow;

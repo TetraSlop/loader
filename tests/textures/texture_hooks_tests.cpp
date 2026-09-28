@@ -33,16 +33,16 @@ auto WINAPI replacement(void* device, const void* source, UINT bytes, UINT width
 void initialize(BYTE* image)
 {
     std::memset(image, 0xcc, imageSize);
-    const BYTE prologue[]{ 0x55, 0x8b, 0xec, 0xff, 0x75, 0x40, 0x6a, 0x03 };
-    const BYTE end[]{ 0xc2, 0x3c, 0x00 };
-    std::memcpy(image + uploadRva, prologue, sizeof(prologue));
-    std::memcpy(image + 0x1b9ae1, end, sizeof(end));
+    const auto prologue = std::array<BYTE, 8>{ 0x55, 0x8b, 0xec, 0xff, 0x75, 0x40, 0x6a, 0x03 };
+    const auto end      = std::array<BYTE, 3>{ 0xc2, 0x3c, 0x00 };
+    std::memcpy(image + uploadRva, prologue.data(), prologue.size());
+    std::memcpy(image + 0x1b9ae1, end.data(), end.size());
     for (const DWORD rva : sites)
     {
         auto*      entry = image + rva - 48;
-        const BYTE frame[]{ 0x55, 0x8b, 0xec };
-        std::memcpy(entry, frame, sizeof(frame));
-        entry += sizeof(frame);
+        const auto frame = std::array<BYTE, 3>{ 0x55, 0x8b, 0xec };
+        std::memcpy(entry, frame.data(), frame.size());
+        entry += frame.size();
         // Synthetic stdcall caller: forward each of the fifteen arguments.
         for (BYTE offset = 0x40; offset >= 8; offset -= 4)
         {
@@ -50,13 +50,14 @@ void initialize(BYTE* image)
             *entry++ = 0x75;
             *entry++ = offset;
         }
+
         REQUIRE(entry == image + rva);
-        *entry++             = 0xe8;
-        const DWORD relative = uploadRva - rva - 5;
+        *entry++            = 0xe8;
+        const auto relative = uploadRva - rva - 5;
         std::memcpy(entry, &relative, sizeof(relative));
         entry += sizeof(relative);
-        const BYTE finish[]{ 0x5d, 0xc2, 0x3c, 0x00 };
-        std::memcpy(entry, finish, sizeof(finish));
+        const auto finish = std::array<BYTE, 4>{ 0x5d, 0xc2, 0x3c, 0x00 };
+        std::memcpy(entry, finish.data(), finish.size());
     }
 }
 
@@ -74,6 +75,9 @@ struct Image
     {
         VirtualFree(data, 0, MEM_RELEASE);
     }
+
+    Image(const Image&)                    = delete;
+    auto operator=(const Image&) -> Image& = delete;
 
     void seal()
     {
@@ -109,11 +113,12 @@ void successfulDispatch()
         std::memcpy(&displacement, image.data + rva + 1, sizeof(displacement));
         REQUIRE(reinterpret_cast<std::uintptr_t>(image.data + rva + 5) + displacement ==
                 reinterpret_cast<std::uintptr_t>(replacement));
-        auto  caller = reinterpret_cast<TextureUploadFn>(image.data + rva - 48);
-        void* output = nullptr;
+        const auto caller = reinterpret_cast<TextureUploadFn>(image.data + rva - 48);
+        void*      output = nullptr;
         REQUIRE(caller(reinterpret_cast<void*>(1), reinterpret_cast<void*>(2), 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, reinterpret_cast<void*>(13), reinterpret_cast<void*>(14), &output) == 12345);
         REQUIRE(output == reinterpret_cast<void*>(15));
     }
+
     REQUIRE(calls == sites.size());
     // A second installation is rejected rather than creating recursive dispatch.
     rejected([&]
@@ -124,14 +129,17 @@ void successfulDispatch()
 
 void unsupportedCodeIsUntouched()
 {
-    std::vector<DWORD> corrupt{ uploadRva, 0x1b9ae1 };
+    auto corrupt = std::vector<DWORD>{ uploadRva, 0x1b9ae1 };
     for (const DWORD rva : sites)
+    {
         corrupt.push_back(rva + 1);
+    }
+
     for (const DWORD rva : corrupt)
     {
         Image image;
         image.data[rva] ^= 1;
-        std::vector<BYTE> before(image.data, image.data + imageSize);
+        const auto before = std::vector<BYTE>(image.data, image.data + imageSize);
         image.seal();
         rejected([&]
                  {
@@ -139,8 +147,11 @@ void unsupportedCodeIsUntouched()
                  });
         REQUIRE(std::memcmp(image.data, before.data(), imageSize) == 0);
         for (const DWORD site : sites)
+        {
             REQUIRE(protection(image.data + site) == PAGE_EXECUTE_READ);
+        }
     }
+
     rejected([&]
              {
                  installTextureCallHooks(nullptr, replacement);
@@ -152,7 +163,7 @@ void unsupportedCodeIsUntouched()
              });
     DWORD old{};
     REQUIRE(VirtualProtect(image.data + 0x17c000, 0x1000, PAGE_NOACCESS, &old));
-    const std::array<BYTE, 5> originalCall{ 0xe8, 0x66, 0xe0, 0x03, 0x00 };
+    const auto originalCall = std::array<BYTE, 5>{ 0xe8, 0x66, 0xe0, 0x03, 0x00 };
     rejected([&]
              {
                  installTextureCallHooks(image.data, replacement);
@@ -169,7 +180,7 @@ void protectionFailureIsUntouched()
     auto* const writable = static_cast<BYTE*>(MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, imageSize));
     REQUIRE(writable);
     initialize(writable);
-    std::vector<BYTE> before(writable, writable + imageSize);
+    const auto before = std::vector<BYTE>(writable, writable + imageSize);
     REQUIRE(UnmapViewOfFile(writable));
     auto* const readonly = static_cast<BYTE*>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, imageSize));
     REQUIRE((readonly && protection(readonly + sites[0]) == PAGE_READONLY));
@@ -179,7 +190,10 @@ void protectionFailureIsUntouched()
              });
     REQUIRE(std::memcmp(readonly, before.data(), imageSize) == 0);
     for (const DWORD site : sites)
+    {
         REQUIRE(protection(readonly + site) == PAGE_READONLY);
+    }
+
     REQUIRE(UnmapViewOfFile(readonly));
     REQUIRE(CloseHandle(mapping));
 }

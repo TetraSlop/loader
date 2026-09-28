@@ -1,10 +1,13 @@
 #include "app/runtime.h"
+#include "graphics/d3d8_abi.h"
 #include "graphics/screenshot.h"
 #include <aclapi.h>
 #include <algorithm>
+#include <array>
 #include <catch2/catch_session.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cstring>
+#include <format>
 #include <fstream>
 #include <sddl.h>
 #include <set>
@@ -24,11 +27,13 @@ static auto WINAPI screenshotWrite(HANDLE file, LPCVOID data, DWORD size, LPDWOR
         requestDuringWrite = false;
         tmloader::requestScreenshot();
     }
+
     if (failScreenshotWrite)
     {
         SetLastError(ERROR_DISK_FULL);
         return FALSE;
     }
+
     return WriteFile(file, data, size, written, overlap);
 }
 
@@ -43,7 +48,7 @@ namespace tmloader
 
 Config options;
 
-void logf(const char*, ...)
+void writeLog(std::string_view)
 {
 }
 
@@ -52,40 +57,42 @@ void logf(const char*, ...)
 namespace
 {
 
-using namespace tmloader;
+namespace d3d8 = tmloader::d3d8;
 using Microsoft::WRL::ComPtr;
-
-struct LockedPixels
-{
-    INT   pitch;
-    BYTE* data;
-};
+using tmloader::check;
+using tmloader::requestScreenshot;
+using tmloader::saveRequestedScreenshot;
+using tmloader::screenshotStatus;
 
 struct Surface
 {
-    void**                vtable;
-    std::array<void*, 11> methods{};
-    DWORD                 format = 21, width = 3, height = 2;
-    int                   pitch = 20;
-    std::array<BYTE, 40>  storage{};
-    ULONG                 references = 1;
-    unsigned              locks = 0, unlocks = 0;
-    HRESULT               descResult = S_OK, lockResult = S_OK;
-    bool                  nullPixels = false;
+    void**                                     vtable;
+    std::array<void*, d3d8::SurfaceUnlock + 1> methods{};
+    DWORD                                      format = d3d8::formatA8R8G8B8;
+    DWORD                                      width  = 3;
+    DWORD                                      height = 2;
+    int                                        pitch  = 20;
+    std::array<BYTE, 40>                       storage{};
+    ULONG                                      references = 1;
+    unsigned                                   locks      = 0;
+    unsigned                                   unlocks    = 0;
+    HRESULT                                    descResult = S_OK;
+    HRESULT                                    lockResult = S_OK;
+    bool                                       nullPixels = false;
 
     Surface()
     : vtable(methods.data())
     {
-        methods[2]  = reinterpret_cast<void*>(release);
-        methods[8]  = reinterpret_cast<void*>(description);
-        methods[9]  = reinterpret_cast<void*>(lock);
-        methods[10] = reinterpret_cast<void*>(unlock);
+        methods[2]                     = reinterpret_cast<void*>(release); // IUnknown::Release
+        methods[d3d8::SurfaceGetDesc]  = reinterpret_cast<void*>(description);
+        methods[d3d8::SurfaceLockRect] = reinterpret_cast<void*>(lock);
+        methods[d3d8::SurfaceUnlock]   = reinterpret_cast<void*>(unlock);
         storage.fill(0xab);
         // BGRA bytes deliberately contain zero and partial alpha values.
-        const DWORD top[]{ 0x00112233, 0x80445566, 0xff778899 };
-        const DWORD bottom[]{ 0x010a20e0, 0x10203040, 0x00f1f2f3 };
-        std::memcpy(storage.data(), top, sizeof(top));
-        std::memcpy(storage.data() + 20, bottom, sizeof(bottom));
+        const auto top    = std::array<DWORD, 3>{ 0x00112233, 0x80445566, 0xff778899 };
+        const auto bottom = std::array<DWORD, 3>{ 0x010a20e0, 0x10203040, 0x00f1f2f3 };
+        std::memcpy(storage.data(), top.data(), sizeof(top));
+        std::memcpy(storage.data() + 20, bottom.data(), sizeof(bottom));
     }
 
     static auto WINAPI release(Surface* self) -> ULONG
@@ -93,22 +100,34 @@ struct Surface
         return --self->references;
     }
 
-    static auto WINAPI description(Surface* self, DWORD* output) -> HRESULT
+    static auto WINAPI description(Surface* self, d3d8::SurfaceDesc* output) -> HRESULT
     {
-        output[0] = self->format;
-        output[6] = self->width;
-        output[7] = self->height;
+        output->format = self->format;
+        output->width  = self->width;
+        output->height = self->height;
         return self->descResult;
     }
 
-    static auto WINAPI lock(Surface* self, LockedPixels* output, const RECT* rect, DWORD flags) -> HRESULT
+    static auto WINAPI lock(Surface* self, d3d8::LockedRect* output, const RECT* rect, DWORD flags) -> HRESULT
     {
-        REQUIRE((!rect && flags == 0x10));
+        REQUIRE((!rect && flags == d3d8::lockReadOnly));
         ++self->locks;
         if (FAILED(self->lockResult))
+        {
             return self->lockResult;
+        }
+
         output->pitch = self->pitch;
-        output->data  = self->nullPixels ? nullptr : self->storage.data() + (self->pitch < 0 ? 20 : 0);
+        output->bits  = nullptr;
+        if (!self->nullPixels)
+        {
+            output->bits = self->storage.data();
+            if (self->pitch < 0)
+            {
+                output->bits += 20;
+            }
+        }
+
         return S_OK;
     }
 
@@ -121,16 +140,16 @@ struct Surface
 
 struct Device
 {
-    void**                vtable;
-    std::array<void*, 17> methods{};
-    Surface               surface;
-    unsigned              reads  = 0;
-    HRESULT               result = S_OK;
+    void**                                     vtable;
+    std::array<void*, d3d8::GetBackBuffer + 1> methods{};
+    Surface                                    surface;
+    unsigned                                   reads  = 0;
+    HRESULT                                    result = S_OK;
 
     Device()
     : vtable(methods.data())
     {
-        methods[16] = reinterpret_cast<void*>(backbuffer);
+        methods[d3d8::GetBackBuffer] = reinterpret_cast<void*>(backbuffer);
     }
 
     static auto WINAPI backbuffer(Device* self, UINT index, DWORD type, void** output) -> HRESULT
@@ -138,7 +157,10 @@ struct Device
         REQUIRE((index == 0 && type == 0));
         ++self->reads;
         if (FAILED(self->result))
+        {
             return self->result;
+        }
+
         ++self->surface.references;
         *output = &self->surface;
         return S_OK;
@@ -148,23 +170,34 @@ struct Device
 auto files() -> std::set<std::filesystem::path>
 {
     std::set<std::filesystem::path> result;
-    const auto                      dir = options.runtimeDir / "logs/screenshots";
+    const auto                      dir = tmloader::options.runtimeDir / "logs/screenshots";
     if (std::filesystem::exists(dir))
+    {
         for (const auto& file : std::filesystem::directory_iterator(dir))
+        {
             result.insert(file.path());
+        }
+    }
+
     return result;
 }
 
 auto requestedFileName(unsigned number) -> std::filesystem::path
 {
-    wchar_t name[128];
-    swprintf_s(name, L"TetraMaster_20260927_123456_789_%lu_%u.png", GetCurrentProcessId(), number);
-    return options.runtimeDir / "logs/screenshots" / name;
+    return tmloader::options.runtimeDir / "logs/screenshots" /
+           std::format(L"TetraMaster_20260927_123456_789_{}_{}.png", GetCurrentProcessId(), number);
 }
 
 auto decode(const std::filesystem::path& path) -> std::vector<DWORD>
 {
-    ComScope                   com;
+    const auto                 com   = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const auto                 scope = wil::scope_exit([com]
+                                                       {
+                                           if (SUCCEEDED(com))
+                                           {
+                                               CoUninitialize();
+                                           }
+                                                       });
     ComPtr<IWICImagingFactory> factory;
     check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)), "Test decoder");
     ComPtr<IWICBitmapDecoder> decoder;
@@ -174,13 +207,14 @@ auto decode(const std::filesystem::path& path) -> std::vector<DWORD>
     REQUIRE(IsEqualGUID(container, GUID_ContainerFormatPng));
     ComPtr<IWICBitmapFrameDecode> frame;
     check(decoder->GetFrame(0, &frame), "PNG frame");
-    UINT width = 0, height = 0;
+    UINT width  = 0;
+    UINT height = 0;
     check(frame->GetSize(&width, &height), "PNG dimensions");
     REQUIRE((width == 3 && height == 2));
     ComPtr<IWICFormatConverter> converter;
     check(factory->CreateFormatConverter(&converter), "PNG converter");
     check(converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, nullptr, 0, WICBitmapPaletteTypeCustom), "PNG conversion");
-    std::vector<DWORD> result(width * height);
+    auto result = std::vector<DWORD>(width * height);
     check(converter->CopyPixels(nullptr, width * 4, static_cast<UINT>(result.size() * 4), reinterpret_cast<BYTE*>(result.data())), "PNG pixels");
     return result;
 }
@@ -201,11 +235,12 @@ void labelFixture(const std::filesystem::path& path, const wchar_t* sddl)
     REQUIRE(std::filesystem::create_directory(path));
     PSECURITY_DESCRIPTOR descriptor = nullptr;
     REQUIRE(ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, SDDL_REVISION_1, &descriptor, nullptr));
-    PACL label   = nullptr;
-    BOOL present = FALSE, defaulted = FALSE;
+    PACL label     = nullptr;
+    BOOL present   = FALSE;
+    BOOL defaulted = FALSE;
     REQUIRE((GetSecurityDescriptorSacl(descriptor, &present, &label, &defaulted) && present));
-    auto        mutablePath = path.wstring();
-    const DWORD result      = SetNamedSecurityInfoW(mutablePath.data(), SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, nullptr, nullptr, nullptr, label);
+    auto       mutablePath = path.wstring();
+    const auto result      = SetNamedSecurityInfoW(mutablePath.data(), SE_FILE_OBJECT, LABEL_SECURITY_INFORMATION, nullptr, nullptr, nullptr, label);
     LocalFree(descriptor);
     REQUIRE(result == ERROR_SUCCESS);
 }
@@ -233,15 +268,15 @@ void lowIntegrityCapture(const std::filesystem::path& fixture)
     // The medium-labeled control proves that low-write isolation is effective.
     const auto forbidden = CreateFileW((fixture / "medium/control.png").c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
     REQUIRE((forbidden == INVALID_HANDLE_VALUE && GetLastError() == ERROR_ACCESS_DENIED));
-    options.runtimeDir = fixture / "low";
-    options.game       = options.runtimeDir / "TM_native.dll";
-    options.core       = options.runtimeDir / "polcore_native.dll";
+    tmloader::options.runtimeDir = fixture / "low";
+    tmloader::options.game       = tmloader::options.runtimeDir / "TM_native.dll";
+    tmloader::options.core       = tmloader::options.runtimeDir / "polcore_native.dll";
     Device device;
     requestScreenshot();
     saveRequestedScreenshot(&device);
     REQUIRE(screenshotStatus().find("Screenshot saved:") == 0);
     REQUIRE((files().size() == 1 && device.surface.references == 1 && device.surface.unlocks == 1));
-    const std::vector<DWORD> expected{ 0xff112233, 0xff445566, 0xff778899, 0xff0a20e0, 0xff203040, 0xfff1f2f3 };
+    const auto expected = std::vector<DWORD>{ 0xff112233, 0xff445566, 0xff778899, 0xff0a20e0, 0xff203040, 0xfff1f2f3 };
     REQUIRE(decode(*files().begin()) == expected);
 }
 
@@ -251,17 +286,18 @@ void verifyLowIntegrityCapture(const std::filesystem::path& fixture)
     labelFixture(fixture / "medium", L"S:(ML;OICI;NW;;;ME)");
     wchar_t executable[32768]{};
     REQUIRE(GetModuleFileNameW(nullptr, executable, static_cast<DWORD>(std::size(executable))));
-    std::wstring command = L"\"" + std::wstring(executable) + L"\" --low-integrity \"" + fixture.wstring() + L"\"";
+    auto         command = L"\"" + std::wstring(executable) + L"\" --low-integrity \"" + fixture.wstring() + L"\"";
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
     PROCESS_INFORMATION process{};
     REQUIRE(CreateProcessW(executable, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process));
-    const DWORD wait = WaitForSingleObject(process.hProcess, 30000);
+    const auto wait = WaitForSingleObject(process.hProcess, 30000);
     if (wait != WAIT_OBJECT_0)
     {
         TerminateProcess(process.hProcess, 1);
         WaitForSingleObject(process.hProcess, 5000);
     }
+
     DWORD exitCode = 1;
     REQUIRE(GetExitCodeProcess(process.hProcess, &exitCode));
     CloseHandle(process.hThread);
@@ -295,6 +331,7 @@ TEST_CASE("Screenshots preserve pixels and safe output lifecycle", "[screenshot]
         std::ofstream output(existing, std::ios::binary);
         output << "Never replace me";
     }
+
     requestScreenshot();
     requestScreenshot();
     REQUIRE(screenshotStatus().find("queued") != std::string::npos);
@@ -307,7 +344,8 @@ TEST_CASE("Screenshots preserve pixels and safe output lifecycle", "[screenshot]
         const std::string content((std::istreambuf_iterator<char>(input)), {});
         REQUIRE(content == "Never replace me");
     }
-    const std::vector<DWORD> expected{ 0xff112233, 0xff445566, 0xff778899, 0xff0a20e0, 0xff203040, 0xfff1f2f3 };
+
+    const auto expected = std::vector<DWORD>{ 0xff112233, 0xff445566, 0xff778899, 0xff0a20e0, 0xff203040, 0xfff1f2f3 };
     REQUIRE(decode(requestedFileName(1)) == expected);
     const auto expectedPath = requestedFileName(1).u8string();
     REQUIRE(screenshotStatus().find(std::string(reinterpret_cast<const char*>(expectedPath.data()),
@@ -315,7 +353,7 @@ TEST_CASE("Screenshots preserve pixels and safe output lifecycle", "[screenshot]
     saveRequestedScreenshot(&device);
     REQUIRE((device.reads == 1 && files().size() == 2)); // A request is consumed once.
 
-    device.surface.format = 22;
+    device.surface.format = d3d8::formatX8R8G8B8;
     device.surface.pitch  = -20;
     requestScreenshot();
     saveRequestedScreenshot(&device);
@@ -325,9 +363,9 @@ TEST_CASE("Screenshots preserve pixels and safe output lifecycle", "[screenshot]
     REQUIRE((device.surface.references == 1 && device.surface.unlocks == 2));
 
     Device bad;
-    bad.surface.format = 23;
+    bad.surface.format = 23; // D3DFMT_R5G6B5
     fails(bad, "32-bit", 0, 0);
-    bad.surface.format = 21;
+    bad.surface.format = d3d8::formatA8R8G8B8;
     bad.surface.width  = 0;
     fails(bad, "dimensions", 0, 0);
     bad.surface.width      = 3;
@@ -366,8 +404,8 @@ TEST_CASE("Screenshots preserve pixels and safe output lifecycle", "[screenshot]
     REQUIRE((SUCCEEDED(CoGetContextToken(&token)) && token != 0));
     CoUninitialize();
     // A newer request must survive completion of the in-progress screenshot.
-    requestDuringWrite   = true;
-    const unsigned reads = device.reads;
+    requestDuringWrite = true;
+    const auto reads   = device.reads;
     requestScreenshot();
     saveRequestedScreenshot(&device);
     REQUIRE((device.reads == reads + 1 && screenshotStatus().find("queued") != std::string::npos));
@@ -413,5 +451,6 @@ auto wmain(int argc, wchar_t** argv) -> int
         const wchar_t* childArgs[]{ argv[0], L"Low-integrity screenshot child" };
         return Catch::Session().run(2, childArgs);
     }
+
     return Catch::Session().run(argc, argv);
 }

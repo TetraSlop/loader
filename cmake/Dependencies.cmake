@@ -19,6 +19,12 @@ FetchContent_Declare(nlohmann_json
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(nlohmann_json)
 
+FetchContent_Declare(CLI11
+    URL https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.7.2.tar.gz
+    URL_HASH SHA256=46eef3101da70852ec7af026e09d485ccee81813331c8c6052d39344443b83da
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(CLI11)
+
 set(WIL_BUILD_TESTS OFF CACHE BOOL "Build WIL's own test suite")
 set(WIL_BUILD_PACKAGING OFF CACHE BOOL "Build WIL's distribution packages")
 FetchContent_Declare(wil

@@ -5,6 +5,7 @@ namespace tmloader
 {
 
 constexpr UINT settingsMessage = WM_APP + 0x54;
+
 enum class WindowAction : WPARAM
 {
     size,
@@ -16,14 +17,16 @@ enum class WindowAction : WPARAM
     hdFonts,
     autoResolution
 };
+
 void initializeGameWindow(HWND window);
 auto currentWindowSettings() -> WindowSettings;
 auto gameContentRect() -> RECT;
 void toggleSettingsPanel();
 void stopSettingsPanel();
 auto settingsPanelOpen() -> bool;
-// UI commands are dispatched on the game's window thread. renderScale takes
-// an index into renderScales, so fractional scales need no message encoding.
+// Returns and clears clicks seen since the last call (bit 0 left, bit 1 right).
+auto takeMousePresses() -> BYTE;
+// Runs the action on the game's window thread. renderScale takes an index into renderScales.
 void postWindowAction(WindowAction action, LPARAM value = 0);
 
 } // namespace tmloader

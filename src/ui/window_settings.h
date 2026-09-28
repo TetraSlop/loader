@@ -4,9 +4,8 @@
 #include <algorithm>
 #include <array>
 #include <istream>
+#include <nlohmann/json.hpp>
 #include <ostream>
-#include <string>
-#include <string_view>
 
 namespace tmloader
 {
@@ -38,7 +37,8 @@ inline auto automaticRenderScale(const unsigned width, const unsigned height) ->
     {
         return 1;
     }
-    const auto required = (std::min)(width / 640.0f, height / 480.0f);
+
+    const auto required = std::min(width / 640.0f, height / 480.0f);
     for (const auto factor : renderScales)
     {
         if (factor >= required || factor >= 4.5f)
@@ -46,6 +46,7 @@ inline auto automaticRenderScale(const unsigned width, const unsigned height) ->
             return factor;
         }
     }
+
     return 4.5f; // Supersampling is a manual choice.
 }
 
@@ -61,6 +62,7 @@ inline auto contentRect(const LONG width, const LONG height, const bool preserve
     {
         return {};
     }
+
     auto w = width;
     auto h = height;
     if (preserveAspect)
@@ -74,66 +76,45 @@ inline auto contentRect(const LONG width, const LONG height, const bool preserve
             h = MulDiv(width, 3, 4);
         }
     }
+
     const auto x = (width - w) / 2;
     const auto y = (height - h) / 2;
     return { x, y, x + w, y + h };
 }
 
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WindowSettings, width, height, fullscreen, preserveAspect, renderScale, hdTextures, hdFonts, autoResolution)
+
+// Malformed files yield defaults; invalid sizes or scales fall back individually.
 inline auto readWindowSettings(std::istream& in) -> WindowSettings
 {
-    std::string    magic;
-    auto           width      = int{};
-    auto           height     = int{};
-    auto           fullscreen = int{};
-    auto           aspect     = int{};
-    constexpr auto prefix     = std::string_view{ "tmloader-window-v" };
-    if (!(in >> magic >> width >> height >> fullscreen >> aspect) ||
-        !magic.starts_with(prefix) || magic.size() != prefix.size() + 1 ||
-        magic.back() < '1' || magic.back() > '5' || !validWindowSize(width, height) ||
-        (fullscreen != 0 && fullscreen != 1) || (aspect != 0 && aspect != 1))
+    auto settings = WindowSettings{};
+    try
+    {
+        settings = nlohmann::json::parse(in).get<WindowSettings>();
+    }
+    catch (const nlohmann::json::exception&)
     {
         return {};
     }
 
-    const auto version = magic.back() - '0';
-    auto       result  = WindowSettings{ width, height, fullscreen != 0, aspect != 0 };
-    // Existing accounts keep their chosen resolution until they select Auto.
-    result.autoResolution = version == 5;
-    auto scale            = float{};
-    if (version >= 2 && (in >> scale) && validRenderScale(scale))
+    const auto defaults = WindowSettings{};
+    if (!validWindowSize(settings.width, settings.height))
     {
-        result.renderScale = scale;
+        settings.width  = defaults.width;
+        settings.height = defaults.height;
     }
 
-    const auto readFlag = [&](bool& value)
+    if (!validRenderScale(settings.renderScale))
     {
-        auto flag = int{};
-        if ((in >> flag) && (flag == 0 || flag == 1))
-        {
-            value = flag != 0;
-        }
-    };
-    if (version >= 3)
-    {
-        readFlag(result.hdTextures);
+        settings.renderScale = defaults.renderScale;
     }
 
-    result.hdFonts = result.hdTextures;
-    if (version == 5)
-    {
-        readFlag(result.hdFonts);
-        readFlag(result.autoResolution);
-    }
-
-    return result;
+    return settings;
 }
 
-inline void writeWindowSettings(std::ostream& out, const WindowSettings& value)
+inline void writeWindowSettings(std::ostream& out, const WindowSettings& settings)
 {
-    out << "tmloader-window-v5\n"
-        << value.width << ' ' << value.height << ' '
-        << value.fullscreen << ' ' << value.preserveAspect << ' ' << value.renderScale << ' '
-        << value.hdTextures << ' ' << value.hdFonts << ' ' << value.autoResolution << '\n';
+    out << nlohmann::json(settings).dump(2) << '\n';
 }
 
 } // namespace tmloader

@@ -139,4 +139,7 @@ BreakStringLiterals: true
 # Other formatting options
 FixNamespaceComments: true
 
+
+# tmloader: always brace control statements (LSB convention, enforced here).
+InsertBraces: true
 ...

@@ -11,7 +11,8 @@ namespace
 
 tmloader::WindowSettings testSettings;
 std::string              captureStatus;
-unsigned                 screenshotRequests, statusReads;
+unsigned                 screenshotRequests;
+unsigned                 statusReads;
 size_t                   availableImages = 503;
 
 } // namespace
@@ -21,7 +22,7 @@ namespace tmloader
 
 HWND gameWindow{};
 
-void logf(const char*, ...)
+void writeLog(std::string_view)
 {
 }
 
@@ -84,14 +85,22 @@ auto selectTab(const char* label, ImVec2 size) -> ImGuiWindow*
     REQUIRE((tabs && tabs->Tabs.Size == 3));
     ImGuiID selected = 0;
     for (auto& tab : tabs->Tabs)
+    {
         if (std::strcmp(ImGui::TabBarGetTabName(tabs, &tab), label) == 0)
+        {
             selected = tab.ID;
+        }
+    }
+
     REQUIRE(selected);
     tabs->NextSelectedTabId = selected;
     ImGui::SetScrollY(window, 0);
     // Tab transitions and scrollbar visibility use previous-frame measurements.
     for (int i = 0; i < 3; ++i)
+    {
         frame();
+    }
+
     REQUIRE(tabs->VisibleTabId == selected);
     return window;
 }
@@ -99,7 +108,7 @@ auto selectTab(const char* label, ImVec2 size) -> ImGuiWindow*
 void checkWidth(ImGuiWindow* window)
 {
     REQUIRE(window->ScrollMax.x == 0);
-    const float available = window->InnerRect.GetWidth() - window->WindowPadding.x * 2;
+    const auto available = window->InnerRect.GetWidth() - window->WindowPadding.x * 2;
     if (window->ContentSize.x > available + 1)
     {
         printf("Content width %.1f exceeds available %.1f\n", window->ContentSize.x, available);
@@ -123,10 +132,11 @@ TEST_CASE("Settings layout fits supported DPI scales", "[settings_ui]")
         REQUIRE((io.IniFilename == nullptr && io.LogFilename == nullptr));
         io.DeltaTime = 1.0f / 60.0f;
         io.Fonts->AddFontDefault();
-        unsigned char* pixels;
-        int            width, height;
+        unsigned char* pixels = nullptr;
+        int            width  = 0;
+        int            height = 0;
         io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-        const ImVec2 preferred{ 524 * scale, 730 * scale };
+        const auto preferred = ImVec2{ 524 * scale, 730 * scale };
         captureStatus.clear();
         for (const char* const tab : { "Display", "Artwork & text", "Screenshots" })
         {
@@ -134,6 +144,7 @@ TEST_CASE("Settings layout fits supported DPI scales", "[settings_ui]")
             checkWidth(window);
             REQUIRE(window->ScrollMax.y == 0);
         }
+
         testSettings.autoResolution = false;
         testSettings.renderScale    = 4.5f;
         auto* window                = selectTab("Display", preferred);
@@ -150,13 +161,14 @@ TEST_CASE("Settings layout fits supported DPI scales", "[settings_ui]")
                  "Screenshot failed: Cannot write the PNG to C:/Users/Player/Documents/GitHub/tmloader/runtime/logs/screenshots/" +
                      std::string(220, 'B') + ".png. The destination folder is unavailable; please check its permissions and try again." })
         {
-            captureStatus         = status;
-            const unsigned before = statusReads;
-            window                = selectTab("Screenshots", preferred);
+            captureStatus     = status;
+            const auto before = statusReads;
+            window            = selectTab("Screenshots", preferred);
             REQUIRE(statusReads > before);
             checkWidth(window);
             REQUIRE(window->ScrollMax.y == 0);
         }
+
         // The native window clamps to the monitor work area. A short monitor
         // should produce vertical scrolling, never clip or widen the controls.
         for (const char* const tab : { "Display", "Artwork & text", "Screenshots" })
@@ -166,10 +178,14 @@ TEST_CASE("Settings layout fits supported DPI scales", "[settings_ui]")
             REQUIRE((window->ScrollMax.y > 0 && window->ScrollbarY));
             ImGui::SetScrollY(window, window->ScrollMax.y);
             for (int i = 0; i < 3; ++i)
+            {
                 frame();
+            }
+
             REQUIRE(window->Scroll.y >= window->ScrollMax.y - 1);
             REQUIRE(window->DC.CursorMaxPos.y <= window->InnerRect.Max.y + 1);
         }
+
         REQUIRE(screenshotRequests == 0); // Layout must not request a capture.
         printf("PASS: all tabs and long screenshot status fit at %.0f%%; short panels scroll\n", scale * 100);
         ImGui::DestroyContext();

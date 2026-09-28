@@ -1,18 +1,17 @@
 #include "graphics/render_scale.h"
+#include "graphics/d3d8_abi.h"
 
 namespace tmloader
 {
 namespace
 {
 
-// D3D8 declarations live outside the shader: stream 0, float4 position,
-// packed diffuse/specular colors, float2 UV. No change to the game's buffers.
+// Stream 0: float4 position, packed diffuse and specular colors, float2 UV.
 constexpr DWORD declaration[] = {
     0x20000000, 0x40030000, 0x40040001, 0x40040002, 0x40010003, 0xffffffff
 };
-// Assembled vs.1.1, with each instruction retained below for review. Screen
-// coordinates become clip coordinates; reciprocal W preserves perspective
-// interpolation. Colors, UVs and depth retain the game's values.
+// Hand-assembled vs.1.1: converts screen coordinates to clip space and keeps
+// reciprocal W for perspective-correct interpolation. Other inputs pass through.
 constexpr DWORD program[] = {
     0xfffe0101,
     0x00000005,
@@ -52,31 +51,27 @@ constexpr DWORD program[] = {
 
 auto createScaleShader(void* device, DWORD* shader) -> HRESULT
 {
-    using Create = HRESULT(WINAPI*)(void*, const DWORD*, const DWORD*, DWORD*, DWORD);
-    auto table   = *static_cast<void***>(device);
-    return reinterpret_cast<Create>(table[75])(device, declaration, program, shader, 0);
+    return callMethod(device, d3d8::CreateVertexShader, declaration, program, shader, DWORD{ 0 });
 }
 
 auto setScaleConstants(void* device, float factor) -> HRESULT
 {
-    // Map pixel edges: (x + 0.5) * factor - 0.5. This also preserves the
-    // original rasterization exactly at 1x, including half-pixel aligned quads.
+    // Maps pixel edges as (x + 0.5) * factor - 0.5, which is exact at 1x.
     const float offset       = 0.5f - 0.5f / factor;
     const float constants[8] = {
         2.0f / 640, -2.0f / 480, 1, 1, -1 + offset * 2 / 640, 1 - offset * 2 / 480, 0, 0
     };
-    auto table      = *static_cast<void***>(device);
-    using Constants = HRESULT(WINAPI*)(void*, DWORD, const void*, DWORD);
-    return reinterpret_cast<Constants>(table[79])(device, 0, constants, 2);
+    return callMethod(device, d3d8::SetVertexShaderConstant, DWORD{ 0 }, static_cast<const void*>(constants), DWORD{ 2 });
 }
 
 void deleteScaleShader(void* device, DWORD& shader)
 {
     if (!shader)
+    {
         return;
-    using Delete = HRESULT(WINAPI*)(void*, DWORD);
-    auto table   = *static_cast<void***>(device);
-    reinterpret_cast<Delete>(table[78])(device, shader);
+    }
+
+    callMethod(device, d3d8::DeleteVertexShader, shader);
     shader = 0;
 }
 
