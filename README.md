@@ -229,6 +229,10 @@ ignored personal config. Credentials are not logged.
   this loader does not change directory ACLs or Windows UAC settings. File
   interception is best-effort compatibility protection, not a complete sandbox.
 
+For an unzip-and-run app with a bundled Python server, see
+[portable packaging](docs/DISTRIBUTION.md). Original client binaries, media and
+HD replacements are excluded by default and have separate inclusion options.
+
 See [architecture](docs/ARCHITECTURE.md) for module responsibilities and known
 debt. xiloader was a read-only architecture reference; this is not an upstream
 fork and has no remote configured.
