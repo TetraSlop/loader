@@ -233,6 +233,10 @@ For an unzip-and-run app with a bundled Python server, see
 [portable packaging](docs/DISTRIBUTION.md). Original client binaries, media and
 HD replacements are excluded by default and have separate inclusion options.
 
+The experimental [BoxedWine browser setup](docs/BROWSER.md) imports that package
+and connects to the real Python server. Account registration and its original
+confirmation screen are verified; browser confirmation input still needs review.
+
 See [architecture](docs/ARCHITECTURE.md) for module responsibilities and known
 debt. xiloader was a read-only architecture reference; this is not an upstream
 fork and has no remote configured.
