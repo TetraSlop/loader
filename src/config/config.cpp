@@ -28,6 +28,7 @@ void defineOptions(CLI::App& app, Config& config)
     app.add_option("--password", config.password, "Account password")->type_name("TEXT")->capture_default_str();
     app.add_option("--hosted-server", config.hostedServer, "Sign in to this hosted server instead of --server")->type_name("URL");
     app.add_flag("--hosted-insecure-loopback", config.insecureLoopback, "Development only: allow http://127.0.0.1 hosted endpoints");
+    app.add_option("--discord-app-id", config.discordApplicationId, "Discord application ID for Rich Presence")->type_name("ID")->check(CLI::Number.description(""));
     app.add_option("--texture-pack", config.texturePack, "HD texture pack manifest")->type_name("FILE")->default_str("textures/pack.json");
     app.add_flag("--diagnostics", config.diagnostics, "Extra logging and periodic screenshots");
     app.add_flag("--check", config.checkOnly, "Verify files, hashes and settings without launching")->configurable(false);

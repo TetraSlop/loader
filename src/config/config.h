@@ -23,10 +23,12 @@ struct Config
     // Hosted mode: sign in through this HTTPS origin; it supplies the account and streams.
     std::string hostedServer;
     bool        insecureLoopback = false;
-    bool        diagnostics      = false;
-    bool        checkOnly        = false;
-    bool        help             = false;
-    bool        version          = false;
+    // Discord application for Rich Presence; empty disables it.
+    std::string discordApplicationId;
+    bool        diagnostics = false;
+    bool        checkOnly   = false;
+    bool        help        = false;
+    bool        version     = false;
 };
 
 auto parseConfig(const std::vector<std::string>& args) -> Config;

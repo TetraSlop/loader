@@ -1,8 +1,10 @@
 #include "app/log.h"
 #include "app/runtime.h"
+#include "platform/discord_presence.h"
 #include "textures/texture_pack.h"
 #include "ui/launcher.h"
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <exception>
 
@@ -53,6 +55,19 @@ void report(const char* error)
     }
 }
 
+auto activityFor(const tmloader::Config& config) -> tmloader::Activity
+{
+    const auto startedAt = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    auto       activity  = tmloader::Activity{ "Playing on a local server", "", startedAt, "logo", "Tetra Master" };
+    if (!config.hostedServer.empty())
+    {
+        activity.details = "Playing online";
+        activity.state   = config.hostedServer.substr(config.hostedServer.find("://") + 3);
+    }
+
+    return activity;
+}
+
 auto play(const tmloader::Config& config) -> int
 {
     auto session = std::unique_ptr<tmloader::hosted::HostedSession>{};
@@ -65,6 +80,9 @@ auto play(const tmloader::Config& config) -> int
         }
     }
 
+    // Connect before launch lowers the process integrity; see DiscordPresence.
+    auto presence = tmloader::DiscordPresence(config.discordApplicationId);
+    presence.set(activityFor(config));
     const auto exitCode = [&]
     {
         if (session)

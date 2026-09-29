@@ -31,7 +31,7 @@ Pillow, OpenCV). These are tool dependencies only, not loader dependencies.
 | config | `config_tests` | Defaults, CLI-over-file precedence, duplicate and unknown keys, endpoints and ports, `ppNNN` hostname aliases, path boundaries, account ID and credential shape, SHA256 |
 | graphics | `graphics_tests`, `render_scale_tests`, `screenshot_tests` | Device hooks, presentation and reset, scale shader and vertex-buffer dispatch, pixel-exact comparison of scaled rendering against a CPU-scaled reference at every preset, automatic resolution selection, PNG capture, row pitch, filename collisions and low-integrity writes |
 | input | `input_bridge_tests` | Focus and acquisition transitions, scaled and letterboxed mouse mapping, short-click latch |
-| platform | `audio_tests`, `desktop_tests`, `virtual_registry_tests` | DirectSound 8 buffer creation with `IDirectSoundBuffer8`, import replacement policy, guarded cursor patch, registry values and buffer contracts |
+| platform | `audio_tests`, `desktop_tests`, `discord_presence_tests`, `virtual_registry_tests` | DirectSound 8 buffer creation with `IDirectSoundBuffer8`, import replacement policy, guarded cursor patch, registry values and buffer contracts |
 | textures | `texture_hooks_tests`, `texture_pack_tests`, `texture_replacements_tests` | Guarded x86 call-site patching and rollback, manifest hashes, containment and dimensions, HD binding and restoration, font atlas classification, COM lifetime across reset |
 | ui | `settings_ui_tests`, `window_messages_tests`, `window_settings_tests` | Settings panel layout at 100, 150 and 200% scaling, window message routing (close, Alt+F4, focus reclaim, cursor), JSON preference parsing and fallbacks |
 

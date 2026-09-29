@@ -81,6 +81,7 @@ Paths are relative to `runtime-dir` unless absolute, and a relative
 | `--pol-id ID` | `EEEEEEEF` | Eight-character account ID |
 | `--password TEXT` | `tm-local-test` | Account password |
 | `--hosted-server URL` | | Sign in to a hosted server with Discord instead of `--server` (see [hosted play](docs/hosted.md)) |
+| `--discord-app-id ID` | | Show Discord Rich Presence for this Discord application (see below) |
 | `--texture-pack FILE` | `textures/pack.json` | Texture pack manifest |
 | `--diagnostics` | off | Extra logging and periodic screenshots |
 | `--check` | | Validate settings, DLL hashes and assets, then exit |
@@ -102,6 +103,14 @@ pub/home00/option.bin    Viewer settings
 
 Logs, screenshots and per-account preferences are written under
 `runtime-dir/logs` and `runtime-dir/settings`.
+
+### Discord Rich Presence
+
+With `discord-app-id` set, Discord shows "Playing online" (with the server) or
+"Playing on a local server", plus the time played. Use the application ID from
+the Discord developer portal (the same application as hosted sign-in works) and
+upload a Rich Presence art asset named `logo`. Discord must be running before
+the game starts; the loader talks to it over Discord's local IPC pipe.
 
 ## Controls
 

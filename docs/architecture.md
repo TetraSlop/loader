@@ -35,6 +35,7 @@ folders.
 | `platform/network` | Connect/DNS redirection and the Viewer profile session |
 | `platform/desktop` | Removal of global keyboard hooks, cursor warping and focus stealing |
 | `platform/audio` | DirectSound 8 factory |
+| `platform/discord_presence` | Discord Rich Presence over the desktop client's IPC pipe, opened before the process lowers its integrity |
 | `platform/patch` | `replacePointer` and `setImport` |
 | `textures/` | Texture pack manifests, HD companions and native upload hooks |
 | `ui/` | Game window, per-account preferences, the shared ImGui window host, the settings panel and the hosted launcher |

@@ -78,3 +78,8 @@ target_link_libraries(window_settings_tests PRIVATE nlohmann_json::nlohmann_json
 
 loader_test(hosted_tests hosted/auth_tests.cpp hosted/gateway_tests.cpp)
 target_link_libraries(hosted_tests PRIVATE loader_hosted nlohmann_json::nlohmann_json)
+
+loader_test(discord_presence_tests
+    platform/discord_presence_tests.cpp
+    ${loader_source_dir}/platform/discord_presence.cpp)
+target_link_libraries(discord_presence_tests PRIVATE nlohmann_json::nlohmann_json WIL::WIL)

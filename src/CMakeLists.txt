@@ -50,6 +50,8 @@ add_executable(tmloader WIN32
     input/input_bridge.h
     platform/audio.cpp
     platform/desktop.cpp
+    platform/discord_presence.cpp
+    platform/discord_presence.h
     platform/network.cpp
     platform/patch.cpp
     platform/patch.h
