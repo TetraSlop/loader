@@ -15,6 +15,9 @@ endif()
 set(CMAKE_CXX23_STANDARD_COMPILE_OPTION "/std:c++23preview")
 set(CMAKE_CXX23_EXTENSION_COMPILE_OPTION "/std:c++23preview")
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+# Debug info embedded per object (/Z7), so compiler caches such as sccache work
+# and parallel compiles never share a PDB. The linker still writes a .pdb.
+set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
 add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX DIRECTINPUT_VERSION=0x0800
     _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS
     TMLOADER_VERSION="${PROJECT_VERSION}")

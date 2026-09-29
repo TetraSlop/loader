@@ -67,9 +67,9 @@ target_link_libraries(tmloader PRIVATE
     ole32 windowscodecs advapi32 user32 gdi32 shell32 ws2_32)
 # Keep tmloader.exe at <build>/<config>/ rather than under src/.
 set_target_properties(tmloader PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
-# The game DLL executes generated code and expects fixed addresses.
-target_link_options(tmloader PRIVATE /ENTRY:mainCRTStartup /NXCOMPAT:NO /DYNAMICBASE:NO
-    /MANIFEST:EMBED "/MANIFESTUAC:level='asInvoker' uiAccess='false'")
+# The game DLL executes generated code and expects fixed addresses. CMake embeds
+# the default asInvoker manifest for every generator.
+target_link_options(tmloader PRIVATE /ENTRY:mainCRTStartup /NXCOMPAT:NO /DYNAMICBASE:NO)
 
 foreach(target IN ITEMS loader_config loader_hosted loader_textures tmloader)
     get_target_property(sources ${target} SOURCES)
