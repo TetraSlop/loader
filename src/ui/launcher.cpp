@@ -34,7 +34,7 @@ auto describe(const std::exception& error) -> std::string
     const auto& code = api->code();
     if (code == "account_not_linked")
     {
-        return "This Discord account is not enrolled on the server yet. Ask the server operator to link it.";
+        return "This Discord account is not enrolled on the server yet. Send the user ID above to the server operator.";
     }
 
     if (code == "session_owner_mismatch")
@@ -149,6 +149,7 @@ private:
 
                 break;
             case Stage::signedIn:
+                userIdRow();
                 if (ImGui::Button("Play"))
                 {
                     run([this](std::stop_token)
@@ -188,6 +189,22 @@ private:
                 }
 
                 break;
+        }
+    }
+
+    void userIdRow()
+    {
+        const auto id = session_->userId();
+        if (id.empty())
+        {
+            return;
+        }
+
+        ImGui::TextDisabled("User ID: %s", id.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Copy"))
+        {
+            ImGui::SetClipboardText(id.c_str());
         }
     }
 

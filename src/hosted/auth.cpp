@@ -237,6 +237,11 @@ auto parseTokens(const Response& response) -> Tokens
     const auto body   = json(succeeded(response));
     auto       tokens = Tokens{ body.at("access_token").get<std::string>(), body.at("refresh_token").get<std::string>() };
     tokens.expiresAt  = std::chrono::system_clock::now() + std::chrono::seconds(body.at("expires_in").get<int>());
+    if (body.contains("user") && body["user"].contains("id") && body["user"]["id"].is_string())
+    {
+        tokens.userId = body["user"]["id"].get<std::string>();
+    }
+
     if (tokens.access.empty() || tokens.refresh.empty())
     {
         throw std::runtime_error("Sign-in returned no tokens");

@@ -100,8 +100,24 @@ void HostedSession::logout() noexcept
     tokens_.reset();
 }
 
+auto HostedSession::userId() -> std::string
+{
+    const std::lock_guard lock(tokenMutex_);
+    if (!tokens_)
+    {
+        return {};
+    }
+
+    return tokens_->userId;
+}
+
 void HostedSession::remember(Tokens tokens)
 {
+    if (!tokens.userId.empty() && (!tokens_ || tokens_->userId != tokens.userId))
+    {
+        logLine("Signed in as Supabase user {}", tokens.userId);
+    }
+
     store_->save(tokens.refresh);
     tokens_ = std::move(tokens);
 }

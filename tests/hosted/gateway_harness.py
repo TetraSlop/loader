@@ -58,7 +58,13 @@ def fake_supabase():
         access_tokens.add(access)
         refresh_tokens.add(refresh)
         return JSONResponse(
-            {"access_token": access, "refresh_token": refresh, "expires_in": 3600, "token_type": "bearer"}
+            {
+                "access_token": access,
+                "refresh_token": refresh,
+                "expires_in": 3600,
+                "token_type": "bearer",
+                "user": {"id": SUBJECT},
+            }
         )
 
     async def authorize(request):

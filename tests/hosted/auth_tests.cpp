@@ -136,6 +136,9 @@ TEST_CASE("Token responses require both tokens", "[hosted]")
     REQUIRE(tokens.refresh == "r");
     REQUIRE(tokens.expiresAt > std::chrono::system_clock::now());
     REQUIRE_THROWS(parseTokens(jsonResponse(200, R"({"access_token":"a","refresh_token":"","expires_in":3600})")));
+    REQUIRE(tokens.userId.empty());
+    const auto withUser = parseTokens(jsonResponse(200, R"({"access_token":"a","refresh_token":"r","expires_in":3600,"user":{"id":"11111111-1111-4111-8111-111111111111","email":"x@example.com"}})"));
+    REQUIRE(withUser.userId == "11111111-1111-4111-8111-111111111111");
 }
 
 TEST_CASE("Hosted origins require HTTPS except explicit loopback development", "[hosted]")

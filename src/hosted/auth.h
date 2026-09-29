@@ -39,6 +39,8 @@ struct Tokens
     std::string                           access;
     std::string                           refresh;
     std::chrono::system_clock::time_point expiresAt;
+    // Supabase user UUID; the server operator enrolls this, never a display name.
+    std::string userId;
 };
 
 struct PlaySession
