@@ -82,6 +82,12 @@ auto WebSocket::receive() -> std::optional<std::vector<char>>
         auto       read   = DWORD{};
         auto       type   = WINHTTP_WEB_SOCKET_BUFFER_TYPE{};
         const auto result = WinHttpWebSocketReceive(socket_.get(), message.data() + length, static_cast<DWORD>(message.size() - length), &read, &type);
+        // Our own close() cancels a pending receive; that is a normal end of stream.
+        if (result == ERROR_WINHTTP_OPERATION_CANCELLED)
+        {
+            return std::nullopt;
+        }
+
         if (result != ERROR_SUCCESS)
         {
             throw TransportError(std::format("WebSocket receive failed (error {})", result));
