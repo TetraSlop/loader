@@ -99,6 +99,7 @@ auto loadGame(const Config& config) -> IUnknown*
     installGraphicsHooks(game);
     installInputHooks(game);
     installAudioHooks(game);
+    installMessageHooks(game);
     initializeTextureReplacements(gameBase, config.texturePack);
     return object;
 }

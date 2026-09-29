@@ -1,6 +1,7 @@
 #include "app/log.h"
 #include "app/runtime.h"
 #include "platform/discord_presence.h"
+#include "platform/game_messages.h"
 #include "textures/texture_pack.h"
 #include "ui/launcher.h"
 #include <algorithm>
@@ -55,14 +56,14 @@ void report(const char* error)
     }
 }
 
-auto activityFor(const tmloader::Config& config) -> tmloader::Activity
+// Discord shows the time since startedAt, so it restarts with each phase.
+auto activityFor(const tmloader::Config& config, tmloader::GamePhase phase) -> tmloader::Activity
 {
     const auto startedAt = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    auto       activity  = tmloader::Activity{ "Playing on a local server", "", startedAt, "logo", "Tetra Master" };
+    auto       activity  = tmloader::Activity{ "Playing on a local server", tmloader::describePhase(phase), startedAt, "logo", "Tetra Master" };
     if (!config.hostedServer.empty())
     {
-        activity.details = "Playing online";
-        activity.state   = config.hostedServer.substr(config.hostedServer.find("://") + 3);
+        activity.details = "Playing online on " + config.hostedServer.substr(config.hostedServer.find("://") + 3);
     }
 
     return activity;
@@ -82,7 +83,11 @@ auto play(const tmloader::Config& config) -> int
 
     // Connect before launch lowers the process integrity; see DiscordPresence.
     auto presence = tmloader::DiscordPresence(config.discordApplicationId);
-    presence.set(activityFor(config));
+    presence.set(activityFor(config, tmloader::GamePhase::menus));
+    tmloader::setGamePhaseListener([&](tmloader::GamePhase phase)
+                                   {
+                                       presence.set(activityFor(config, phase));
+                                   });
     const auto exitCode = [&]
     {
         if (session)

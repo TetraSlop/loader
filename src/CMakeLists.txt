@@ -52,6 +52,8 @@ add_executable(tmloader WIN32
     platform/desktop.cpp
     platform/discord_presence.cpp
     platform/discord_presence.h
+    platform/game_messages.cpp
+    platform/game_messages.h
     platform/network.cpp
     platform/patch.cpp
     platform/patch.h

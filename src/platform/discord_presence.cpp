@@ -74,28 +74,48 @@ DiscordPresence::DiscordPresence(std::string_view applicationId, std::wstring_vi
         return;
     }
 
+    connected_ = true;
+    worker_    = std::jthread([this](std::stop_token stop)
+                              {
+                               publish(stop);
+                              });
     logLine("Discord Rich Presence connected");
 }
 
 auto DiscordPresence::connected() const noexcept -> bool
 {
-    return static_cast<bool>(pipe_);
+    return connected_;
 }
 
-void DiscordPresence::set(const Activity& activity) noexcept
+void DiscordPresence::set(const Activity& activity)
 {
-    static auto nonce = 0;
-    try
     {
-        if (pipe_ && !(send(frameOpcode, activityCommand(activity, GetCurrentProcessId(), ++nonce)) && receive()))
+        const std::lock_guard lock(mutex_);
+        pending_ = activity;
+    }
+
+    wake_.notify_one();
+}
+
+void DiscordPresence::publish(std::stop_token stop)
+{
+    auto nonce = 0;
+    auto lock  = std::unique_lock(mutex_);
+    while (wake_.wait(lock, stop, [this]
+                      {
+                          return pending_.has_value();
+                      }))
+    {
+        const auto activity = *std::exchange(pending_, std::nullopt);
+        lock.unlock();
+        const auto sent = send(frameOpcode, activityCommand(activity, GetCurrentProcessId(), ++nonce)) && receive();
+        lock.lock();
+        if (!sent)
         {
             logLine("Discord Rich Presence disconnected");
-            pipe_.reset();
+            connected_ = false;
+            return;
         }
-    }
-    catch (const std::exception& error)
-    {
-        logLine("Discord Rich Presence failed: {}", error.what());
     }
 }
 

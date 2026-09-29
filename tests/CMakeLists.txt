@@ -83,3 +83,9 @@ loader_test(discord_presence_tests
     platform/discord_presence_tests.cpp
     ${loader_source_dir}/platform/discord_presence.cpp)
 target_link_libraries(discord_presence_tests PRIVATE nlohmann_json::nlohmann_json WIL::WIL)
+
+loader_test(game_messages_tests
+    platform/game_messages_tests.cpp
+    ${loader_source_dir}/platform/game_messages.cpp
+    ${loader_source_dir}/platform/patch.cpp)
+target_link_libraries(game_messages_tests PRIVATE loader_config)

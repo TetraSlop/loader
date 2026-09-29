@@ -1,9 +1,14 @@
 #pragma once
 #include <windows.h>
 
+#include <atomic>
+#include <condition_variable>
 #include <cstdint>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <wil/resource.h>
 
 namespace tmloader
@@ -21,19 +26,26 @@ struct Activity
 // Discord Rich Presence over the desktop client's local IPC pipe. Silent no-op
 // when Discord isn't running. Connect before the process lowers its integrity:
 // a low-integrity process cannot open the pipe, but an already open handle keeps working.
+// set() only records the latest activity; a worker thread sends it.
 class DiscordPresence
 {
 public:
     explicit DiscordPresence(std::string_view applicationId, std::wstring_view pipePrefix = L"\\\\.\\pipe\\discord-ipc-");
 
     auto connected() const noexcept -> bool;
-    void set(const Activity& activity) noexcept;
+    void set(const Activity& activity);
 
 private:
     auto send(std::uint32_t opcode, const std::string& payload) -> bool;
     auto receive() -> bool;
+    void publish(std::stop_token stop);
 
-    wil::unique_hfile pipe_;
+    wil::unique_hfile           pipe_;
+    std::atomic<bool>           connected_{ false };
+    std::mutex                  mutex_;
+    std::condition_variable_any wake_;
+    std::optional<Activity>     pending_;
+    std::jthread                worker_;
 };
 
 // One IPC frame: little-endian opcode and length, then the JSON payload.

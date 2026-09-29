@@ -36,6 +36,7 @@ folders.
 | `platform/desktop` | Removal of global keyboard hooks, cursor warping and focus stealing |
 | `platform/audio` | DirectSound 8 factory |
 | `platform/discord_presence` | Discord Rich Presence over the desktop client's IPC pipe, opened before the process lowers its integrity |
+| `platform/game_messages` | Game phase (menus, lobby, match, results, watching) from incoming game messages, for Rich Presence |
 | `platform/patch` | `replacePointer` and `setImport` |
 | `textures/` | Texture pack manifests, HD companions and native upload hooks |
 | `ui/` | Game window, per-account preferences, the shared ImGui window host, the settings panel and the hosted launcher |
@@ -291,6 +292,20 @@ Preferences are stored per account as JSON in
 `runtime-dir/settings/<POL-ID>.json`, with the same path and hard-link
 protections as logs. Malformed files fall back to defaults; out-of-range sizes
 and scales fall back individually. Only the eight advertised scales are accepted.
+
+## Game messages
+
+Every incoming game message passes the game's `GTM0` ingress check at `+1A2B90`,
+which receives one queued 0x220-byte record with the message text at `+0x1D`.
+The message pump's call to it at `+19E57F` is redirected to a wrapper that calls
+the original check and, for accepted messages, reads the `GTM0G` header: family,
+reserved, subtype and argument as two hex digits each. Match messages are family
+`0x43`; init, turn and battle subtypes mean a match, `ResultData` (`0x0D`) the
+results, a `Continue` reply (`0x11`) with argument 1 a rematch and 2 the lobby,
+a `Quit` reply (`0x05`) the lobby and `WatchInfo`/`WatchCard` spectating.
+Room-service (`GTM0L`) traffic marks reaching the lobby. With `--diagnostics`
+the loader logs each message header (never bodies). The message layouts are
+documented in the separate TMPackets repository.
 
 ## Known limitations
 

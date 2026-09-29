@@ -106,8 +106,9 @@ Logs, screenshots and per-account preferences are written under
 
 ### Discord Rich Presence
 
-With `discord-app-id` set, Discord shows "Playing online" (with the server) or
-"Playing on a local server", plus the time played. Use the application ID from
+With `discord-app-id` set, Discord shows "Playing online on <server>" or
+"Playing on a local server", what you are doing (in the menus, in the lobby, in
+a match, viewing results or watching a match) and how long you have been at it. Use the application ID from
 the Discord developer portal (the same application as hosted sign-in works) and
 upload a Rich Presence art asset named `logo`. Discord must be running before
 the game starts; the loader talks to it over Discord's local IPC pipe.
