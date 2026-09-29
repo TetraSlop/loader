@@ -5,6 +5,8 @@
 #include "imgui_impl_win32.h"
 #include <algorithm>
 #include <d3d9.h>
+#include <filesystem>
+#include <wil/resource.h>
 #include <wrl/client.h>
 
 extern IMGUI_IMPL_API auto ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM) -> LRESULT;
@@ -157,6 +159,13 @@ void applyImGuiStyle(const float scale)
     io.LogFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     ImGui::StyleColorsDark();
+    // Segoe UI reads better than ImGui's bitmap font; it ships with every Windows install.
+    const auto font = std::filesystem::path(L"C:/Windows/Fonts/segoeui.ttf");
+    if (std::filesystem::exists(font))
+    {
+        io.Fonts->AddFontFromFileTTF(font.string().c_str(), 17.0f);
+    }
+
     auto& style         = ImGui::GetStyle();
     style.WindowPadding = ImVec2(18, 16);
     style.ItemSpacing   = ImVec2(10, 10);
@@ -165,16 +174,25 @@ void applyImGuiStyle(const float scale)
     style.FontScaleDpi = scale;
 }
 
-auto runImGuiWindow(const ImGuiWindowSpec& spec, const std::function<bool()>& frame, const std::function<void(HWND)>& created) -> bool
+auto runImGuiWindow(const ImGuiWindowSpec& spec, const std::function<bool()>& frame, const ImGuiWindowCreated& created) -> bool
 {
     ImGui_ImplWin32_EnableDpiAwareness();
-    const auto instance = GetModuleHandleW(nullptr);
-    auto       wc       = WNDCLASSEXW{ sizeof(WNDCLASSEXW) };
-    wc.style            = CS_CLASSDC;
-    wc.lpfnWndProc      = windowProc;
-    wc.hInstance        = instance;
-    wc.hCursor          = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512)); // IDC_ARROW
-    wc.lpszClassName    = className;
+    // Image loading uses WIC; an existing apartment of either kind is fine.
+    const auto com          = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const auto uninitialize = wil::scope_exit([com]
+                                              {
+                                                  if (SUCCEEDED(com))
+                                                  {
+                                                      CoUninitialize();
+                                                  }
+                                              });
+    const auto instance     = GetModuleHandleW(nullptr);
+    auto       wc           = WNDCLASSEXW{ sizeof(WNDCLASSEXW) };
+    wc.style                = CS_CLASSDC;
+    wc.lpfnWndProc          = windowProc;
+    wc.hInstance            = instance;
+    wc.hCursor              = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512)); // IDC_ARROW
+    wc.lpszClassName        = className;
     RegisterClassExW(&wc); // Fails harmlessly when a previous window registered it.
 
     const auto scale     = ImGui_ImplWin32_GetDpiScaleForMonitor(MonitorFromWindow(spec.owner, MONITOR_DEFAULTTOPRIMARY));
@@ -230,7 +248,7 @@ auto runImGuiWindow(const ImGuiWindowSpec& spec, const std::function<bool()>& fr
     {
         if (created)
         {
-            created(hwnd);
+            created(hwnd, device.Get());
         }
 
         ShowWindow(hwnd, SW_SHOW);

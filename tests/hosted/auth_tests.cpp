@@ -139,6 +139,13 @@ TEST_CASE("Token responses require both tokens", "[hosted]")
     REQUIRE(tokens.userId.empty());
     const auto withUser = parseTokens(jsonResponse(200, R"({"access_token":"a","refresh_token":"r","expires_in":3600,"user":{"id":"11111111-1111-4111-8111-111111111111","email":"x@example.com"}})"));
     REQUIRE(withUser.userId == "11111111-1111-4111-8111-111111111111");
+
+    const auto discord = parseTokens(jsonResponse(200, R"({"access_token":"a","refresh_token":"r","expires_in":3600,"user":{"id":"u","user_metadata":{"full_name":"account_name","avatar_url":"https://cdn.discordapp.com/avatars/1/a.png","custom_claims":{"global_name":"Display Name"}}}})"));
+    REQUIRE(discord.displayName == "Display Name");
+    REQUIRE(discord.avatarUrl == "https://cdn.discordapp.com/avatars/1/a.png");
+    const auto fallback = parseTokens(jsonResponse(200, R"({"access_token":"a","refresh_token":"r","expires_in":3600,"user":{"id":"u","user_metadata":{"full_name":"account_name"}}})"));
+    REQUIRE(fallback.displayName == "account_name");
+    REQUIRE(fallback.avatarUrl.empty());
 }
 
 TEST_CASE("Hosted origins require HTTPS except explicit loopback development", "[hosted]")

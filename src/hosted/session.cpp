@@ -100,7 +100,7 @@ void HostedSession::logout() noexcept
     tokens_.reset();
 }
 
-auto HostedSession::userId() -> std::string
+auto HostedSession::profile() -> Profile
 {
     const std::lock_guard lock(tokenMutex_);
     if (!tokens_)
@@ -108,7 +108,31 @@ auto HostedSession::userId() -> std::string
         return {};
     }
 
-    return tokens_->userId;
+    return { tokens_->userId, tokens_->displayName, tokens_->avatarUrl };
+}
+
+auto HostedSession::avatar() -> std::string
+{
+    const auto url = profile().avatarUrl;
+    if (!url.starts_with("https://"))
+    {
+        return {};
+    }
+
+    try
+    {
+        const auto response = http_.send("GET", url);
+        if (response.status == 200)
+        {
+            return response.body;
+        }
+    }
+    catch (const std::exception& error)
+    {
+        logLine("Avatar download failed: {}", error.what());
+    }
+
+    return {};
 }
 
 void HostedSession::remember(Tokens tokens)

@@ -54,6 +54,8 @@ add_executable(tmloader WIN32
     platform/patch.cpp
     platform/patch.h
     platform/system.cpp
+    ui/image.cpp
+    ui/image.h
     ui/imgui_window.cpp
     ui/imgui_window.h
     ui/launcher.cpp

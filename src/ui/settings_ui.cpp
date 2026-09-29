@@ -212,7 +212,7 @@ auto panelFrame() -> bool
 void panelMain()
 {
     const auto spec = ImGuiWindowSpec{ L"Tetra Master settings", 540, 770, gameWindow };
-    runImGuiWindow(spec, panelFrame, [](HWND hwnd)
+    runImGuiWindow(spec, panelFrame, [](HWND hwnd, IDirect3DDevice9*)
                    {
                        panelWindow = hwnd;
                    });

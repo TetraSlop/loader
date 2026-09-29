@@ -68,7 +68,7 @@ loader_test(texture_replacements_tests
 target_link_libraries(texture_replacements_tests PRIVATE loader_textures user32 advapi32 ole32)
 
 loader_test(settings_ui_tests ui/settings_ui_tests.cpp ${loader_source_dir}/ui/imgui_window.cpp)
-target_link_libraries(settings_ui_tests PRIVATE nlohmann_json::nlohmann_json loader_imgui user32 gdi32)
+target_link_libraries(settings_ui_tests PRIVATE nlohmann_json::nlohmann_json WIL::WIL loader_imgui user32 gdi32)
 
 loader_test(window_messages_tests ui/window_messages_tests.cpp)
 target_link_libraries(window_messages_tests PRIVATE nlohmann_json::nlohmann_json loader_config user32 gdi32)

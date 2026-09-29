@@ -109,9 +109,19 @@ void requireSameOrigin(const std::string& stream, const std::string& origin)
     }
 }
 
-auto page(const char* status, const char* message) -> std::string
+constexpr auto pageStyle = "body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0c0e14;color:#e8e6e3;"
+                           "font:17px 'Segoe UI',system-ui,sans-serif}main{text-align:center;padding:2rem 3rem;border-radius:12px;"
+                           "background:#171a23;box-shadow:0 8px 32px #0008}h1{margin:0 0 .5rem;font-size:1.6rem;letter-spacing:.08em}"
+                           "p{margin:.25rem 0;color:#a8a6a3}";
+
+auto page(const char* status, const char* heading, const char* message) -> std::string
 {
-    const auto body = std::format("<!doctype html><title>Tetra Master</title><p>{}</p>", message);
+    // Tabs the page opened itself can close; otherwise the message stays.
+    const auto body = std::format("<!doctype html><meta charset=utf-8><title>Tetra Master</title><style>{}</style>"
+                                  "<main><h1>{}</h1><p>{}</p></main><script>setTimeout(()=>window.close(),1500)</script>",
+                                  pageStyle,
+                                  heading,
+                                  message);
     return std::format("HTTP/1.1 {}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n{}", status, body.size(), body);
 }
 
@@ -237,9 +247,30 @@ auto parseTokens(const Response& response) -> Tokens
     const auto body   = json(succeeded(response));
     auto       tokens = Tokens{ body.at("access_token").get<std::string>(), body.at("refresh_token").get<std::string>() };
     tokens.expiresAt  = std::chrono::system_clock::now() + std::chrono::seconds(body.at("expires_in").get<int>());
-    if (body.contains("user") && body["user"].contains("id") && body["user"]["id"].is_string())
+    const auto text   = [](const nlohmann::json& object, const char* key) -> std::string
     {
-        tokens.userId = body["user"]["id"].get<std::string>();
+        if (object.is_object() && object.contains(key) && object[key].is_string())
+        {
+            return object[key].get<std::string>();
+        }
+
+        return {};
+    };
+    if (body.contains("user"))
+    {
+        const auto& user    = body["user"];
+        tokens.userId       = text(user, "id");
+        const auto metadata = user.value("user_metadata", nlohmann::json::object());
+        // Discord's global display name, falling back to the account name.
+        for (const auto& name : { text(metadata.value("custom_claims", nlohmann::json::object()), "global_name"), text(metadata, "full_name"), text(metadata, "name") })
+        {
+            if (tokens.displayName.empty())
+            {
+                tokens.displayName = name;
+            }
+        }
+
+        tokens.avatarUrl = text(metadata, "avatar_url");
     }
 
     if (tokens.access.empty() || tokens.refresh.empty())
@@ -327,17 +358,17 @@ auto AuthClient::signIn(const OpenBrowser& openBrowser, std::stop_token stop) ->
         const auto callback = parseCallback(readRequest(client.get()), path);
         if (callback.kind == Callback::Kind::other)
         {
-            reply(client.get(), page("404 Not Found", "Unknown sign-in request."));
+            reply(client.get(), page("404 Not Found", "TETRA MASTER", "This sign-in link is no longer valid."));
             continue;
         }
 
         if (callback.kind == Callback::Kind::error)
         {
-            reply(client.get(), page("400 Bad Request", "Sign-in was not completed. You can close this tab."));
+            reply(client.get(), page("400 Bad Request", "Sign-in cancelled", "Return to Tetra Master to try again. You can close this tab."));
             throw std::runtime_error("Sign-in was cancelled: " + callback.value);
         }
 
-        reply(client.get(), page("200 OK", "Signed in. You can close this tab and return to Tetra Master."));
+        reply(client.get(), page("200 OK", "You're signed in", "Returning to Tetra Master. You can close this tab."));
         const auto body = nlohmann::json{ { "auth_code", callback.value }, { "code_verifier", verifier } }.dump();
         return parseTokens(http_.send("POST", auth.supabaseUrl + "/auth/v1/token?grant_type=pkce", { { "apikey", auth.publishableKey }, { "Content-Type", "application/json" } }, body));
     }

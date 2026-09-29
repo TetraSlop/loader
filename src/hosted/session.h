@@ -27,8 +27,17 @@ public:
     auto resume() -> bool;
     auto signIn(const OpenBrowser& openBrowser, std::stop_token stop) -> bool;
     auto signedIn() -> bool;
-    // The signed-in Supabase user UUID, for enrollment by the server operator.
-    auto userId() -> std::string;
+
+    struct Profile
+    {
+        std::string userId; // Supabase UUID, for enrollment by the server operator.
+        std::string displayName;
+        std::string avatarUrl;
+    };
+
+    auto profile() -> Profile;
+    // The Discord avatar image bytes; empty when there is none or it cannot be fetched.
+    auto avatar() -> std::string;
     // Revokes play, forgets the remembered login and signs out locally.
     void logout() noexcept;
 

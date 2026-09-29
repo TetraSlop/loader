@@ -40,6 +40,14 @@ def loopback(value):
         return value.rstrip("/") + "/auth/v1"
     return original(value)
 provider.validate_project_url = config.validate_project_url = loopback
+import tmserver.accounts.identities as identities
+from pydantic import field_validator
+class LoopbackIdentityLink(identities.IdentityLink):
+    @field_validator("issuer")
+    @classmethod
+    def canonical_issuer(cls, value):
+        return value
+identities.IdentityLink = LoopbackIdentityLink
 from tmserver.cli.serve import main
 sys.argv = ["tmserver", *sys.argv[1:]]
 main()
@@ -137,9 +145,14 @@ def main() -> int:
                 }
             )
         )
-        command = [sys.executable, "-c", BOOTSTRAP, "--state", str(Path(directory) / "state.json")]
-        command += ["--game-port", "0", "--profile-port", "0", "--auth-config", str(config)]
-        command += ["--auth-port", "0", "--auth-insecure-loopback"]
+        # tmserver runs the original rules through a Win32 bridge, so it needs its 32-bit Python.
+        tmserver = args.tmserver.resolve()
+        python = tmserver / "build/python-x86/python.exe"
+        command = [str(python if python.exists() else sys.executable), "-c", BOOTSTRAP]
+        command += ["--state", str(Path(directory) / "state.json"), "--game-port", "0", "--profile-port", "0"]
+        command += ["--auth-config", str(config), "--auth-port", "0", "--auth-insecure-loopback"]
+        command += ["--rules-image", str(tmserver / "var/native/TM_emulated_mapped.dll")]
+        command += ["--rules-bridge", str(tmserver / "var/native/tm_original_rules.dll")]
         server = subprocess.Popen(
             command, cwd=args.tmserver, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
         )

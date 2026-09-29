@@ -41,6 +41,9 @@ struct Tokens
     std::chrono::system_clock::time_point expiresAt;
     // Supabase user UUID; the server operator enrolls this, never a display name.
     std::string userId;
+    // Discord profile for display only.
+    std::string displayName;
+    std::string avatarUrl;
 };
 
 struct PlaySession
