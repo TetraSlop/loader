@@ -112,7 +112,6 @@ auto main(int argc, char** argv) -> int
         }
 
         tmloader::validateRuntime(config);
-        tmloader::options = config;
         // The log is opened first because a low-integrity token cannot create it.
         tmloader::openLog(config.log);
         const auto exitCode = play(config);

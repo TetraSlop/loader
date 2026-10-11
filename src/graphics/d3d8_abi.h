@@ -61,7 +61,6 @@ enum Resource : unsigned
 
 constexpr DWORD kFormatA8R8G8B8           = 21;
 constexpr DWORD kFormatX8R8G8B8           = 22;
-constexpr DWORD kPoolDefault              = 0;
 constexpr DWORD kPoolManaged              = 1;
 constexpr DWORD kSwapEffectCopy           = 3;
 constexpr DWORD kLockReadOnly             = 0x10;

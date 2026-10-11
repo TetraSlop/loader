@@ -4,9 +4,8 @@
 #include "graphics/d3d8_abi.h"
 #include <algorithm>
 #include <atomic>
-#include <cstdint>
+#include <cstdlib>
 #include <format>
-#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <vector>
@@ -54,18 +53,8 @@ struct Capture
 // Copies the backbuffer to 24-bit BGR; render-target alpha is unreliable.
 auto readBackbuffer(void* device) -> Capture
 {
-    if (!device)
-    {
-        throw std::runtime_error("Game renderer is unavailable");
-    }
-
     ComPtr<IUnknown> surface;
     check(callMethod(device, d3d8::GetBackBuffer, UINT{ 0 }, DWORD{ 0 }, surface.GetAddressOf()), "Get game backbuffer");
-    if (!surface)
-    {
-        throw std::runtime_error("Game backbuffer is unavailable");
-    }
-
     auto desc = d3d8::SurfaceDesc{};
     check(callMethod(surface.Get(), d3d8::SurfaceGetDesc, &desc), "Read game backbuffer dimensions");
     if (desc.format != d3d8::kFormatA8R8G8B8 && desc.format != d3d8::kFormatX8R8G8B8)
@@ -73,21 +62,18 @@ auto readBackbuffer(void* device) -> Capture
         throw std::runtime_error("Screenshot requires a 32-bit game backbuffer");
     }
 
-    if (!desc.width || !desc.height || desc.width > 16384 || desc.height > 16384)
+    if (!desc.width || !desc.height)
     {
         throw std::runtime_error("Invalid game backbuffer dimensions");
     }
 
     auto locked = d3d8::LockedRect{};
     check(callMethod(surface.Get(), d3d8::SurfaceLockRect, &locked, static_cast<const RECT*>(nullptr), d3d8::kLockReadOnly), "Read game backbuffer");
-    const auto unlock   = wil::scope_exit([&]
-                                          {
+    const auto unlock = wil::scope_exit([&]
+                                        {
                                             callMethod(surface.Get(), d3d8::SurfaceUnlock);
-                                          });
-    const auto pitch    = int64_t{ locked.pitch };
-    const auto rowBytes = static_cast<uint64_t>(std::abs(pitch));
-    if (!locked.bits || rowBytes < uint64_t{ desc.width } * 4 ||
-        rowBytes * (desc.height - 1) > static_cast<uint64_t>(std::numeric_limits<ptrdiff_t>::max()))
+                                        });
+    if (!locked.bits || static_cast<UINT>(std::abs(locked.pitch)) < desc.width * 4)
     {
         throw std::runtime_error("Invalid game backbuffer row pitch");
     }
@@ -95,7 +81,7 @@ auto readBackbuffer(void* device) -> Capture
     auto capture = Capture{ desc.width, desc.height, std::vector<BYTE>(size_t{ desc.width } * desc.height * 3) };
     for (UINT y = 0; y < capture.height; ++y)
     {
-        const auto* const source      = locked.bits + static_cast<ptrdiff_t>(int64_t{ y } * pitch);
+        const auto* const source      = locked.bits + static_cast<ptrdiff_t>(y) * locked.pitch;
         auto* const       destination = capture.bgr.data() + size_t{ y } * capture.width * 3;
         for (UINT x = 0; x < capture.width; ++x)
         {
@@ -144,19 +130,13 @@ auto encodePng(const Capture& capture) -> std::vector<BYTE>
     return { bytes, bytes + stat.cbSize.QuadPart };
 }
 
-// Returns false if the file already exists; never overwrites one.
-auto writeNewFile(const std::filesystem::path& path, const std::vector<BYTE>& bytes) -> bool
+// Fails if the file already exists; never overwrites one.
+void writeNewFile(const std::filesystem::path& path, const std::vector<BYTE>& bytes)
 {
     auto file = wil::unique_hfile(CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr));
     if (!file)
     {
-        const auto error = GetLastError();
-        if (error == ERROR_FILE_EXISTS || error == ERROR_ALREADY_EXISTS)
-        {
-            return false;
-        }
-
-        check(HRESULT_FROM_WIN32(error), "Create screenshot file");
+        check(HRESULT_FROM_WIN32(GetLastError()), "Create screenshot file");
     }
 
     auto remove  = wil::scope_exit([&]
@@ -176,7 +156,6 @@ auto writeNewFile(const std::filesystem::path& path, const std::vector<BYTE>& by
     }
 
     remove.release();
-    return true;
 }
 
 auto writeScreenshot(const std::vector<BYTE>& png) -> std::filesystem::path
@@ -184,23 +163,17 @@ auto writeScreenshot(const std::vector<BYTE>& png) -> std::filesystem::path
     auto time = SYSTEMTIME{};
     GetLocalTime(&time);
     const auto directory = options.runtimeDir / "logs/screenshots";
-    for (unsigned attempt = 0; attempt < 100; ++attempt)
+    // Milliseconds, process and a per-process counter make the name unique.
+    const auto name = std::format(L"TetraMaster_{:04}{:02}{:02}_{:02}{:02}{:02}_{:03}_{}_{}.png", time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond, time.wMilliseconds, GetCurrentProcessId(), sequence.fetch_add(1));
+    const auto path = directory / name;
+    if (!outputPathAllowed(options, path))
     {
-        const auto name = std::format(L"TetraMaster_{:04}{:02}{:02}_{:02}{:02}{:02}_{:03}_{}_{}.png", time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond, time.wMilliseconds, GetCurrentProcessId(), sequence.fetch_add(1));
-        const auto path = directory / name;
-        if (!outputPathAllowed(options, path))
-        {
-            throw std::runtime_error("Screenshot folder is not safe");
-        }
-
-        std::filesystem::create_directories(directory);
-        if (writeNewFile(path, png))
-        {
-            return path;
-        }
+        throw std::runtime_error("Screenshot folder is not safe");
     }
 
-    throw std::runtime_error("Could not choose an unused screenshot filename");
+    std::filesystem::create_directories(directory);
+    writeNewFile(path, png);
+    return path;
 }
 
 void saveScreenshot(void* device)
@@ -229,15 +202,9 @@ void saveScreenshot(void* device)
 
 void requestScreenshot() noexcept
 {
-    try
-    {
-        const std::lock_guard lock(statusMutex);
-        pending.store(true);
-        status = "Screenshot queued for the next game frame.";
-    }
-    catch (...)
-    {
-    }
+    const std::lock_guard lock(statusMutex);
+    pending.store(true);
+    status = "Screenshot queued for the next game frame.";
 }
 
 auto screenshotStatus() -> std::string
@@ -270,13 +237,7 @@ void saveRequestedScreenshot(void* device) noexcept
     catch (const std::exception& error)
     {
         logLine("Screenshot failed: {}", error.what());
-        try
-        {
-            finishStatus(std::string("Screenshot failed: ") + error.what());
-        }
-        catch (...)
-        {
-        }
+        finishStatus(std::string("Screenshot failed: ") + error.what());
     }
 }
 

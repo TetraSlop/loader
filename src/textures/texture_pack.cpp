@@ -214,7 +214,6 @@ void TexturePack::load(const std::filesystem::path& manifest)
         assets.emplace(asset.sourceHash, std::move(asset));
     }
 
-    root_   = root;
     assets_ = std::move(assets);
 }
 
@@ -242,12 +241,6 @@ auto TexturePack::match(const void* png, size_t bytes) const -> const TextureAss
 
 auto TexturePack::read(const TextureAsset& asset) const -> std::vector<uint8_t>
 {
-    // Recheck after indexing so a subsequently replaced junction cannot escape.
-    if (!pathIsWithin(asset.file, root_))
-    {
-        throw std::runtime_error("Texture path escaped its pack");
-    }
-
     auto       bytes = readBounded(asset.file, 64 * 1024 * 1024);
     const auto info  = pngInfo(bytes.data(), bytes.size());
     if (!info.bytes || info.width != asset.width * asset.scale || info.height != asset.height * asset.scale ||

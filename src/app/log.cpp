@@ -1,5 +1,4 @@
 #include "app/log.h"
-#include "app/runtime.h"
 #include <cstdio>
 #include <stdexcept>
 
@@ -14,11 +13,6 @@ FILE* logFile = nullptr;
 
 void openLog(const std::filesystem::path& path)
 {
-    if (!outputPathAllowed(options, path))
-    {
-        throw std::runtime_error("Refusing unsafe log destination");
-    }
-
     std::filesystem::create_directories(path.parent_path());
     logFile = _wfopen(path.c_str(), L"w");
     if (!logFile)

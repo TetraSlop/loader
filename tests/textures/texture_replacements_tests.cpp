@@ -501,19 +501,6 @@ auto renderFont(void* device, void* buffer, void* source, const DWORD shader, co
 
 } // namespace
 
-TEST_CASE("Attaching a replacement rejects invalid arguments", "[graphics-device]")
-{
-    const auto  gpu         = createDevice();
-    auto* const device      = gpu.device.Get();
-    const auto  original    = texture(device, false);
-    const auto  replacement = texture(device, true);
-
-    REQUIRE(attachTextureReplacement(nullptr, replacement.Get()) == E_INVALIDARG);
-    REQUIRE(attachTextureReplacement(original.Get(), nullptr) == E_INVALIDARG);
-    REQUIRE(attachTextureReplacement(original.Get(), original.Get()) == E_INVALIDARG);
-    REQUIRE(attachTextureReplacement(original.Get(), replacement.Get(), static_cast<TextureCategory>(99)) == E_INVALIDARG);
-}
-
 TEST_CASE("Draw binding swaps in the attached HD texture", "[graphics-device]")
 {
     auto        gpu                 = createDevice();

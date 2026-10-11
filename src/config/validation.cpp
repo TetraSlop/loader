@@ -22,11 +22,6 @@ constexpr auto kViewerHash = "73B1864BF522D3AA6EC28E9F4BB226FCEE956F7F4848A238C9
 
 auto sha256(const void* data, size_t bytes) -> std::array<std::uint8_t, 32>
 {
-    if (bytes > ULONG_MAX)
-    {
-        throw std::runtime_error("SHA256 input too large");
-    }
-
     auto digest = std::array<std::uint8_t, 32>{};
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
     if (BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, static_cast<PUCHAR>(const_cast<void*>(data)), static_cast<ULONG>(bytes), digest.data(), static_cast<ULONG>(digest.size())) < 0)

@@ -54,6 +54,8 @@ public:
     auto STDMETHODCALLTYPE GetImageInfo(LPDIDEVICEIMAGEINFOHEADERA) -> HRESULT override;
 
 private:
+    void invalidateSample() noexcept;
+
     ULONG references_       = 1;
     HWND  window_           = nullptr;
     POINT previous_         = {};

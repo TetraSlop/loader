@@ -1,4 +1,3 @@
-#include "app/log.h"
 #include "app/runtime.h"
 #include "graphics/render_scale.h"
 #include "graphics/screenshot.h"
@@ -79,7 +78,7 @@ void displaySettings(WindowSettings value)
     {
         if (resolution == 0)
         {
-            postWindowAction(WindowAction::autoResolution, resolution - 1);
+            postWindowAction(WindowAction::autoResolution);
         }
         else
         {
@@ -253,15 +252,7 @@ void toggleSettingsPanel()
     }
 
     closeRequested = false;
-    try
-    {
-        std::thread(panelMain).detach();
-    }
-    catch (const std::exception& e)
-    {
-        running = false;
-        logLine("Cannot open settings: {}", e.what());
-    }
+    std::thread(panelMain).detach();
 }
 
 } // namespace tmloader

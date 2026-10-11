@@ -46,7 +46,6 @@ public:
     auto size() const -> size_t;
 
 private:
-    std::filesystem::path                         root_;
     std::unordered_map<std::string, TextureAsset> assets_;
 };
 

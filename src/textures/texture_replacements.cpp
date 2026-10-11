@@ -5,7 +5,6 @@
 #include "textures/texture_pack.h"
 #include "textures/texture_replacement.h"
 #include <atomic>
-#include <new>
 #include <wrl/client.h>
 
 namespace tmloader
@@ -147,19 +146,8 @@ void initializeTextureReplacements(HMODULE game, const std::filesystem::path& ma
 
 auto attachTextureReplacement(void* original, void* replacement, TextureCategory category) -> HRESULT
 {
-    if (!original || !replacement || original == replacement ||
-        (category != TextureCategory::artwork && category != TextureCategory::font))
-    {
-        return E_INVALIDARG;
-    }
-
-    auto* const attachment = new (std::nothrow) Replacement(static_cast<IUnknown*>(replacement), category);
-    if (!attachment)
-    {
-        return E_OUTOFMEMORY;
-    }
-
-    const auto hr = callMethod(original, d3d8::SetPrivateData, &kReplacementKey, static_cast<const void*>(attachment), DWORD{ sizeof(IUnknown*) }, d3d8::kPrivateDataObject);
+    auto* const attachment = new Replacement(static_cast<IUnknown*>(replacement), category);
+    const auto  hr         = callMethod(original, d3d8::SetPrivateData, &kReplacementKey, static_cast<const void*>(attachment), DWORD{ sizeof(IUnknown*) }, d3d8::kPrivateDataObject);
     attachment->Release();
     if (SUCCEEDED(hr))
     {
@@ -172,11 +160,6 @@ auto attachTextureReplacement(void* original, void* replacement, TextureCategory
 auto WINAPI uploadTextureWithReplacement(void* device, const void* source, UINT bytes, UINT width, UINT height, UINT levels, DWORD usage, DWORD format, DWORD pool, DWORD filter, DWORD mipFilter, DWORD colorKey, void* info, void* palette, void** output) -> HRESULT
 {
     // The game always gets its original texture; the replacement is only bound while drawing.
-    if (!nativeUpload)
-    {
-        return E_UNEXPECTED;
-    }
-
     const HRESULT originalResult = nativeUpload(device, source, bytes, width, height, levels, usage, format, pool, filter, mipFilter, colorKey, info, palette, output);
     if (FAILED(originalResult) || !output || !*output)
     {

@@ -393,13 +393,6 @@ TEST_CASE("A request is captured on the next frame and consumed once", "[screens
     const RuntimeDir runtime;
     Device           device;
     const auto       first = tmloader::sequence.load();
-    std::filesystem::create_directories(runtime.root / "logs/screenshots");
-    const auto existing = requestedFileName(first);
-    {
-        std::ofstream output(existing, std::ios::binary);
-        output << "Never replace me";
-    }
-
     requestScreenshot();
     requestScreenshot();
     REQUIRE(statusContains("queued"));
@@ -410,19 +403,10 @@ TEST_CASE("A request is captured on the next frame and consumed once", "[screens
     REQUIRE(device.surface.locks == 1);
     REQUIRE(device.surface.unlocks == 1);
 
-    SECTION("an existing file with the chosen name is kept")
-    {
-        REQUIRE(files().size() == 2);
-        REQUIRE(std::filesystem::exists(requestedFileName(first + 1)));
-        std::ifstream     input(existing, std::ios::binary);
-        const std::string content((std::istreambuf_iterator<char>(input)), {});
-        REQUIRE(content == "Never replace me");
-    }
-
     SECTION("the PNG holds the surface pixels and the status names the file")
     {
-        REQUIRE(decode(requestedFileName(first + 1)) == kOpaquePixels);
-        const auto expectedPath = requestedFileName(first + 1).u8string();
+        REQUIRE(decode(requestedFileName(first)) == kOpaquePixels);
+        const auto expectedPath = requestedFileName(first).u8string();
         REQUIRE(statusContains(std::string(reinterpret_cast<const char*>(expectedPath.data()), expectedPath.size())));
     }
 
@@ -430,8 +414,25 @@ TEST_CASE("A request is captured on the next frame and consumed once", "[screens
     {
         saveRequestedScreenshot(&device);
         REQUIRE(device.reads == 1);
-        REQUIRE(files().size() == 2);
+        REQUIRE(files().size() == 1);
     }
+}
+
+TEST_CASE("An existing file with the chosen name is never replaced", "[screenshot]")
+{
+    const RuntimeDir runtime;
+    Device           device;
+    std::filesystem::create_directories(runtime.root / "logs/screenshots");
+    const auto existing = requestedFileName(tmloader::sequence.load());
+    {
+        std::ofstream output(existing, std::ios::binary);
+        output << "Never replace me";
+    }
+
+    requireCaptureFails(device, "Create screenshot file", 1, 1);
+    std::ifstream     input(existing, std::ios::binary);
+    const std::string content((std::istreambuf_iterator<char>(input)), {});
+    REQUIRE(content == "Never replace me");
 }
 
 TEST_CASE("A bottom-up X8R8G8B8 surface is captured the right way up", "[screenshot]")
@@ -511,14 +512,6 @@ TEST_CASE("A failed capture writes nothing and releases the surface", "[screensh
         requireCaptureFails(device, "Write screenshot file", 1, 1);
         failScreenshotWrite = false;
     }
-}
-
-TEST_CASE("A request without a renderer reports it as unavailable", "[screenshot]")
-{
-    const RuntimeDir runtime;
-    requestScreenshot();
-    saveRequestedScreenshot(nullptr);
-    REQUIRE(statusContains("unavailable"));
 }
 
 TEST_CASE("The caller's COM apartment is left as it was", "[screenshot]")

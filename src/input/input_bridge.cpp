@@ -157,15 +157,20 @@ auto STDMETHODCALLTYPE LocalMouse::SetProperty(REFGUID, LPCDIPROPHEADER) -> HRES
     return S_OK;
 }
 
-auto STDMETHODCALLTYPE LocalMouse::Acquire() -> HRESULT
+void LocalMouse::invalidateSample() noexcept
 {
     mouseSampleValid_ = false;
+}
+
+auto STDMETHODCALLTYPE LocalMouse::Acquire() -> HRESULT
+{
+    invalidateSample();
     return S_OK;
 }
 
 auto STDMETHODCALLTYPE LocalMouse::Unacquire() -> HRESULT
 {
-    mouseSampleValid_ = false;
+    invalidateSample();
     return S_OK;
 }
 
@@ -183,7 +188,7 @@ auto STDMETHODCALLTYPE LocalMouse::GetDeviceState(DWORD size, void* output) -> H
     if (pid != GetCurrentProcessId() || (window_ && foreground != window_) ||
         settingsPanelOpen())
     {
-        mouseSampleValid_ = false;
+        invalidateSample();
         takeMousePresses();
         return S_OK;
     }
@@ -198,18 +203,13 @@ auto STDMETHODCALLTYPE LocalMouse::GetDeviceState(DWORD size, void* output) -> H
     // Outside the content area the sample is invalidated, so re-entering never jumps.
     if (!window_ || !GetCursorPos(&current) || !ScreenToClient(window_, &current) || !PtInRect(&client, current))
     {
-        mouseSampleValid_ = false;
+        invalidateSample();
         takeMousePresses();
         return S_OK;
     }
 
     const auto width  = client.right - client.left;
     const auto height = client.bottom - client.top;
-    if (width <= 0 || height <= 0)
-    {
-        mouseSampleValid_ = false;
-        return S_OK;
-    }
 
     auto* const m = static_cast<DIMOUSESTATE*>(output);
     current.x -= client.left;
@@ -283,8 +283,8 @@ auto STDMETHODCALLTYPE LocalMouse::SetEventNotification(HANDLE) -> HRESULT
 
 auto STDMETHODCALLTYPE LocalMouse::SetCooperativeLevel(HWND h, DWORD flags) -> HRESULT
 {
-    window_           = h;
-    mouseSampleValid_ = false;
+    window_ = h;
+    invalidateSample();
     logLine("Input bridge cooperative window={} flags={:X}", address(h), flags);
     return S_OK;
 }
