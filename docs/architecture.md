@@ -59,7 +59,7 @@ All three default to on. Configure with, for example,
 `-DTMLOADER_HD_TEXTURES=OFF` to build without one; its options then disappear
 from `--help` and its tests are not built. To remove a feature for good,
 delete its folder and tests, then the guarded blocks and the option. The
-`hdTextures` and `hdFonts` preferences and the `Config` fields stay as plain
+`hdArtwork` and `hdFonts` preferences and the `Config` fields stay as plain
 data either way; drop them too when removing the feature permanently.
 
 The hosted launcher draws the title artwork from the HD pack when one is

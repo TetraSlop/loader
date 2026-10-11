@@ -97,12 +97,12 @@ void artworkSettings(WindowSettings value)
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextUnformatted("Artwork");
-    if (ImGui::Checkbox("Enhanced cards and artwork", &value.hdTextures))
+    if (ImGui::Checkbox("HD artwork", &value.hdArtwork))
     {
-        postWindowAction(WindowAction::hdTextures, value.hdTextures);
+        postWindowAction(WindowAction::hdArtwork, value.hdArtwork);
     }
 
-    if (ImGui::Checkbox("Enhanced fonts", &value.hdFonts))
+    if (ImGui::Checkbox("HD fonts", &value.hdFonts))
     {
         postWindowAction(WindowAction::hdFonts, value.hdFonts);
     }

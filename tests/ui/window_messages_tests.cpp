@@ -336,13 +336,13 @@ TEST_CASE("automatic resolution and the font choice are saved", "[window_message
 
     sendSetting(WindowAction::hdFonts, 0);
     REQUIRE_FALSE(currentWindowSettings().hdFonts);
-    REQUIRE(currentWindowSettings().hdTextures);
+    REQUIRE(currentWindowSettings().hdArtwork);
 
     std::ifstream updated(settingsFile());
     const auto    preferences = readWindowSettings(updated);
     REQUIRE(preferences.autoResolution);
     REQUIRE_FALSE(preferences.hdFonts);
-    REQUIRE(preferences.hdTextures);
+    REQUIRE(preferences.hdArtwork);
     updated.close();
     std::filesystem::remove_all(options.runtimeDir);
 }

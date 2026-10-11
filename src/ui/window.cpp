@@ -168,10 +168,10 @@ void applyWindowAction(HWND hwnd, WindowAction command, LPARAM value)
         case WindowAction::close:
             closeGame();
             break;
-        case WindowAction::hdTextures:
+        case WindowAction::hdArtwork:
             updateSettings([&](WindowSettings& current)
                            {
-                               current.hdTextures = value != 0;
+                               current.hdArtwork = value != 0;
                            });
             break;
         case WindowAction::hdFonts:

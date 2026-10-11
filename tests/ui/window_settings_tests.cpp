@@ -43,7 +43,7 @@ TEST_CASE("Window settings round-trip through JSON", "[window_settings]")
 {
     auto value           = WindowSettings{ 1280, 960, true, false };
     value.renderScale    = 4.5f;
-    value.hdTextures     = false;
+    value.hdArtwork      = false;
     value.autoResolution = false;
     auto stream          = std::stringstream{};
     writeWindowSettings(stream, value);
@@ -53,7 +53,7 @@ TEST_CASE("Window settings round-trip through JSON", "[window_settings]")
     REQUIRE(restored.fullscreen);
     REQUIRE_FALSE(restored.preserveAspect);
     REQUIRE(restored.renderScale == 4.5f);
-    REQUIRE_FALSE(restored.hdTextures);
+    REQUIRE_FALSE(restored.hdArtwork);
     REQUIRE(restored.hdFonts);
     REQUIRE_FALSE(restored.autoResolution);
 }

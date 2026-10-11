@@ -62,7 +62,7 @@ auto contentRect(const LONG width, const LONG height, const bool preserveAspect)
     return { x, y, x + w, y + h };
 }
 
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WindowSettings, width, height, fullscreen, preserveAspect, renderScale, hdTextures, hdFonts, autoResolution)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(WindowSettings, width, height, fullscreen, preserveAspect, renderScale, hdArtwork, hdFonts, autoResolution)
 
 auto readWindowSettings(std::istream& in) -> WindowSettings
 {

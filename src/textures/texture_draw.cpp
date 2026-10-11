@@ -21,7 +21,7 @@ DrawIndexedUPFn originalDrawIndexedUP;
 auto bindReplacement(void* device) -> TextureDrawBinding
 {
     const auto settings = currentWindowSettings();
-    return TextureDrawBinding(device, settings.hdTextures, settings.hdFonts);
+    return TextureDrawBinding(device, settings.hdArtwork, settings.hdFonts);
 }
 
 auto WINAPI hookedDrawPrimitive(void* device, DWORD type, UINT start, UINT count) -> HRESULT
