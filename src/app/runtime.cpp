@@ -1,6 +1,7 @@
 #include "app/runtime.h"
 #include "app/log.h"
 #include <aclapi.h>
+#include <dbghelp.h>
 #include <sddl.h>
 #include <stdexcept>
 #include <wil/resource.h>
@@ -15,6 +16,9 @@ char   runtimeRoot[MAX_PATH]{};
 
 namespace
 {
+
+// Stored at startup: the crash handler must not allocate or build paths.
+wchar_t crashDumpPath[MAX_PATH]{};
 
 // Wine has no mandatory integrity control.
 auto isWine() -> bool
@@ -83,26 +87,43 @@ auto lowerIntegrity() -> bool
     return result != FALSE;
 }
 
-auto WINAPI logUnhandledException(EXCEPTION_POINTERS* exception) -> LONG
+void setCrashDumpPath(const std::filesystem::path& path)
 {
-    const auto* const record  = exception->ExceptionRecord;
-    const auto* const context = exception->ContextRecord;
-    logLine("EXCEPTION {:08X} at {} EIP={:08X} ESP={:08X}", record->ExceptionCode, record->ExceptionAddress, context->Eip, context->Esp);
-    for (DWORD i = 0; i < record->NumberParameters; ++i)
+    if (wcscpy_s(crashDumpPath, path.c_str()) != 0)
     {
-        logLine("  info[{}]={:08X}", i, record->ExceptionInformation[i]);
+        throw std::runtime_error("Crash dump path is too long");
+    }
+}
+
+auto writeCrashDump(EXCEPTION_POINTERS* exception) -> bool
+{
+    if (!crashDumpPath[0])
+    {
+        SetLastError(ERROR_PATH_NOT_FOUND);
+        return false;
     }
 
-    const auto* const stack = reinterpret_cast<const DWORD*>(context->Esp);
-    __try
+    const auto file = wil::unique_hfile(CreateFileW(crashDumpPath, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr));
+    if (!file)
     {
-        for (int i = 0; i < 16; ++i)
-        {
-            logLine("  stack[{}]={:08X}", i, stack[i]);
-        }
+        return false;
     }
-    __except (EXCEPTION_EXECUTE_HANDLER)
+
+    auto info = MINIDUMP_EXCEPTION_INFORMATION{ GetCurrentThreadId(), exception, FALSE };
+    return MiniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), file.get(), MiniDumpNormal, &info, nullptr, nullptr) != FALSE;
+}
+
+auto WINAPI logUnhandledException(EXCEPTION_POINTERS* exception) -> LONG
+{
+    const auto* const record = exception->ExceptionRecord;
+    logLine("EXCEPTION {:08X} at {}", record->ExceptionCode, record->ExceptionAddress);
+    if (writeCrashDump(exception))
     {
+        logLine("Crash dump written");
+    }
+    else
+    {
+        logLine("Crash dump not written, error={:08X}", GetLastError());
     }
 
     return EXCEPTION_EXECUTE_HANDLER;

@@ -23,7 +23,7 @@ folders.
 | `app/loader` | Process setup, COM factories, Viewer setup and GameStart |
 | `app/abi.h`, `app/com.h` | COM classes, launch descriptor, Viewer vtable slots, named Viewer command-table indices and `callMethod` for vtable calls |
 | `app/hooks.h` | One install function per subsystem |
-| `app/log`, `app/runtime` | `std::format` logging (`logLine`), crash logging, low-integrity token, shared native state |
+| `app/log`, `app/runtime` | `std::format` logging (`logLine`), crash handler (one log line and a `MiniDumpNormal` minidump at `logs/tmloader-crash.dmp`), low-integrity token, shared native state |
 | `config/` | CLI and config parsing (CLI11), host and path policy, DLL hash validation, SHA256 |
 | `graphics/d3d8_abi.h` | Direct3D 8 vtable slots and structures, declared without the obsolete SDK |
 | `graphics/graphics` | Direct3D 8 hooks: device creation, reset and presentation |

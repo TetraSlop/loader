@@ -13,7 +13,7 @@ loader_test(runtime_tests
     app/runtime_tests.cpp
     ${loader_source_dir}/app/log.cpp
     ${loader_source_dir}/app/runtime.cpp)
-target_link_libraries(runtime_tests PRIVATE loader_config advapi32)
+target_link_libraries(runtime_tests PRIVATE loader_config advapi32 dbghelp)
 add_test(NAME cli_help COMMAND tmloader --help)
 
 loader_test(config_tests config/config_tests.cpp)
@@ -24,7 +24,7 @@ loader_test(render_scale_tests
     ${loader_source_dir}/graphics/render_scale.cpp
     ${loader_source_dir}/app/log.cpp
     ${loader_source_dir}/app/runtime.cpp)
-target_link_libraries(render_scale_tests PRIVATE nlohmann_json::nlohmann_json loader_config user32 advapi32)
+target_link_libraries(render_scale_tests PRIVATE nlohmann_json::nlohmann_json loader_config user32 advapi32 dbghelp)
 
 # This test supplies wmain for its separate low-integrity capture process.
 add_executable(screenshot_tests graphics/screenshot_tests.cpp)
@@ -40,7 +40,7 @@ loader_test(audio_tests
     platform/audio_tests.cpp
     ${loader_source_dir}/app/log.cpp
     ${loader_source_dir}/app/runtime.cpp)
-target_link_libraries(audio_tests PRIVATE loader_config user32 dxguid advapi32)
+target_link_libraries(audio_tests PRIVATE loader_config user32 dxguid advapi32 dbghelp)
 
 loader_test(desktop_tests platform/desktop_tests.cpp)
 target_link_libraries(desktop_tests PRIVATE user32)
@@ -78,7 +78,7 @@ if(TMLOADER_HD_TEXTURES)
         ${loader_source_dir}/app/log.cpp
         ${loader_source_dir}/graphics/render_scale.cpp
         ${loader_source_dir}/platform/patch.cpp)
-    target_link_libraries(texture_replacements_tests PRIVATE loader_textures user32 advapi32 ole32)
+    target_link_libraries(texture_replacements_tests PRIVATE loader_textures user32 advapi32 ole32 dbghelp)
 endif()
 
 if(TMLOADER_DISCORD_PRESENCE)

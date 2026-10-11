@@ -105,7 +105,9 @@ pub/home00/option.bin    Viewer settings
 ```
 
 Logs, screenshots and per-account preferences are written under
-`runtime-dir/logs` and `runtime-dir/settings`.
+`runtime-dir/logs` and `runtime-dir/settings`. If the game crashes, the loader
+also writes a minidump to `runtime-dir/logs/tmloader-crash.dmp`, replacing the
+previous one.
 
 ### Discord Rich Presence
 

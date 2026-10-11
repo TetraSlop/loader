@@ -21,6 +21,9 @@ const CLSID kGameClass     = { 0x72b2fe03, 0xba77, 0x4867, { 0x84, 0xa2, 0x7b, 0
 const IID   kGameInterface = { 0xfa287029, 0x5ec4, 0x4938, { 0xb8, 0xc5, 0x53, 0x28, 0x65, 0xdd, 0xe3, 0x69 } };
 const CLSID kCoreClass     = { 0x3501f5dd, 0x7894, 0x42df, { 0x86, 0x6a, 0xa2, 0xb6, 0x52, 0x7d, 0x80, 0x49 } };
 
+// Under the runtime folder; logs is writable at low integrity.
+constexpr auto kCrashDump = "logs/tmloader-crash.dmp";
+
 // Slot of GameStart in the game object's vtable, and where it must point.
 constexpr unsigned kGameStartSlot  = 9;
 constexpr DWORD    kGameStartRva   = 0x8210;
@@ -79,6 +82,7 @@ void initializeProcess(const Config& config)
     }
 
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    setCrashDumpPath(config.runtimeDir / kCrashDump);
     SetUnhandledExceptionFilter(logUnhandledException);
     logLine("tmloader " TMLOADER_VERSION " x86; pid={}; runtime={}", GetCurrentProcessId(), runtimeRoot);
     // The game DLL executes generated code from data pages.

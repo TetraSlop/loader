@@ -44,3 +44,28 @@ TEST_CASE("Writable runtime folders are labeled for the low-integrity game", "[r
     REQUIRE(integrityRid(root / "TM_native.dll") == SECURITY_MANDATORY_MEDIUM_RID);
     std::filesystem::remove_all(root);
 }
+
+TEST_CASE("A crash writes a minidump to the stored path", "[runtime]")
+{
+    const auto dump = std::filesystem::temp_directory_path() / ("tmloader-crash-test-" + std::to_string(GetCurrentProcessId()) + ".dmp");
+    std::filesystem::remove(dump);
+    tmloader::setCrashDumpPath(dump);
+
+    auto context = CONTEXT{};
+    RtlCaptureContext(&context);
+    auto record             = EXCEPTION_RECORD{};
+    record.ExceptionCode    = static_cast<DWORD>(EXCEPTION_ACCESS_VIOLATION);
+    record.ExceptionAddress = reinterpret_cast<void*>(context.Eip);
+    auto pointers           = EXCEPTION_POINTERS{ &record, &context };
+
+    REQUIRE(tmloader::writeCrashDump(&pointers));
+    REQUIRE(std::filesystem::file_size(dump) > 4);
+    char magic[4]{};
+    std::ifstream(dump, std::ios::binary).read(magic, sizeof(magic));
+    REQUIRE(std::string_view(magic, sizeof(magic)) == "MDMP");
+
+    // The handler overwrites the previous dump.
+    REQUIRE(tmloader::logUnhandledException(&pointers) == EXCEPTION_EXECUTE_HANDLER);
+    REQUIRE(std::filesystem::file_size(dump) > 4);
+    std::filesystem::remove(dump);
+}
