@@ -10,9 +10,7 @@ The pack covers all 503 exported images: 250 cards, 30 portraits, 42 font
 atlases and 181 UI and background images. Illustrations use D, the general
 `RealESRGAN_x4plus` model. Verified Latin characters, main-menu labels, large
 card digits and direction arrows have vector replacements, and remaining
-lettering and symbols are filtered. See
-[UI asset plan](ui-asset-plan.md), [UI texture upscaling](ui-texture-upscaling.md)
-and [HD review](hd-review.md).
+lettering and symbols are filtered.
 
 ## Game texture archives
 
@@ -111,9 +109,7 @@ and the file sizes match the release assets. Side-by-side sheets of bilinear,
 sharpened Lanczos, the anime model, D, ESRNet and a 25% D blend showed that the
 general GAN keeps more surface variation than the anime model and that ESRNet
 is smoother, so D was selected. Every model guesses at ambiguous pixels, so
-judge a candidate by its output. See
-[FFIX upscaling research](ffix-upscaling-research.md) for a comparison with an
-FFIX-trained model.
+judge a candidate by its output.
 
 ## Using a pack
 
@@ -149,8 +145,8 @@ See [texture load path](texture-load-path.md) for the ABI and offsets.
   joined, processed together and split again to avoid seams; `build_ui_pack.py`
   does this.
 - Font atlases `gW000/0090/font_00` to `font_41` are never sent through a
-  model. They have their own workflow; see
-  [UI texture upscaling](ui-texture-upscaling.md).
+  model. `tools/build_font_pack.py` and `tools/build_vector_font_pack.py`
+  build them.
 
 ## Provenance and licensing
 

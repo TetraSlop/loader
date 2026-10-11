@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from title_glyphs import render_text
 
 # Seven main-menu entries at TM +14899D..148B69, decoded by +18EB40 and drawn as 120x24 at +18EDD4/+18EEF2.
-# VS. COM is also drawn as 120x24 from (0, 72), at +BD25D..BD286. See docs/ui-asset-plan.md.
+# VS. COM is also drawn as 120x24 from (0, 72), at +BD25D..BD286.
 MENU_LABELS = (
     ("Play", (120, 48, 240, 72)),
     ("VS. COM", (0, 72, 120, 96)),

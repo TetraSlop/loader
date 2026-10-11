@@ -166,14 +166,8 @@ minimal archive excludes them.
 | [Distribution](docs/distribution.md) | Building and verifying the client archives |
 | [Releasing](docs/releasing.md) | Release automation and archive contents |
 | [Third-party code](docs/third-party.md) | Dependencies and licenses |
-| [Library review](docs/library-review.md) | Evaluated and adopted libraries |
 | [Texture upscaling](docs/texture-upscaling.md) | Extracting textures and upscaling them with chaiNNer |
 | [Texture load path](docs/texture-load-path.md) | Native texture upload path and HD substitution |
-| [UI asset plan](docs/ui-asset-plan.md) | Treatment of UI, portrait and background textures |
-| [UI texture upscaling](docs/ui-texture-upscaling.md) | Font atlas layout and font packs |
-| [Title and UI refinement](docs/title-ui-refinement.md) | Title artwork, small text, icons and cursor |
-| [HD review](docs/hd-review.md) | Visual review checklist and known limits of the HD pack |
-| [FFIX upscaling research](docs/ffix-upscaling-research.md) | Upscaling approaches used by FFIX fan projects |
 
 ## License
 
