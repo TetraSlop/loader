@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <exception>
+#include <wil/stl.h>
+#include <wil/win32_helpers.h>
 #ifdef TMLOADER_DISCORD_PRESENCE
 #include "presence/presence.h"
 #endif
@@ -43,9 +45,8 @@ auto withDefaultConfig(std::vector<std::string> args) -> std::vector<std::string
         return args;
     }
 
-    wchar_t executable[MAX_PATH]{};
-    GetModuleFileNameW(nullptr, executable, MAX_PATH);
-    const auto config = std::filesystem::path(executable).replace_filename("tmloader.ini");
+    const auto executable = wil::GetModuleFileNameW<std::wstring>(nullptr);
+    const auto config     = std::filesystem::path(executable).replace_filename("tmloader.ini");
     if (std::filesystem::exists(config))
     {
         args.insert(args.begin(), { "--config", config.string() });

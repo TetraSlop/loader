@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <d3d9.h>
 #include <filesystem>
+#include <shlobj.h>
 #include <wil/resource.h>
 #include <wrl/client.h>
 
@@ -160,10 +161,14 @@ void applyImGuiStyle(const float scale)
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     ImGui::StyleColorsDark();
     // Segoe UI reads better than ImGui's bitmap font; it ships with every Windows install.
-    const auto font = std::filesystem::path(L"C:/Windows/Fonts/segoeui.ttf");
-    if (std::filesystem::exists(font))
+    auto fonts = wil::unique_cotaskmem_string{};
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Fonts, 0, nullptr, &fonts)))
     {
-        io.Fonts->AddFontFromFileTTF(font.string().c_str(), 17.0f);
+        const auto font = std::filesystem::path(fonts.get()) / L"segoeui.ttf";
+        if (std::filesystem::exists(font))
+        {
+            io.Fonts->AddFontFromFileTTF(font.string().c_str(), 17.0f);
+        }
     }
 
     auto& style         = ImGui::GetStyle();

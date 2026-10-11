@@ -3,6 +3,8 @@
 
 #include "textures/texture_pack.h"
 #include <filesystem>
+#include <unknwn.h>
+#include <wrl/client.h>
 
 // HD texture packs. Optional: built when TMLOADER_HD_TEXTURES is on.
 namespace tmloader
@@ -35,10 +37,10 @@ public:
     auto operator=(TextureDrawBinding&&) -> TextureDrawBinding&      = delete;
 
 private:
-    void* device_     = nullptr;
-    void* original_   = nullptr;
-    void* attachment_ = nullptr;
-    bool  bound_      = false;
+    void*                            device_ = nullptr;
+    Microsoft::WRL::ComPtr<IUnknown> original_;
+    Microsoft::WRL::ComPtr<IUnknown> attachment_;
+    bool                             bound_ = false;
 };
 
 } // namespace tmloader

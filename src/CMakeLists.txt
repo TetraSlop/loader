@@ -44,7 +44,7 @@ add_executable(tmloader WIN32
     ui/window.h)
 target_link_libraries(tmloader PRIVATE
     loader_config loader_imgui nlohmann_json::nlohmann_json
-    ole32 windowscodecs advapi32 user32 gdi32 shell32 ws2_32)
+    ole32 windowscodecs advapi32 user32 gdi32 shell32 ws2_32 dxguid)
 # Keep tmloader.exe at <build>/<config>/ rather than under src/.
 set_target_properties(tmloader PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}")
 # The game DLL executes generated code and expects fixed addresses. CMake embeds

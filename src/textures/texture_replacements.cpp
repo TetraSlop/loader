@@ -26,14 +26,6 @@ std::atomic<unsigned> loadedCount{ 0 };
 
 using detail::Replacement;
 
-void release(void* object)
-{
-    if (object)
-    {
-        static_cast<IUnknown*>(object)->Release();
-    }
-}
-
 } // namespace
 
 namespace detail
@@ -226,18 +218,18 @@ TextureDrawBinding::TextureDrawBinding(void* device, bool artworkEnabled, bool f
         return;
     }
 
-    if (FAILED(callMethod(device_, d3d8::GetTexture, 0U, &original_)) || !original_)
+    if (FAILED(callMethod(device_, d3d8::GetTexture, 0U, original_.GetAddressOf())) || !original_)
     {
         return;
     }
 
     auto size = DWORD{ sizeof(IUnknown*) };
-    if (FAILED(callMethod(original_, d3d8::GetPrivateData, &kReplacementKey, static_cast<void*>(&attachment_), &size)) || !attachment_)
+    if (FAILED(callMethod(original_.Get(), d3d8::GetPrivateData, &kReplacementKey, static_cast<void*>(attachment_.GetAddressOf()), &size)) || !attachment_)
     {
         return;
     }
 
-    auto* const replacement = static_cast<Replacement*>(attachment_);
+    auto* const replacement = static_cast<Replacement*>(attachment_.Get());
     if (replacement->enabled(artworkEnabled, fontsEnabled))
     {
         bound_ = SUCCEEDED(callMethod(device_, d3d8::SetTexture, 0U, replacement->texture()));
@@ -246,13 +238,10 @@ TextureDrawBinding::TextureDrawBinding(void* device, bool artworkEnabled, bool f
 
 TextureDrawBinding::~TextureDrawBinding()
 {
-    if (bound_ && FAILED(callMethod(device_, d3d8::SetTexture, 0U, original_)))
+    if (bound_ && FAILED(callMethod(device_, d3d8::SetTexture, 0U, original_.Get())))
     {
         logLine("Texture pack: cannot restore the original texture binding");
     }
-
-    release(attachment_);
-    release(original_);
 }
 
 } // namespace tmloader

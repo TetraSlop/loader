@@ -6,22 +6,15 @@
 
 namespace tmloader
 {
-namespace
-{
-
-constexpr auto kInputIid  = IID{ 0xbf798030, 0x483a, 0x4da2, { 0xaa, 0x99, 0x5d, 0x64, 0xed, 0x36, 0x97, 0x00 } };
-constexpr auto kMouseGuid = GUID{ 0x6f1d2b60, 0xd5a0, 0x11cf, { 0xbf, 0xc7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
-
-} // namespace
 
 auto LocalInput::supports(REFIID iid) noexcept -> bool
 {
-    return iid == kInputIid;
+    return iid == IID_IDirectInput8A;
 }
 
 auto STDMETHODCALLTYPE LocalInput::QueryInterface(REFIID iid, void** out) -> HRESULT
 {
-    if (iid != kInputIid && iid != IID_IUnknown)
+    if (iid != IID_IDirectInput8A && iid != IID_IUnknown)
     {
         *out = nullptr;
         return E_NOINTERFACE;
@@ -55,7 +48,7 @@ auto STDMETHODCALLTYPE LocalInput::CreateDevice(REFGUID guid, LPDIRECTINPUTDEVIC
         return CLASS_E_NOAGGREGATION;
     }
 
-    if (guid != kMouseGuid)
+    if (guid != GUID_SysMouse)
     {
         *out = nullptr;
         return DIERR_DEVICENOTREG;
@@ -73,7 +66,7 @@ auto STDMETHODCALLTYPE LocalInput::EnumDevices(DWORD, LPDIENUMDEVICESCALLBACKA, 
 
 auto STDMETHODCALLTYPE LocalInput::GetDeviceStatus(REFGUID guid) -> HRESULT
 {
-    if (guid == kMouseGuid)
+    if (guid == GUID_SysMouse)
     {
         return S_OK;
     }
@@ -299,8 +292,8 @@ auto STDMETHODCALLTYPE LocalMouse::GetDeviceInfo(LPDIDEVICEINSTANCEA p) -> HRESU
     const auto size = p->dwSize;
     std::memset(p, 0, size);
     p->dwSize       = size;
-    p->guidInstance = kMouseGuid;
-    p->guidProduct  = kMouseGuid;
+    p->guidInstance = GUID_SysMouse;
+    p->guidProduct  = GUID_SysMouse;
     p->dwDevType    = DI8DEVTYPE_MOUSE;
     strcpy_s(p->tszInstanceName, "Local mouse");
     strcpy_s(p->tszProductName, "Local mouse");
