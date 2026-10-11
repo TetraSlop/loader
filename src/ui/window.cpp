@@ -25,7 +25,7 @@ auto settingsFile() -> std::filesystem::path
     return options.runtimeDir / "settings" / (options.polId + ".json");
 }
 
-void rememberSettings()
+void saveSettings()
 {
     try
     {
@@ -70,7 +70,7 @@ void resizeClient(HWND hwnd, int width, int height)
     SetWindowPos(hwnd, nullptr, 0, 0, rect.right - rect.left, rect.bottom - rect.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 }
 
-void fullscreen(HWND hwnd, bool enabled)
+void setFullscreen(HWND hwnd, bool enabled)
 {
     if (currentWindowSettings().fullscreen == enabled)
     {
@@ -106,12 +106,12 @@ void fullscreen(HWND hwnd, bool enabled)
 
     changingWindow = false;
     InvalidateRect(hwnd, nullptr, TRUE);
-    rememberSettings();
+    saveSettings();
 }
 
 void closeGame()
 {
-    rememberSettings();
+    saveSettings();
     stopSettingsPanel();
     logLine("Quit requested");
     // GameStart's message loop exits on WM_QUIT (+18778E/+18798C).
@@ -131,10 +131,10 @@ void updateSettings(Update update)
         update(settings);
     }
 
-    rememberSettings();
+    saveSettings();
 }
 
-void action(HWND hwnd, WindowAction command, LPARAM value)
+void applyWindowAction(HWND hwnd, WindowAction command, LPARAM value)
 {
     switch (command)
     {
@@ -147,16 +147,16 @@ void action(HWND hwnd, WindowAction command, LPARAM value)
                 break;
             }
 
-            fullscreen(hwnd, false);
+            setFullscreen(hwnd, false);
             ShowWindow(hwnd, SW_SHOWNOACTIVATE);
             resizeClient(hwnd, width, height);
             rememberWindowSize(hwnd);
-            rememberSettings();
+            saveSettings();
             break;
         }
 
         case WindowAction::fullscreen:
-            fullscreen(hwnd, value != 0);
+            setFullscreen(hwnd, value != 0);
             break;
         case WindowAction::aspect:
             updateSettings([&](WindowSettings& current)
@@ -201,7 +201,7 @@ void action(HWND hwnd, WindowAction command, LPARAM value)
     }
 }
 
-auto CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) -> LRESULT
+auto CALLBACK gameWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) -> LRESULT
 {
     if (message == kReclaimFocusMessage)
     {
@@ -234,7 +234,7 @@ auto CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
 
     if (message == kSettingsMessage)
     {
-        action(hwnd, static_cast<WindowAction>(wparam), lparam);
+        applyWindowAction(hwnd, static_cast<WindowAction>(wparam), lparam);
         return 0;
     }
 
@@ -278,7 +278,7 @@ auto CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
     {
         if (!isRepeat(lparam))
         {
-            fullscreen(hwnd, !currentWindowSettings().fullscreen);
+            setFullscreen(hwnd, !currentWindowSettings().fullscreen);
         }
 
         return 0;
@@ -332,7 +332,7 @@ auto CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
     if (message == WM_EXITSIZEMOVE)
     {
         rememberWindowSize(hwnd);
-        rememberSettings();
+        saveSettings();
         return 0;
     }
 
@@ -389,7 +389,7 @@ void initializeGameWindow(HWND hwnd)
 {
     // The game may create a second device; subclassing twice would forward to ourselves.
     if (hwnd == gameWindow && originalWindowProc &&
-        GetWindowLongPtrA(hwnd, GWLP_WNDPROC) == reinterpret_cast<LONG_PTR>(wrapperWindow))
+        GetWindowLongPtrA(hwnd, GWLP_WNDPROC) == reinterpret_cast<LONG_PTR>(gameWindowProc))
     {
         return;
     }
@@ -408,7 +408,7 @@ void initializeGameWindow(HWND hwnd)
         settings.fullscreen = false;
     }
 
-    originalWindowProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrA(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(wrapperWindow)));
+    originalWindowProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrA(hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(gameWindowProc)));
     SetWindowLongW(hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
     SetWindowTextW(hwnd, L"Tetra Master  |  F10 Settings");
     resizeClient(hwnd, loaded.width, loaded.height);
@@ -416,7 +416,7 @@ void initializeGameWindow(HWND hwnd)
     SetWindowPos(hwnd, nullptr, 80, 80, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     if (loaded.fullscreen)
     {
-        fullscreen(hwnd, true);
+        setFullscreen(hwnd, true);
     }
 
     logLine("Window controls installed: F10 settings, F12 screenshot, Alt+Enter fullscreen");

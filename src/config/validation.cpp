@@ -15,8 +15,8 @@ namespace tmloader
 namespace
 {
 
-constexpr auto kGameHash = "29C965A835FAD561A94860262F780BC087B7BCC89BE9E3E89DA8F08D57F52003";
-constexpr auto kCoreHash = "73B1864BF522D3AA6EC28E9F4BB226FCEE956F7F4848A238C9C2D756DC703B06";
+constexpr auto kGameHash   = "29C965A835FAD561A94860262F780BC087B7BCC89BE9E3E89DA8F08D57F52003";
+constexpr auto kViewerHash = "73B1864BF522D3AA6EC28E9F4BB226FCEE956F7F4848A238C9C2D756DC703B06";
 
 } // namespace
 
@@ -37,7 +37,7 @@ auto sha256(const void* data, size_t bytes) -> std::array<std::uint8_t, 32>
     return digest;
 }
 
-auto sha256Bytes(const void* data, size_t bytes) -> std::string
+auto sha256Hex(const void* data, size_t bytes) -> std::string
 {
     auto text = std::string{};
     for (const auto byte : sha256(data, bytes))
@@ -57,7 +57,7 @@ auto sha256File(const std::filesystem::path& path) -> std::string
     }
 
     const auto bytes = std::vector<char>(std::istreambuf_iterator<char>(file), {});
-    return sha256Bytes(bytes.data(), bytes.size());
+    return sha256Hex(bytes.data(), bytes.size());
 }
 
 void validateRuntime(const Config& config)
@@ -75,7 +75,7 @@ void validateRuntime(const Config& config)
 
     const std::pair<fs::path, const char*> binaries[] = {
         { config.game, kGameHash },
-        { config.core, kCoreHash },
+        { config.viewer, kViewerHash },
     };
     for (const auto& entry : binaries)
     {

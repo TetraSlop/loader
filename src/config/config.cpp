@@ -138,7 +138,7 @@ auto parseConfig(const std::vector<std::string>& args) -> Config
 
     config.runtimeDir = std::filesystem::absolute(config.runtimeDir).lexically_normal();
     config.game       = config.runtimeDir / "TM_native.dll";
-    config.core       = config.runtimeDir / "polcore_native.dll";
+    config.viewer     = config.runtimeDir / "polcore_native.dll";
     config.log        = config.runtimeDir / "logs/tmloader.log";
     resolve(config.texturePack, config.runtimeDir, "textures/pack.json");
     validate(config);

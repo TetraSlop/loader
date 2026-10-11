@@ -115,7 +115,7 @@ auto loadGame(const Config& config) -> IUnknown*
 
 auto loadViewer(const Config& config) -> IUnknown*
 {
-    const auto module = loadModule(config.core, "Cannot load Viewer DLL");
+    const auto module = loadModule(config.viewer, "Cannot load Viewer DLL");
     installSystemHooks(module, false);
     installNetworkHooks(module);
     auto* const core = createObject(module, abi::kCoreClass, abi::kCoreInterface);

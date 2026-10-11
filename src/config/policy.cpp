@@ -76,7 +76,7 @@ auto localOutputAllowed(const Config& config, const std::filesystem::path& path,
         return false;
     }
 
-    for (const auto& input : { config.game, config.core })
+    for (const auto& input : { config.game, config.viewer })
     {
         const auto canonicalInput = std::filesystem::weakly_canonical(input, ec);
         if (ec || !_wcsicmp(resolved.c_str(), canonicalInput.c_str()))

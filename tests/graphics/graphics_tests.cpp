@@ -217,7 +217,7 @@ void installFakeDevice()
     originalPresent            = present;
     originalSetVertexShader    = selectShader;
     originalCreateVertexBuffer = makeBuffer;
-    renderingFactor            = 1;
+    renderScale                = 1;
     scaleShader                = 0;
     frames                     = kFramesPastActivation;
     selectedShader             = 0;
@@ -299,9 +299,9 @@ TEST_CASE("Present scales the source rectangle to the back buffer", "[graphics]"
 {
     using namespace tmloader;
     installFakeDevice();
-    for (const float factor : kRenderScales)
+    for (const float scale : kRenderScales)
     {
-        renderingFactor   = factor;
+        renderScale       = scale;
         const auto source = kSourceRect;
         REQUIRE(hookedPresent(nullptr, &source, nullptr, nullptr, nullptr) == S_OK);
         REQUIRE(source.left == kSourceRect.left);
@@ -317,13 +317,13 @@ TEST_CASE("The game vertex format selects the scale shader above 1x", "[graphics
     installFakeDevice();
     FakeDevice device;
     auto       pp = fullscreenParameters();
-    for (const float factor : kRenderScales)
+    for (const float scale : kRenderScales)
     {
-        renderingFactor = factor;
+        renderScale = scale;
         REQUIRE(hookedReset(device.get(), &pp) == S_OK);
         const auto expectedShader = [&]() -> DWORD
         {
-            if (factor == 1)
+            if (scale == 1)
             {
                 return kGameVertexFormat;
             }
@@ -346,12 +346,12 @@ TEST_CASE("Game vertex buffers lose their format tag above 1x", "[graphics]")
 {
     using namespace tmloader;
     installFakeDevice();
-    for (const float factor : kRenderScales)
+    for (const float scale : kRenderScales)
     {
-        renderingFactor           = factor;
+        renderScale               = scale;
         const auto expectedFormat = [&]() -> DWORD
         {
-            if (factor == 1)
+            if (scale == 1)
             {
                 return kGameVertexFormat;
             }

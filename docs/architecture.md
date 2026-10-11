@@ -205,7 +205,7 @@ Above 1x:
 - `hookedSetVertexShader` (slot 76) substitutes a small `vs.1.1` shader. It
   converts screen coordinates to clip space, preserves depth and reciprocal W,
   and passes colors and UVs through. Pixel edges follow
-  `(coordinate + 0.5) * factor - 0.5`. The bytecode is hand-written and
+  `(coordinate + 0.5) * scale - 0.5`. The bytecode is hand-written and
   documented instruction by instruction; there is no runtime shader compiler.
 - `hookedCreateVertexBuffer` (slot 23) clears the `0x1C4` FVF tag and uses an
   explicit shader declaration instead. D3D8's software path bypasses shader

@@ -12,6 +12,6 @@ void installDesktopHooks(HMODULE game);             // platform/desktop.cpp
 void installAudioHooks(HMODULE game);               // platform/audio.cpp
 void installInputHooks(HMODULE game);               // input/input.cpp
 void installGraphicsHooks(HMODULE game);            // graphics/graphics.cpp
-void initializeViewerSession(HMODULE core, Command* table);
+void initializeViewerSession(HMODULE viewer, Command* table);
 
 } // namespace tmloader

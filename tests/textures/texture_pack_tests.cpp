@@ -93,7 +93,7 @@ struct PackFixture
     const std::vector<uint8_t> source = png(72, 96);
     const std::vector<uint8_t> hd     = png(288, 384);
     const nlohmann::json       record = nlohmann::json{
-        { "id", "test/card" }, { "file", "card.png" }, { "source_sha256", sha256Bytes(source.data(), source.size()) }, { "sha256", sha256Bytes(hd.data(), hd.size()) }, { "logical_size", { 72, 96 } }, { "physical_size", { 288, 384 } }
+        { "id", "test/card" }, { "file", "card.png" }, { "source_sha256", sha256Hex(source.data(), source.size()) }, { "sha256", sha256Hex(hd.data(), hd.size()) }, { "logical_size", { 72, 96 } }, { "physical_size", { 288, 384 } }
     };
     const fs::path manifest = root / "pack.json";
 };
@@ -558,7 +558,7 @@ TEST_CASE("Texture manifests retain UTF-8 filenames", "[texture_pack]")
     const auto manifest = root / "pack.json";
     {
         std::ofstream output(manifest);
-        output << nlohmann::json{ { "version", 1 }, { "textures", { { { "id", "test/card" }, { "file", filenameBytes }, { "source_sha256", sha256Bytes(source.data(), source.size()) }, { "sha256", sha256Bytes(hd.data(), hd.size()) }, { "logical_size", { 72, 96 } }, { "physical_size", { 288, 384 } } } } } };
+        output << nlohmann::json{ { "version", 1 }, { "textures", { { { "id", "test/card" }, { "file", filenameBytes }, { "source_sha256", sha256Hex(source.data(), source.size()) }, { "sha256", sha256Hex(hd.data(), hd.size()) }, { "logical_size", { 72, 96 } }, { "physical_size", { 288, 384 } } } } } };
     }
 
     TexturePack pack;

@@ -44,7 +44,7 @@ void check(HRESULT hr, const char* action)
     }
 }
 
-struct Image
+struct Capture
 {
     UINT              width  = 0;
     UINT              height = 0;
@@ -52,7 +52,7 @@ struct Image
 };
 
 // Copies the backbuffer to 24-bit BGR; render-target alpha is unreliable.
-auto readBackbuffer(void* device) -> Image
+auto readBackbuffer(void* device) -> Capture
 {
     if (!device)
     {
@@ -92,21 +92,21 @@ auto readBackbuffer(void* device) -> Image
         throw std::runtime_error("Invalid game backbuffer row pitch");
     }
 
-    auto image = Image{ desc.width, desc.height, std::vector<BYTE>(size_t{ desc.width } * desc.height * 3) };
-    for (UINT y = 0; y < image.height; ++y)
+    auto capture = Capture{ desc.width, desc.height, std::vector<BYTE>(size_t{ desc.width } * desc.height * 3) };
+    for (UINT y = 0; y < capture.height; ++y)
     {
         const auto* const source      = locked.bits + static_cast<ptrdiff_t>(int64_t{ y } * pitch);
-        auto* const       destination = image.bgr.data() + size_t{ y } * image.width * 3;
-        for (UINT x = 0; x < image.width; ++x)
+        auto* const       destination = capture.bgr.data() + size_t{ y } * capture.width * 3;
+        for (UINT x = 0; x < capture.width; ++x)
         {
             std::copy_n(source + x * 4, 3, destination + x * 3);
         }
     }
 
-    return image;
+    return capture;
 }
 
-auto encodePng(const Image& image) -> std::vector<BYTE>
+auto encodePng(const Capture& capture) -> std::vector<BYTE>
 {
     ComPtr<IWICImagingFactory> factory;
     check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)), "Create PNG encoder");
@@ -118,7 +118,7 @@ auto encodePng(const Image& image) -> std::vector<BYTE>
     ComPtr<IWICBitmapFrameEncode> frame;
     check(encoder->CreateNewFrame(&frame, nullptr), "Create PNG frame");
     check(frame->Initialize(nullptr), "Initialize PNG frame");
-    check(frame->SetSize(image.width, image.height), "Set PNG dimensions");
+    check(frame->SetSize(capture.width, capture.height), "Set PNG dimensions");
     auto format = GUID_WICPixelFormat24bppBGR;
     check(frame->SetPixelFormat(&format), "Set PNG pixel format");
     if (!IsEqualGUID(format, GUID_WICPixelFormat24bppBGR))
@@ -127,8 +127,8 @@ auto encodePng(const Image& image) -> std::vector<BYTE>
     }
 
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
-    auto* const pixels = const_cast<BYTE*>(image.bgr.data());
-    check(frame->WritePixels(image.height, image.width * 3, static_cast<UINT>(image.bgr.size()), pixels), "Encode game screenshot");
+    auto* const pixels = const_cast<BYTE*>(capture.bgr.data());
+    check(frame->WritePixels(capture.height, capture.width * 3, static_cast<UINT>(capture.bgr.size()), pixels), "Encode game screenshot");
     check(frame->Commit(), "Finish PNG frame");
     check(encoder->Commit(), "Finish PNG screenshot");
 

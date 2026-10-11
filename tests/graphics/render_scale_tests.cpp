@@ -43,14 +43,14 @@ struct Vertex
 
 static_assert(sizeof(Vertex) == 32);
 
-auto pixels(void* device, const float factor) -> std::vector<DWORD>
+auto pixels(void* device, const float scale) -> std::vector<DWORD>
 {
     ComPtr<IUnknown> surface;
     check(callMethod(device, d3d8::GetBackBuffer, 0, 0, surface.GetAddressOf()));
     auto desc = d3d8::SurfaceDesc{};
     check(callMethod(surface.Get(), d3d8::SurfaceGetDesc, &desc));
-    REQUIRE(desc.width == 640U * factor);
-    REQUIRE(desc.height == 480U * factor);
+    REQUIRE(desc.width == 640U * scale);
+    REQUIRE(desc.height == 480U * scale);
     auto locked = d3d8::LockedRect{};
     check(callMethod(surface.Get(), d3d8::SurfaceLockRect, &locked, nullptr, d3d8::kLockReadOnly));
     auto result = std::vector<DWORD>(desc.width * desc.height);
@@ -63,7 +63,7 @@ auto pixels(void* device, const float factor) -> std::vector<DWORD>
     return result;
 }
 
-auto render(void* device, void* buffer, const DWORD shader, const float factor, const bool reference) -> std::vector<DWORD>
+auto render(void* device, void* buffer, const DWORD shader, const float scale, const bool reference) -> std::vector<DWORD>
 {
     // A clipped quad with unequal W, interpolated alpha/color and noninteger
     // positions. CPU-scaled fixed-function rendering is the independent oracle.
@@ -75,8 +75,8 @@ auto render(void* device, void* buffer, const DWORD shader, const float factor, 
     {
         for (auto& v : vertices)
         {
-            v.x = (v.x + 0.5f) * factor - 0.5f;
-            v.y = (v.y + 0.5f) * factor - 0.5f;
+            v.x = (v.x + 0.5f) * scale - 0.5f;
+            v.y = (v.y + 0.5f) * scale - 0.5f;
         }
     }
 
@@ -91,7 +91,7 @@ auto render(void* device, void* buffer, const DWORD shader, const float factor, 
     }
     else
     {
-        check(setScaleConstants(device, factor));
+        check(setScaleConstants(device, scale));
         check(callMethod(device, d3d8::SetVertexShader, shader));
     }
 
@@ -99,7 +99,7 @@ auto render(void* device, void* buffer, const DWORD shader, const float factor, 
     check(callMethod(device, d3d8::BeginScene));
     check(callMethod(device, d3d8::DrawPrimitive, d3d8::kTriangleStrip, 0, 2));
     check(callMethod(device, d3d8::EndScene));
-    return pixels(device, factor);
+    return pixels(device, scale);
 }
 
 auto openDirect3D() -> ComPtr<IUnknown>
@@ -125,11 +125,11 @@ auto openDirect3D() -> ComPtr<IUnknown>
     return d3d;
 }
 
-auto createDevice(IUnknown* d3d, const DWORD format, const float factor) -> ComPtr<IUnknown>
+auto createDevice(IUnknown* d3d, const DWORD format, const float scale) -> ComPtr<IUnknown>
 {
     auto pp     = d3d8::PresentParameters{};
-    pp.width    = static_cast<UINT>(640 * factor);
-    pp.height   = static_cast<UINT>(480 * factor);
+    pp.width    = static_cast<UINT>(640 * scale);
+    pp.height   = static_cast<UINT>(480 * scale);
     pp.format   = format;
     pp.count    = 1;
     pp.swap     = d3d8::kSwapEffectCopy;
@@ -223,9 +223,9 @@ void requireScaledQuadMatches(const bool textured)
     const auto d3d  = openDirect3D();
     auto       mode = d3d8::DisplayMode{};
     check(callMethod(d3d.Get(), d3d8::GetAdapterDisplayMode, 0, &mode));
-    for (const float factor : kRenderScales)
+    for (const float scale : kRenderScales)
     {
-        const auto device = createDevice(d3d.Get(), mode.format, factor);
+        const auto device = createDevice(d3d.Get(), mode.format, scale);
         DWORD      shader = 0;
         check(createScaleShader(device.Get(), &shader));
         ComPtr<IUnknown> buffer;
@@ -241,10 +241,10 @@ void requireScaledQuadMatches(const bool textured)
 
         check(callMethod(device.Get(), d3d8::SetTexture, 0, static_cast<void*>(texture.Get())));
 
-        const auto expected   = render(device.Get(), buffer.Get(), shader, factor, true);
-        const auto actual     = render(device.Get(), buffer.Get(), shader, factor, false);
+        const auto expected   = render(device.Get(), buffer.Get(), shader, scale, true);
+        const auto actual     = render(device.Get(), buffer.Get(), shader, scale, false);
         const auto difference = compare(expected, actual);
-        CAPTURE(factor, textured, difference.painted, difference.differing, difference.maxDelta);
+        CAPTURE(scale, textured, difference.painted, difference.differing, difference.maxDelta);
         REQUIRE(difference.painted >= actual.size() / 2);
         REQUIRE(difference.differing <= actual.size() / 10000);
 

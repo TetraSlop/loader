@@ -231,7 +231,7 @@ auto TexturePack::match(const void* png, size_t bytes) const -> const TextureAss
         return nullptr;
     }
 
-    const auto found = assets_.find(sha256Bytes(png, info.bytes));
+    const auto found = assets_.find(sha256Hex(png, info.bytes));
     if (found == assets_.end() || found->second.width != info.width || found->second.height != info.height)
     {
         return nullptr;
@@ -251,7 +251,7 @@ auto TexturePack::read(const TextureAsset& asset) const -> std::vector<uint8_t>
     auto       bytes = readBounded(asset.file, 64 * 1024 * 1024);
     const auto info  = pngInfo(bytes.data(), bytes.size());
     if (!info.bytes || info.width != asset.width * asset.scale || info.height != asset.height * asset.scale ||
-        sha256Bytes(bytes.data(), bytes.size()) != asset.imageHash)
+        sha256Hex(bytes.data(), bytes.size()) != asset.imageHash)
     {
         throw std::runtime_error("Texture PNG differs from its manifest: " + asset.id);
     }

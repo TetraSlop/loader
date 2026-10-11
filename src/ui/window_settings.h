@@ -23,7 +23,7 @@ struct WindowSettings
 // The final preset allows supersampling on a 4K display.
 inline constexpr std::array<float, 8> kRenderScales{ 1, 1.5f, 2, 2.25f, 3, 4, 4.5f, 6 };
 
-auto validRenderScale(float factor) -> bool;
+auto validRenderScale(float scale) -> bool;
 auto automaticRenderScale(unsigned width, unsigned height) -> float;
 auto validWindowSize(int width, int height) -> bool;
 // The game's logical coordinates remain 640x480 at every rendering resolution.

@@ -12,7 +12,7 @@ struct Config
 {
     std::filesystem::path runtimeDir;
     std::filesystem::path game;
-    std::filesystem::path core;
+    std::filesystem::path viewer;
     std::filesystem::path log;
     std::filesystem::path texturePack;
     std::string           server      = "127.0.0.1";
@@ -36,7 +36,7 @@ auto usage() -> std::string;
 // Reads only; never loads a DLL, creates a window or changes the token.
 void validateRuntime(const Config& config);
 auto sha256(const void* data, size_t bytes) -> std::array<std::uint8_t, 32>;
-auto sha256Bytes(const void* data, size_t bytes) -> std::string;
+auto sha256Hex(const void* data, size_t bytes) -> std::string;
 auto sha256File(const std::filesystem::path& path) -> std::string;
 auto isProfileAlias(const char* host) -> bool;
 auto isIpv4Address(const std::string& host) -> bool;

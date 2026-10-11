@@ -187,12 +187,12 @@ void useRuntime(const char* name)
 
 void sendSetting(WindowAction action, LPARAM value)
 {
-    wrapperWindow(nullptr, kSettingsMessage, static_cast<WPARAM>(action), value);
+    gameWindowProc(nullptr, kSettingsMessage, static_cast<WPARAM>(action), value);
 }
 
 auto sendSetCursor(WORD hitTest) -> LRESULT
 {
-    return wrapperWindow(kTestWindow, WM_SETCURSOR, reinterpret_cast<WPARAM>(kTestWindow), MAKELPARAM(hitTest, WM_MOUSEMOVE));
+    return gameWindowProc(kTestWindow, WM_SETCURSOR, reinterpret_cast<WPARAM>(kTestWindow), MAKELPARAM(hitTest, WM_MOUSEMOVE));
 }
 
 } // namespace
@@ -203,7 +203,7 @@ TEST_CASE("move and size commands reach the default window procedure", "[window_
     for (const WPARAM command : { SC_SIZE, SC_MOVE, SC_MINIMIZE, SC_MAXIMIZE, SC_RESTORE })
     {
         CAPTURE(command);
-        REQUIRE(wrapperWindow(nullptr, WM_SYSCOMMAND, command, 0) == kDefaultResult);
+        REQUIRE(gameWindowProc(nullptr, WM_SYSCOMMAND, command, 0) == kDefaultResult);
         REQUIRE(defaultMessage == WM_SYSCOMMAND);
         REQUIRE(defaultCommand == command);
     }
@@ -215,7 +215,7 @@ TEST_CASE("the focus reclaim message is dropped", "[window_messages]")
 {
     resetFakes();
     // A lost-focus notification must not reach the native restore/foreground path.
-    wrapperWindow(kTestWindow, kReclaimFocus, 0, 0);
+    gameWindowProc(kTestWindow, kReclaimFocus, 0, 0);
     REQUIRE(legacyMessages == 0);
 }
 
@@ -251,15 +251,15 @@ TEST_CASE("every way of closing the window stops the panel and quits", "[window_
 {
     useRuntime("window-close-fixture");
 
-    wrapperWindow(nullptr, WM_SYSCOMMAND, SC_CLOSE | 2, 0);
+    gameWindowProc(nullptr, WM_SYSCOMMAND, SC_CLOSE | 2, 0);
     REQUIRE(quitRequests == 1);
     REQUIRE(panelStops == 1);
 
-    wrapperWindow(nullptr, WM_CLOSE, 0, 0);
+    gameWindowProc(nullptr, WM_CLOSE, 0, 0);
     REQUIRE(quitRequests == 2);
     REQUIRE(panelStops == 2);
 
-    wrapperWindow(nullptr, WM_SYSKEYDOWN, VK_F4, 0);
+    gameWindowProc(nullptr, WM_SYSKEYDOWN, VK_F4, 0);
     REQUIRE(quitRequests == 3);
     REQUIRE(panelStops == 3);
     std::filesystem::remove_all(options.runtimeDir);
@@ -268,18 +268,18 @@ TEST_CASE("every way of closing the window stops the panel and quits", "[window_
 TEST_CASE("F10 toggles the settings panel once per press", "[window_messages]")
 {
     resetFakes();
-    wrapperWindow(nullptr, WM_KEYDOWN, VK_F10, 0);
-    wrapperWindow(nullptr, WM_KEYDOWN, VK_F10, kKeyRepeat);
-    wrapperWindow(nullptr, WM_SYSKEYUP, VK_F10, 0);
+    gameWindowProc(nullptr, WM_KEYDOWN, VK_F10, 0);
+    gameWindowProc(nullptr, WM_KEYDOWN, VK_F10, kKeyRepeat);
+    gameWindowProc(nullptr, WM_SYSKEYUP, VK_F10, 0);
     REQUIRE(panelToggles == 1);
 }
 
 TEST_CASE("F12 requests one screenshot per press and stays out of the game", "[window_messages]")
 {
     resetFakes();
-    wrapperWindow(nullptr, WM_KEYDOWN, VK_F12, 0);
-    wrapperWindow(nullptr, WM_KEYDOWN, VK_F12, kKeyRepeat);
-    wrapperWindow(nullptr, WM_KEYUP, VK_F12, 0);
+    gameWindowProc(nullptr, WM_KEYDOWN, VK_F12, 0);
+    gameWindowProc(nullptr, WM_KEYDOWN, VK_F12, kKeyRepeat);
+    gameWindowProc(nullptr, WM_KEYUP, VK_F12, 0);
     REQUIRE(screenshotRequests == 1);
     REQUIRE(legacyMessages == 0);
 }
@@ -287,14 +287,14 @@ TEST_CASE("F12 requests one screenshot per press and stays out of the game", "[w
 TEST_CASE("other messages are forwarded to the game", "[window_messages]")
 {
     resetFakes();
-    wrapperWindow(nullptr, WM_MOUSEMOVE, 0, 0);
+    gameWindowProc(nullptr, WM_MOUSEMOVE, 0, 0);
     REQUIRE(legacyMessages == 1);
 }
 
 TEST_CASE("a left click is latched until it is read", "[window_messages]")
 {
     resetFakes();
-    wrapperWindow(nullptr, WM_LBUTTONDOWN, 0, 0);
+    gameWindowProc(nullptr, WM_LBUTTONDOWN, 0, 0);
     REQUIRE(takeMousePresses() == 1);
     REQUIRE(takeMousePresses() == 0);
 }
@@ -302,8 +302,8 @@ TEST_CASE("a left click is latched until it is read", "[window_messages]")
 TEST_CASE("losing focus discards a latched click", "[window_messages]")
 {
     resetFakes();
-    wrapperWindow(nullptr, WM_LBUTTONDOWN, 0, 0);
-    wrapperWindow(nullptr, WM_KILLFOCUS, 0, 0);
+    gameWindowProc(nullptr, WM_LBUTTONDOWN, 0, 0);
+    gameWindowProc(nullptr, WM_KILLFOCUS, 0, 0);
     REQUIRE(takeMousePresses() == 0);
 }
 
@@ -355,7 +355,7 @@ TEST_CASE("initialising an already subclassed window changes nothing", "[window_
     // The fake SetWindowLongPtrA throws if the window is subclassed a second time.
     gameWindow         = kTestWindow;
     originalWindowProc = kGameProcedure;
-    installedProcedure = reinterpret_cast<LONG_PTR>(wrapperWindow);
+    installedProcedure = reinterpret_cast<LONG_PTR>(gameWindowProc);
     initializeGameWindow(kTestWindow);
     REQUIRE(originalWindowProc == kGameProcedure);
     REQUIRE(currentWindowSettings().renderScale == kScale);

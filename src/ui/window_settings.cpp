@@ -7,9 +7,9 @@
 namespace tmloader
 {
 
-auto validRenderScale(const float factor) -> bool
+auto validRenderScale(const float scale) -> bool
 {
-    return std::ranges::contains(kRenderScales, factor);
+    return std::ranges::contains(kRenderScales, scale);
 }
 
 auto automaticRenderScale(const unsigned width, const unsigned height) -> float
@@ -20,11 +20,11 @@ auto automaticRenderScale(const unsigned width, const unsigned height) -> float
     }
 
     const auto required = std::min(width / 640.0f, height / 480.0f);
-    for (const auto factor : kRenderScales)
+    for (const auto scale : kRenderScales)
     {
-        if (factor >= required || factor >= 4.5f)
+        if (scale >= required || scale >= 4.5f)
         {
-            return factor;
+            return scale;
         }
     }
 

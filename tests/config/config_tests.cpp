@@ -62,7 +62,7 @@ TEST_CASE("a runtime directory alone yields the local defaults", "[config]")
     const auto config = parseConfig({ "--runtime-dir", ".", "--check" });
     REQUIRE(config.checkOnly);
     REQUIRE(config.game.filename() == "TM_native.dll");
-    REQUIRE(config.core.filename() == "polcore_native.dll");
+    REQUIRE(config.viewer.filename() == "polcore_native.dll");
     REQUIRE(config.polId == "EEEEEEEF");
     REQUIRE(config.gamePort == 51241);
     REQUIRE(config.profilePort == 51220);

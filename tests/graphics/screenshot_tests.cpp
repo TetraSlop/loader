@@ -275,7 +275,7 @@ struct RuntimeDir
         REQUIRE(root.filename().wstring().find(kRootPrefix) == 0);
         tmloader::options.runtimeDir = root;
         tmloader::options.game       = root / "TM_native.dll";
-        tmloader::options.core       = root / "polcore_native.dll";
+        tmloader::options.viewer     = root / "polcore_native.dll";
         tmloader::pending.store(false);
         tmloader::status.clear();
         failScreenshotWrite = false;
@@ -337,7 +337,7 @@ void lowIntegrityCapture(const std::filesystem::path& fixture)
     REQUIRE(error == ERROR_ACCESS_DENIED);
     tmloader::options.runtimeDir = fixture / "low";
     tmloader::options.game       = tmloader::options.runtimeDir / "TM_native.dll";
-    tmloader::options.core       = tmloader::options.runtimeDir / "polcore_native.dll";
+    tmloader::options.viewer     = tmloader::options.runtimeDir / "polcore_native.dll";
     Device device;
     requestScreenshot();
     saveRequestedScreenshot(&device);

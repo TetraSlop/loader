@@ -45,7 +45,7 @@ PresentFn            originalPresent;
 SetVertexShaderFn    originalSetVertexShader;
 CreateVertexBufferFn originalCreateVertexBuffer;
 
-std::atomic<float> renderingFactor{ 1 };
+std::atomic<float> renderScale{ 1 };
 DWORD              desktopFormat = d3d8::kFormatX8R8G8B8;
 DWORD              scaleShader   = 0;
 DWORD              frames        = 0;
@@ -53,7 +53,7 @@ DWORD              frames        = 0;
 auto WINAPI hookedCreateVertexBuffer(void* device, UINT size, DWORD usage, DWORD format, DWORD pool, void** output) -> HRESULT
 {
     // D3D8 skips vertex shaders for XYZRHW-tagged buffers, so the scale shader needs untyped ones.
-    if (renderingFactor > 1 && format == kGameVertexFormat)
+    if (renderScale > 1 && format == kGameVertexFormat)
     {
         format = 0;
     }
@@ -63,12 +63,12 @@ auto WINAPI hookedCreateVertexBuffer(void* device, UINT size, DWORD usage, DWORD
 
 auto WINAPI hookedSetVertexShader(void* device, DWORD shader) -> HRESULT
 {
-    if (shader != kGameVertexFormat || renderingFactor <= 1)
+    if (shader != kGameVertexFormat || renderScale <= 1)
     {
         return originalSetVertexShader(device, shader);
     }
 
-    const auto hr = setScaleConstants(device, renderingFactor);
+    const auto hr = setScaleConstants(device, renderScale);
     if (FAILED(hr))
     {
         return hr;
@@ -80,8 +80,8 @@ auto WINAPI hookedSetVertexShader(void* device, DWORD shader) -> HRESULT
 void windowedParameters(d3d8::PresentParameters& parameters)
 {
     parameters.windowed    = TRUE;
-    parameters.width       = static_cast<UINT>(640 * renderingFactor);
-    parameters.height      = static_cast<UINT>(480 * renderingFactor);
+    parameters.width       = static_cast<UINT>(640 * renderScale);
+    parameters.height      = static_cast<UINT>(480 * renderScale);
     parameters.format      = desktopFormat;
     parameters.count       = 1;
     parameters.multisample = 0;
@@ -98,7 +98,7 @@ auto WINAPI hookedReset(void* device, d3d8::PresentParameters* parameters) -> HR
     deleteScaleShader(device, scaleShader);
     windowedParameters(*parameters);
     auto hr = originalReset(device, parameters);
-    if (SUCCEEDED(hr) && renderingFactor > 1)
+    if (SUCCEEDED(hr) && renderScale > 1)
     {
         hr = createScaleShader(device, &scaleShader);
     }
@@ -157,12 +157,12 @@ auto WINAPI hookedPresent(void* device, const RECT* source, const RECT* destinat
 
     saveRequestedScreenshot(device);
     auto scaledSource = RECT{};
-    if (renderingFactor > 1)
+    if (renderScale > 1)
     {
         if (source)
         {
             // Quarter steps cover every preset, including 2.25x (1080p).
-            const auto quarters = static_cast<int>(renderingFactor * 4);
+            const auto quarters = static_cast<int>(renderScale * 4);
             scaledSource        = { MulDiv(source->left, quarters, 4), MulDiv(source->top, quarters, 4), MulDiv(source->right, quarters, 4), MulDiv(source->bottom, quarters, 4) };
             source              = &scaledSource;
         }
@@ -245,11 +245,11 @@ auto WINAPI hookedCreateDevice(void* d3d, UINT adapter, DWORD type, HWND window,
     const auto settings = currentWindowSettings();
     if (settings.autoResolution)
     {
-        renderingFactor = monitorRenderScale(window, mode.width, mode.height);
+        renderScale = monitorRenderScale(window, mode.width, mode.height);
     }
     else
     {
-        renderingFactor = settings.renderScale;
+        renderScale = settings.renderScale;
     }
 
     const auto create = [&]() -> HRESULT
@@ -258,7 +258,7 @@ auto WINAPI hookedCreateDevice(void* d3d, UINT adapter, DWORD type, HWND window,
         return originalCreateDevice(d3d, adapter, type, window, (behavior & ~kHardwareVertexFlags) | d3d8::kSoftwareVertexProcessing, parameters, device);
     };
     auto hr = create();
-    if (SUCCEEDED(hr) && renderingFactor > 1)
+    if (SUCCEEDED(hr) && renderScale > 1)
     {
         hr = createScaleShader(*device, &scaleShader);
         if (FAILED(hr))
@@ -268,11 +268,11 @@ auto WINAPI hookedCreateDevice(void* d3d, UINT adapter, DWORD type, HWND window,
         }
     }
 
-    if (FAILED(hr) && renderingFactor > 1)
+    if (FAILED(hr) && renderScale > 1)
     {
         logLine("Higher-resolution device/shader failed: {:08X}; using original resolution", hex(hr));
-        renderingFactor = 1;
-        hr              = create();
+        renderScale = 1;
+        hr          = create();
     }
 
     logLine("D3D8 windowed CreateDevice={:08X} device={}", hex(hr), *device);
@@ -310,7 +310,7 @@ auto WINAPI hookedDirect3DCreate8(UINT version) -> void*
 
 auto activeRenderScale() -> float
 {
-    return renderingFactor;
+    return renderScale;
 }
 
 void installGraphicsHooks(HMODULE game)

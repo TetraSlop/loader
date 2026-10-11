@@ -54,10 +54,10 @@ auto createScaleShader(void* device, DWORD* shader) -> HRESULT
     return callMethod(device, d3d8::CreateVertexShader, kDeclaration, kProgram, shader, DWORD{ 0 });
 }
 
-auto setScaleConstants(void* device, float factor) -> HRESULT
+auto setScaleConstants(void* device, float scale) -> HRESULT
 {
-    // Maps pixel edges as (x + 0.5) * factor - 0.5, which is exact at 1x.
-    const float offset       = 0.5f - 0.5f / factor;
+    // Maps pixel edges as (x + 0.5) * scale - 0.5, which is exact at 1x.
+    const float offset       = 0.5f - 0.5f / scale;
     const float constants[8] = {
         2.0f / 640, -2.0f / 480, 1, 1, -1 + offset * 2 / 640, 1 - offset * 2 / 480, 0, 0
     };
