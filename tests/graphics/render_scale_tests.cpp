@@ -52,7 +52,7 @@ auto pixels(void* device, const float scale) -> std::vector<DWORD>
     REQUIRE(desc.width == 640U * scale);
     REQUIRE(desc.height == 480U * scale);
     auto locked = d3d8::LockedRect{};
-    check(callMethod(surface.Get(), d3d8::SurfaceLockRect, &locked, nullptr, d3d8::kLockReadOnly));
+    check(callMethod(surface.Get(), d3d8::SurfaceLockRect, &locked, nullptr, d3d8::LockReadOnly));
     auto result = std::vector<DWORD>(desc.width * desc.height);
     for (DWORD y = 0; y < desc.height; ++y)
     {
@@ -81,7 +81,7 @@ auto render(void* device, void* buffer, const DWORD shader, const float scale, c
     }
 
     void* data = nullptr;
-    check(callMethod(buffer, d3d8::BufferLock, 0, sizeof(vertices), &data, d3d8::kLockDiscard));
+    check(callMethod(buffer, d3d8::BufferLock, 0, sizeof(vertices), &data, d3d8::LockDiscard));
     std::memcpy(data, vertices.data(), sizeof(vertices));
     check(callMethod(buffer, d3d8::BufferUnlock));
     check(callMethod(device, d3d8::SetStreamSource, 0, buffer, sizeof(Vertex)));
@@ -97,7 +97,7 @@ auto render(void* device, void* buffer, const DWORD shader, const float scale, c
 
     check(callMethod(device, d3d8::Clear, 0, nullptr, 1, kClearColor, 1.0f, 0));
     check(callMethod(device, d3d8::BeginScene));
-    check(callMethod(device, d3d8::DrawPrimitive, d3d8::kTriangleStrip, 0, 2));
+    check(callMethod(device, d3d8::DrawPrimitive, d3d8::TriangleStrip, 0, 2));
     check(callMethod(device, d3d8::EndScene));
     return pixels(device, scale);
 }
@@ -132,19 +132,19 @@ auto createDevice(IUnknown* d3d, const DWORD format, const float scale) -> ComPt
     pp.height   = static_cast<UINT>(480 * scale);
     pp.format   = format;
     pp.count    = 1;
-    pp.swap     = d3d8::kSwapEffectCopy;
+    pp.swap     = d3d8::SwapEffectCopy;
     pp.window   = GetDesktopWindow();
     pp.windowed = TRUE;
     pp.flags    = 1;
     ComPtr<IUnknown> device;
-    check(callMethod(d3d, d3d8::CreateDevice, 0, d3d8::kDeviceTypeHal, pp.window, d3d8::kSoftwareVertexProcessing, &pp, device.GetAddressOf()));
+    check(callMethod(d3d, d3d8::CreateDevice, 0, d3d8::DeviceTypeHal, pp.window, d3d8::kSoftwareVertexProcessing, &pp, device.GetAddressOf()));
     return device;
 }
 
 auto createCheckerTexture(void* device) -> ComPtr<IUnknown>
 {
     ComPtr<IUnknown> texture;
-    check(callMethod(device, d3d8::CreateTexture, 8, 8, 1, 0, d3d8::kFormatA8R8G8B8, d3d8::kPoolManaged, texture.GetAddressOf()));
+    check(callMethod(device, d3d8::CreateTexture, 8, 8, 1, 0, d3d8::FormatA8R8G8B8, d3d8::PoolManaged, texture.GetAddressOf()));
     auto locked = d3d8::LockedRect{};
     check(callMethod(texture.Get(), d3d8::TextureLockRect, 0, &locked, nullptr, 0));
     for (int y = 0; y < 8; ++y)

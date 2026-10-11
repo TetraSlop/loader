@@ -59,16 +59,48 @@ enum Resource : unsigned
     TextureUnlock   = 17,
 };
 
-constexpr DWORD kFormatA8R8G8B8           = 21;
-constexpr DWORD kFormatX8R8G8B8           = 22;
-constexpr DWORD kPoolManaged              = 1;
-constexpr DWORD kSwapEffectCopy           = 3;
-constexpr DWORD kLockReadOnly             = 0x10;
-constexpr DWORD kLockDiscard              = 0x2000;
-constexpr DWORD kTriangleStrip            = 5;
-constexpr DWORD kDeviceTypeHal            = 1;
-constexpr DWORD kSoftwareVertexProcessing = 0x20;
-constexpr DWORD kPrivateDataObject        = 1; // D3DSPD_IUNKNOWN
+// D3DFORMAT
+enum Format : DWORD
+{
+    FormatA8R8G8B8 = 21,
+    FormatX8R8G8B8 = 22,
+};
+
+// D3DPOOL
+enum Pool : DWORD
+{
+    PoolManaged = 1,
+};
+
+// D3DSWAPEFFECT
+enum SwapEffect : DWORD
+{
+    SwapEffectCopy = 3,
+};
+
+// D3DPRIMITIVETYPE
+enum PrimitiveType : DWORD
+{
+    TriangleStrip = 5,
+};
+
+// D3DDEVTYPE
+enum DeviceType : DWORD
+{
+    DeviceTypeHal = 1,
+};
+
+// D3DLOCK_*
+enum LockFlag : DWORD
+{
+    LockReadOnly = 0x10,
+    LockDiscard  = 0x2000,
+};
+
+// The SDK defines these as plain flags.
+constexpr DWORD kSoftwareVertexProcessing = 0x20; // D3DCREATE_SOFTWARE_VERTEXPROCESSING
+constexpr DWORD kLockableBackBuffer       = 1;    // D3DPRESENTFLAG_LOCKABLE_BACKBUFFER
+constexpr DWORD kPrivateDataObject        = 1;    // D3DSPD_IUNKNOWN
 
 struct PresentParameters
 {

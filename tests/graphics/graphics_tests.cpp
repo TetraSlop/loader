@@ -115,7 +115,7 @@ auto WINAPI reset(void*, tmloader::d3d8::PresentParameters* pp) -> HRESULT
     REQUIRE(pp->width == 640U * scale);
     REQUIRE(pp->height == 480U * scale);
     // D3D8 only accepts explicit Present rectangles with a single-buffer COPY swap chain.
-    REQUIRE(pp->swap == tmloader::d3d8::kSwapEffectCopy);
+    REQUIRE(pp->swap == tmloader::d3d8::SwapEffectCopy);
     REQUIRE(pp->count == 1);
     REQUIRE(pp->multisample == 0);
     REQUIRE(pp->window == tmloader::gameWindow);

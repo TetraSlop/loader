@@ -46,7 +46,7 @@ SetVertexShaderFn    originalSetVertexShader;
 CreateVertexBufferFn originalCreateVertexBuffer;
 
 std::atomic<float> renderScale{ 1 };
-DWORD              desktopFormat = d3d8::kFormatX8R8G8B8;
+DWORD              desktopFormat = d3d8::FormatX8R8G8B8;
 DWORD              scaleShader   = 0;
 DWORD              frames        = 0;
 
@@ -86,11 +86,11 @@ void windowedParameters(d3d8::PresentParameters& parameters)
     parameters.count       = 1;
     parameters.multisample = 0;
     // Copy swaps allow presenting into an explicit destination rectangle.
-    parameters.swap     = d3d8::kSwapEffectCopy;
+    parameters.swap     = d3d8::SwapEffectCopy;
     parameters.refresh  = 0;
     parameters.interval = 0;
     parameters.window   = gameWindow;
-    parameters.flags |= 1; // D3DPRESENTFLAG_LOCKABLE_BACKBUFFER
+    parameters.flags |= d3d8::kLockableBackBuffer;
 }
 
 auto WINAPI hookedReset(void* device, d3d8::PresentParameters* parameters) -> HRESULT

@@ -216,16 +216,16 @@ auto STDMETHODCALLTYPE LocalMouse::GetDeviceState(DWORD size, void* output) -> H
     current.y -= client.top;
     const auto pressed = takeMousePresses();
     auto       buttons = BYTE{ 0 };
-    if ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) || (pressed & 1))
+    if ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) || (pressed & LeftButton))
     {
         m->rgbButtons[0] = 0x80;
-        buttons |= 1;
+        buttons |= LeftButton;
     }
 
-    if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) || (pressed & 2))
+    if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) || (pressed & RightButton))
     {
         m->rgbButtons[1] = 0x80;
-        buttons |= 2;
+        buttons |= RightButton;
     }
 
     const auto pointerMoved   = !mouseSampleValid_ || current.x != previous_.x || current.y != previous_.y ||

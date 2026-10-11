@@ -4,6 +4,13 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 
+namespace
+{
+
+constexpr std::string_view kCallbackPath = "/callback/nonce";
+
+} // namespace
+
 namespace tmloader
 {
 
@@ -18,8 +25,6 @@ using namespace tmloader::hosted;
 
 namespace
 {
-
-constexpr std::string_view kCallbackPath = "/callback/nonce";
 
 auto jsonResponse(DWORD status, std::string body) -> Response
 {

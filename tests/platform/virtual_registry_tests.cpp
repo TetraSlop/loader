@@ -4,6 +4,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include <string_view>
 
+namespace
+{
+
+const HKEY kKey = reinterpret_cast<HKEY>(0x5a5a0001);
+
+} // namespace
+
 namespace tmloader
 {
 
@@ -25,13 +32,6 @@ void setImport(HMODULE, DWORD, void*)
 } // namespace tmloader
 
 using namespace tmloader;
-
-namespace
-{
-
-const HKEY kKey = reinterpret_cast<HKEY>(0x5a5a0001);
-
-} // namespace
 
 TEST_CASE("SOUND is a DWORD that needs a four-byte buffer", "[virtual_registry]")
 {

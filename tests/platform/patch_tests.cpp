@@ -4,6 +4,18 @@
 #include <cstring>
 #include <string_view>
 
+namespace
+{
+
+constexpr DWORD kPageSize    = 0x1000;
+constexpr DWORD kCallSite    = 0x20;
+constexpr DWORD kCallTarget  = 0x35;
+constexpr DWORD kReplacement = 0x100;
+// CALL +0x10 at kCallSite lands on kCallTarget.
+constexpr BYTE kCall[] = { 0xe8, 0x10, 0x00, 0x00, 0x00 };
+
+} // namespace
+
 namespace tmloader
 {
 
@@ -17,13 +29,6 @@ using namespace tmloader;
 
 namespace
 {
-
-constexpr DWORD kPageSize    = 0x1000;
-constexpr DWORD kCallSite    = 0x20;
-constexpr DWORD kCallTarget  = 0x35;
-constexpr DWORD kReplacement = 0x100;
-// CALL +0x10 at kCallSite lands on kCallTarget.
-constexpr BYTE kCall[] = { 0xe8, 0x10, 0x00, 0x00, 0x00 };
 
 // A read-only executable page holding the one call, like the game's code section.
 auto allocateCode() -> BYTE*

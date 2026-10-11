@@ -18,6 +18,18 @@
 using namespace tmloader;
 namespace fs = std::filesystem;
 
+namespace
+{
+
+// D3DX_DEFAULT: the game lets D3DX pick the size and mip filter of its originals.
+constexpr UINT  kD3dxDefault  = 0xffffffff;
+constexpr DWORD kUploadFilter = 0x80001;
+// The 72x96 card is padded to a power of two on the GPU.
+constexpr unsigned kOriginalExtent = 128;
+constexpr unsigned kHdExtent       = 512;
+
+} // namespace
+
 namespace tmloader
 {
 
@@ -29,13 +41,6 @@ void writeLog(std::string_view)
 
 namespace
 {
-
-// D3DX_DEFAULT: the game lets D3DX pick the size and mip filter of its originals.
-constexpr UINT  kD3dxDefault  = 0xffffffff;
-constexpr DWORD kUploadFilter = 0x80001;
-// The 72x96 card is padded to a power of two on the GPU.
-constexpr unsigned kOriginalExtent = 128;
-constexpr unsigned kHdExtent       = 512;
 
 // Structural PNG fixtures: decoding is deliberately left to the upload callback.
 // This checks bounded matching independently of any PNG codec.
@@ -122,7 +127,7 @@ auto WINAPI release(FakeTexture* self) -> ULONG
 auto WINAPI description(FakeTexture* self, UINT level, d3d8::SurfaceDesc* desc) -> HRESULT
 {
     REQUIRE(level == 0);
-    desc->format = d3d8::kFormatA8R8G8B8;
+    desc->format = d3d8::FormatA8R8G8B8;
     desc->width  = self->width;
     desc->height = self->height;
     return S_OK;
@@ -218,7 +223,7 @@ auto WINAPI upload(void*, const void*, UINT, UINT width, UINT height, UINT level
     ++uploads;
     REQUIRE(levels == 1);
     REQUIRE(usage == 0);
-    REQUIRE(format == d3d8::kFormatA8R8G8B8);
+    REQUIRE(format == d3d8::FormatA8R8G8B8);
     REQUIRE(filter == kUploadFilter);
     REQUIRE(mipFilter == kD3dxDefault);
     REQUIRE(color == 0);
@@ -241,7 +246,7 @@ auto WINAPI upload(void*, const void*, UINT, UINT width, UINT height, UINT level
     // Not 288x384: padding must also scale.
     REQUIRE(width == kHdExtent);
     REQUIRE(height == kHdExtent);
-    REQUIRE(pool == d3d8::kPoolManaged);
+    REQUIRE(pool == d3d8::PoolManaged);
     if (failHd)
     {
         *output = nullptr;
@@ -271,7 +276,7 @@ void resetFakes()
 
 auto invoke(const std::vector<uint8_t>& bytes, void** output) -> HRESULT
 {
-    return uploadTextureWithReplacement(nullptr, bytes.data(), static_cast<UINT>(bytes.size()), kD3dxDefault, kD3dxDefault, 1, 0, d3d8::kFormatA8R8G8B8, 0, kUploadFilter, kD3dxDefault, 0, nullptr, nullptr, output);
+    return uploadTextureWithReplacement(nullptr, bytes.data(), static_cast<UINT>(bytes.size()), kD3dxDefault, kD3dxDefault, 1, 0, d3d8::FormatA8R8G8B8, 0, kUploadFilter, kD3dxDefault, 0, nullptr, nullptr, output);
 }
 
 auto selected(const bool enabled) -> FakeTexture*

@@ -295,7 +295,7 @@ TEST_CASE("a left click is latched until it is read", "[window_messages]")
 {
     resetFakes();
     gameWindowProc(nullptr, WM_LBUTTONDOWN, 0, 0);
-    REQUIRE(takeMousePresses() == 1);
+    REQUIRE(takeMousePresses() == LeftButton);
     REQUIRE(takeMousePresses() == 0);
 }
 

@@ -12,6 +12,8 @@ namespace
 
 // Posted by the game's WM_ACTIVATEAPP handler to force itself back to the foreground.
 constexpr UINT kReclaimFocusMessage = 0x64;
+// Carries a WindowAction to the game's window thread.
+constexpr UINT kSettingsMessage = WM_APP + 0x54;
 
 WNDPROC         originalWindowProc;
 volatile LONG   pendingMousePresses;
@@ -346,11 +348,11 @@ auto CALLBACK gameWindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpar
 
     if (message == WM_LBUTTONDOWN)
     {
-        InterlockedOr(&pendingMousePresses, 1);
+        InterlockedOr(&pendingMousePresses, LeftButton);
     }
     else if (message == WM_RBUTTONDOWN)
     {
-        InterlockedOr(&pendingMousePresses, 2);
+        InterlockedOr(&pendingMousePresses, RightButton);
     }
     else if (message == WM_KILLFOCUS || (message == WM_ACTIVATEAPP && !wparam))
     {

@@ -20,6 +20,24 @@ constexpr DWORD kMessageText   = 0x1d;
 constexpr DWORD kRecordSize    = 0x220;
 
 constexpr unsigned kMatchFamily = 0x43;
+// Argument of a Continue reply that starts another match.
+constexpr unsigned kRematch = 1;
+
+// Subtypes of the match family.
+enum MatchMessage : unsigned
+{
+    GameInit      = 0x01, // VsGameInit and EventGameInit
+    ComGameInit   = 0x02,
+    QuitReply     = 0x05,
+    StartData     = 0x08,
+    TurnData      = 0x09,
+    PutCard       = 0x0A,
+    BattleData    = 0x0C,
+    ResultData    = 0x0D,
+    ContinueReply = 0x11,
+    WatchInfo     = 0x25,
+    WatchCard     = 0x26,
+};
 
 using IngressFn = int(__cdecl*)(const BYTE* record);
 
@@ -101,26 +119,26 @@ auto nextPhase(GamePhase current, std::string_view message) -> GamePhase
 
     switch (*subtype)
     {
-        case 0x01: // VsGameInit / EventGameInit
-        case 0x02: // ComGameInit
-        case 0x08: // StartData
-        case 0x09: // TurnData
-        case 0x0A: // PutCard
-        case 0x0C: // BattleData
+        case GameInit:
+        case ComGameInit:
+        case StartData:
+        case TurnData:
+        case PutCard:
+        case BattleData:
             return GamePhase::match;
-        case 0x0D: // ResultData
+        case ResultData:
             return GamePhase::results;
-        case 0x11: // Continue reply: 1 rematch, 2 end
-            if (argument == 1U)
+        case ContinueReply:
+            if (argument == kRematch)
             {
                 return GamePhase::match;
             }
 
             return GamePhase::lobby;
-        case 0x05: // Quit reply
+        case QuitReply:
             return GamePhase::lobby;
-        case 0x25: // WatchInfo
-        case 0x26: // WatchCard
+        case WatchInfo:
+        case WatchCard:
             return GamePhase::watching;
         default:
             return current;

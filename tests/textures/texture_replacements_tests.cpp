@@ -22,6 +22,9 @@ namespace
 constexpr UINT  kFrameWidth  = 640;
 constexpr UINT  kFrameHeight = 480;
 constexpr DWORD kBackground  = 0xff123456;
+// The 72x96 card inside its padded 128x128 texture, as the game addresses it.
+constexpr float kCardU = 72.0f / 128.0f;
+constexpr float kCardV = 96.0f / 128.0f;
 
 struct Vertex
 {
@@ -101,7 +104,7 @@ auto createDevice() -> OffscreenDevice
 
     auto mode = d3d8::DisplayMode{};
     check(callMethod(result.d3d.Get(), d3d8::GetAdapterDisplayMode, 0U, &mode), "Get display format");
-    if (mode.format != d3d8::kFormatA8R8G8B8 && mode.format != d3d8::kFormatX8R8G8B8)
+    if (mode.format != d3d8::FormatA8R8G8B8 && mode.format != d3d8::FormatX8R8G8B8)
     {
         SKIP("test requires 32-bit desktop format");
     }
@@ -111,12 +114,12 @@ auto createDevice() -> OffscreenDevice
     parameters.height = kFrameHeight;
     parameters.format = mode.format;
     parameters.count  = 1;
-    parameters.swap   = d3d8::kSwapEffectCopy;
+    parameters.swap   = d3d8::SwapEffectCopy;
     // No window is created or shown; no Present, focus or input call is used.
     parameters.window   = GetDesktopWindow();
     parameters.windowed = TRUE;
     parameters.flags    = 1;
-    check(callMethod(result.d3d.Get(), d3d8::CreateDevice, 0U, d3d8::kDeviceTypeHal, parameters.window, d3d8::kSoftwareVertexProcessing, &parameters, result.device.GetAddressOf()), "Create offscreen device");
+    check(callMethod(result.d3d.Get(), d3d8::CreateDevice, 0U, d3d8::DeviceTypeHal, parameters.window, d3d8::kSoftwareVertexProcessing, &parameters, result.device.GetAddressOf()), "Create offscreen device");
     state(result.device.Get());
     return result;
 }
@@ -180,7 +183,7 @@ auto texture(void* device, const bool highResolution) -> ComPtr<IUnknown>
         return 128;
     }();
     ComPtr<IUnknown> result;
-    check(callMethod(device, d3d8::CreateTexture, extent, extent, 1U, 0UL, d3d8::kFormatA8R8G8B8, d3d8::kPoolManaged, result.GetAddressOf()), "Create managed texture");
+    check(callMethod(device, d3d8::CreateTexture, extent, extent, 1U, 0UL, d3d8::FormatA8R8G8B8, d3d8::PoolManaged, result.GetAddressOf()), "Create managed texture");
     auto locked = d3d8::LockedRect{};
     check(callMethod(result.Get(), d3d8::TextureLockRect, 0U, &locked, nullptr, 0UL), "Lock texture");
     for (UINT y = 0; y < extent; ++y)
@@ -198,7 +201,7 @@ auto texture(void* device, const bool highResolution) -> ComPtr<IUnknown>
 auto defaultPoolTexture(void* device) -> ComPtr<IUnknown>
 {
     ComPtr<IUnknown> result;
-    check(callMethod(device, d3d8::CreateTexture, 128U, 128U, 1U, 0UL, d3d8::kFormatA8R8G8B8, 0UL, result.GetAddressOf()),
+    check(callMethod(device, d3d8::CreateTexture, 128U, 128U, 1U, 0UL, d3d8::FormatA8R8G8B8, 0UL, result.GetAddressOf()),
           "Create default-pool original");
     return result;
 }
@@ -215,7 +218,7 @@ void checkLogicalSize(void* original)
 {
     auto desc = d3d8::SurfaceDesc{};
     check(callMethod(original, d3d8::GetLevelDesc, 0U, &desc), "Get original level description");
-    REQUIRE(desc.format == d3d8::kFormatA8R8G8B8);
+    REQUIRE(desc.format == d3d8::FormatA8R8G8B8);
     REQUIRE(desc.width == 128);
     REQUIRE(desc.height == 128);
 }
@@ -236,7 +239,7 @@ auto pixels(void* device, const UINT width = kFrameWidth, const UINT height = kF
     REQUIRE(desc.width == width);
     REQUIRE(desc.height == height);
     auto locked = d3d8::LockedRect{};
-    check(callMethod(surface.Get(), d3d8::SurfaceLockRect, &locked, nullptr, d3d8::kLockReadOnly), "Lock backbuffer");
+    check(callMethod(surface.Get(), d3d8::SurfaceLockRect, &locked, nullptr, d3d8::LockReadOnly), "Lock backbuffer");
     auto result = std::vector<DWORD>(width * height);
     for (UINT y = 0; y < height; ++y)
     {
@@ -249,16 +252,13 @@ auto pixels(void* device, const UINT width = kFrameWidth, const UINT height = kF
 
 void draw(void* device)
 {
-    // Use the game's original padded-texture UVs, even when drawing 4x larger.
-    constexpr auto u        = 72.0f / 128.0f;
-    constexpr auto v        = 96.0f / 128.0f;
-    const auto     vertices = std::array<Vertex, 4>{ {
+    const auto vertices = std::array<Vertex, 4>{ {
         { 31.5f, 31.5f, 0, 1, 0xffffffff, 0, 0, 0 },
-        { 319.5f, 31.5f, 0, 1, 0xffffffff, 0, u, 0 },
-        { 31.5f, 415.5f, 0, 1, 0xffffffff, 0, 0, v },
-        { 319.5f, 415.5f, 0, 1, 0xffffffff, 0, u, v },
+        { 319.5f, 31.5f, 0, 1, 0xffffffff, 0, kCardU, 0 },
+        { 31.5f, 415.5f, 0, 1, 0xffffffff, 0, 0, kCardV },
+        { 319.5f, 415.5f, 0, 1, 0xffffffff, 0, kCardU, kCardV },
     } };
-    check(callMethod(device, d3d8::DrawPrimitiveUP, d3d8::kTriangleStrip, 2U, vertices.data(), static_cast<UINT>(sizeof(Vertex))), "Draw textured quad");
+    check(callMethod(device, d3d8::DrawPrimitiveUP, d3d8::TriangleStrip, 2U, vertices.data(), static_cast<UINT>(sizeof(Vertex))), "Draw textured quad");
 }
 
 // Without useScope the bound texture is drawn as it is, which gives the tests an
@@ -402,7 +402,7 @@ auto fontTexture(void* device, const UINT scale) -> ComPtr<IUnknown>
     // Synthetic glyph masks exercise the native white-RGB/alpha-floor-1 atlas,
     // including soft coverage, 18px cells and high-frequency HD edge detail.
     ComPtr<IUnknown> result;
-    check(callMethod(device, d3d8::CreateTexture, 256 * scale, 256 * scale, 1U, 0UL, d3d8::kFormatA8R8G8B8, d3d8::kPoolManaged, result.GetAddressOf()), "Create font atlas");
+    check(callMethod(device, d3d8::CreateTexture, 256 * scale, 256 * scale, 1U, 0UL, d3d8::FormatA8R8G8B8, d3d8::PoolManaged, result.GetAddressOf()), "Create font atlas");
     auto locked = d3d8::LockedRect{};
     check(callMethod(result.Get(), d3d8::TextureLockRect, 0U, &locked, nullptr, 0UL), "Lock font atlas");
     for (UINT y = 0; y < 256 * scale; ++y)
@@ -472,7 +472,7 @@ auto renderFont(void* device, void* buffer, void* source, const DWORD shader, co
 
                 return 0xffffd060;
             }();
-            auto vertices = std::array<Vertex, 4>{ { { x, y, 0, 1, tint, 0, u, v }, { x + 16, y, 0, 1, tint, 0, u + 17 / 256.0f, v }, { x, y + 16, 0, 1, tint, 0, u, v + 17 / 256.0f }, { x + 16, y + 16, 0, 1, tint, 0, u + 17 / 256.0f, v + 17 / 256.0f } } };
+            auto vertices = std::array<Vertex, 4>{ { { x, y, 0, 1, tint, 0, kCardU, kCardV }, { x + 16, y, 0, 1, tint, 0, u + 17 / 256.0f, v }, { x, y + 16, 0, 1, tint, 0, u, v + 17 / 256.0f }, { x + 16, y + 16, 0, 1, tint, 0, u + 17 / 256.0f, v + 17 / 256.0f } } };
             if (reference)
             {
                 for (auto& vertex : vertices)
@@ -483,12 +483,12 @@ auto renderFont(void* device, void* buffer, void* source, const DWORD shader, co
             }
 
             void* data{};
-            check(callMethod(buffer, d3d8::BufferLock, 0U, static_cast<UINT>(sizeof(vertices)), &data, d3d8::kLockDiscard), "Lock font vertices");
+            check(callMethod(buffer, d3d8::BufferLock, 0U, static_cast<UINT>(sizeof(vertices)), &data, d3d8::LockDiscard), "Lock font vertices");
             std::memcpy(data, vertices.data(), sizeof(vertices));
             check(callMethod(buffer, d3d8::BufferUnlock), "Unlock font vertices");
             {
                 const TextureDrawBinding replacement(device, !reference && artworkEnabled, !reference && fontsEnabled);
-                check(callMethod(device, d3d8::DrawPrimitive, d3d8::kTriangleStrip, 0U, 2U), "Draw font glyph");
+                check(callMethod(device, d3d8::DrawPrimitive, d3d8::TriangleStrip, 0U, 2U), "Draw font glyph");
             }
 
             checkBinding(device, source);

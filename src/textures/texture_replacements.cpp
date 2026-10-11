@@ -184,7 +184,7 @@ auto WINAPI uploadTextureWithReplacement(void* device, const void* source, UINT 
         const auto                       replacementPng = pack.read(*asset);
         Microsoft::WRL::ComPtr<IUnknown> replacement;
         // Scale the padded power-of-two footprint so the game's UVs stay valid.
-        auto hr     = nativeUpload(device, replacementPng.data(), static_cast<UINT>(replacementPng.size()), desc.width * asset->scale, desc.height * asset->scale, 1, 0, desc.format, d3d8::kPoolManaged, filter, mipFilter, 0, nullptr, nullptr, reinterpret_cast<void**>(replacement.GetAddressOf()));
+        auto hr     = nativeUpload(device, replacementPng.data(), static_cast<UINT>(replacementPng.size()), desc.width * asset->scale, desc.height * asset->scale, 1, 0, desc.format, d3d8::PoolManaged, filter, mipFilter, 0, nullptr, nullptr, reinterpret_cast<void**>(replacement.GetAddressOf()));
         auto actual = d3d8::SurfaceDesc{};
         if (SUCCEEDED(hr) && replacement)
         {

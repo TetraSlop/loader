@@ -17,8 +17,14 @@ namespace tmloader
 namespace
 {
 
-constexpr DWORD kGameStartRva   = 0x8210;
-constexpr DWORD kCommonTableRva = 0x6fbe8;
+const CLSID kGameClass     = { 0x72b2fe03, 0xba77, 0x4867, { 0x84, 0xa2, 0x7b, 0xad, 0x0f, 0x5a, 0x8f, 0xbb } };
+const IID   kGameInterface = { 0xfa287029, 0x5ec4, 0x4938, { 0xb8, 0xc5, 0x53, 0x28, 0x65, 0xdd, 0xe3, 0x69 } };
+const CLSID kCoreClass     = { 0x3501f5dd, 0x7894, 0x42df, { 0x86, 0x6a, 0xa2, 0xb6, 0x52, 0x7d, 0x80, 0x49 } };
+
+// Slot of GameStart in the game object's vtable, and where it must point.
+constexpr unsigned kGameStartSlot  = 9;
+constexpr DWORD    kGameStartRva   = 0x8210;
+constexpr DWORD    kCommonTableRva = 0x6fbe8;
 
 auto createObject(HMODULE module, REFCLSID clsid, REFIID iid) -> IUnknown*
 {
@@ -92,8 +98,8 @@ auto loadGame(const Config& config) -> IUnknown*
 {
     const auto game    = loadModule(config.game, "Cannot load game DLL");
     gameBase           = reinterpret_cast<BYTE*>(game);
-    auto* const object = createObject(game, abi::kGameClass, abi::kGameInterface);
-    if ((*reinterpret_cast<void***>(object))[abi::kGameStartSlot] != gameBase + kGameStartRva)
+    auto* const object = createObject(game, kGameClass, kGameInterface);
+    if ((*reinterpret_cast<void***>(object))[kGameStartSlot] != gameBase + kGameStartRva)
     {
         throw std::runtime_error("Unsupported GameStart layout");
     }
@@ -118,7 +124,7 @@ auto loadViewer(const Config& config) -> IUnknown*
     const auto module = loadModule(config.viewer, "Cannot load Viewer DLL");
     installSystemHooks(module, false);
     installNetworkHooks(module);
-    auto* const core = createObject(module, abi::kCoreClass, abi::kCoreInterface);
+    auto* const core = createObject(module, kCoreClass, abi::kCoreInterface);
     checked(callMethod(core, abi::SetAreaCode, 1L), "Viewer area");
     static char commandLine[] = " /game DdcMLbB";
     checked(callMethod(core, abi::SetParamInit, GetModuleHandleW(nullptr), commandLine), "Viewer parameters");
@@ -150,7 +156,7 @@ auto launch(const Config& config) -> int
 
     auto descriptor = abi::LaunchDescriptor{ sizeof(abi::LaunchDescriptor), 0x200, abi::kCoreInterface, nullptr };
     logLine("Calling GameStart");
-    const auto gameStart = reinterpret_cast<abi::GameStart>((*reinterpret_cast<void***>(game))[abi::kGameStartSlot]);
+    const auto gameStart = reinterpret_cast<abi::GameStart>((*reinterpret_cast<void***>(game))[kGameStartSlot]);
     const auto result    = gameStart(game, core, &descriptor);
     logLine("GameStart returned {:08X}", hex(result));
     stopSettingsPanel();

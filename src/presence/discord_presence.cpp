@@ -13,9 +13,13 @@ namespace tmloader
 namespace
 {
 
-constexpr std::uint32_t kHandshakeOpcode = 0;
-constexpr std::uint32_t kFrameOpcode     = 1;
-constexpr auto          kReplyTimeout    = std::chrono::seconds(2);
+constexpr auto kReplyTimeout = std::chrono::seconds(2);
+
+enum Opcode : std::uint32_t
+{
+    Handshake = 0,
+    Frame     = 1,
+};
 
 } // namespace
 
@@ -69,7 +73,7 @@ DiscordPresence::DiscordPresence(std::string_view applicationId, std::wstring_vi
     }
 
     const auto handshake = nlohmann::json{ { "v", 1 }, { "client_id", applicationId } }.dump();
-    if (!pipe_ || !send(kHandshakeOpcode, handshake) || !receive())
+    if (!pipe_ || !send(Handshake, handshake) || !receive())
     {
         pipe_.reset();
         return;
@@ -109,7 +113,7 @@ void DiscordPresence::publish(const std::stop_token& stop)
     {
         const auto activity = *std::exchange(pending_, std::nullopt);
         lock.unlock();
-        const auto sent = send(kFrameOpcode, activityCommand(activity, GetCurrentProcessId(), ++nonce)) && receive();
+        const auto sent = send(Frame, activityCommand(activity, GetCurrentProcessId(), ++nonce)) && receive();
         lock.lock();
         if (!sent)
         {

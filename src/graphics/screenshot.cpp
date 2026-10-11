@@ -57,7 +57,7 @@ auto readBackbuffer(void* device) -> Capture
     check(callMethod(device, d3d8::GetBackBuffer, UINT{ 0 }, DWORD{ 0 }, surface.GetAddressOf()), "Get game backbuffer");
     auto desc = d3d8::SurfaceDesc{};
     check(callMethod(surface.Get(), d3d8::SurfaceGetDesc, &desc), "Read game backbuffer dimensions");
-    if (desc.format != d3d8::kFormatA8R8G8B8 && desc.format != d3d8::kFormatX8R8G8B8)
+    if (desc.format != d3d8::FormatA8R8G8B8 && desc.format != d3d8::FormatX8R8G8B8)
     {
         throw std::runtime_error("Screenshot requires a 32-bit game backbuffer");
     }
@@ -68,7 +68,7 @@ auto readBackbuffer(void* device) -> Capture
     }
 
     auto locked = d3d8::LockedRect{};
-    check(callMethod(surface.Get(), d3d8::SurfaceLockRect, &locked, static_cast<const RECT*>(nullptr), d3d8::kLockReadOnly), "Read game backbuffer");
+    check(callMethod(surface.Get(), d3d8::SurfaceLockRect, &locked, static_cast<const RECT*>(nullptr), d3d8::LockReadOnly), "Read game backbuffer");
     const auto unlock = wil::scope_exit([&]
                                         {
                                             callMethod(surface.Get(), d3d8::SurfaceUnlock);

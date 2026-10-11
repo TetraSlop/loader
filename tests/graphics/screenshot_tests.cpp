@@ -82,7 +82,7 @@ struct Surface
 {
     void**                                     vtable;
     std::array<void*, d3d8::SurfaceUnlock + 1> methods{};
-    DWORD                                      format = d3d8::kFormatA8R8G8B8;
+    DWORD                                      format = d3d8::FormatA8R8G8B8;
     DWORD                                      width  = 3;
     DWORD                                      height = 2;
     int                                        pitch  = kSurfacePitch;
@@ -125,7 +125,7 @@ struct Surface
     static auto WINAPI lock(Surface* self, d3d8::LockedRect* output, const RECT* rect, DWORD flags) -> HRESULT
     {
         REQUIRE(rect == nullptr);
-        REQUIRE(flags == d3d8::kLockReadOnly);
+        REQUIRE(flags == d3d8::LockReadOnly);
         ++self->locks;
         if (FAILED(self->lockResult))
         {
@@ -440,7 +440,7 @@ TEST_CASE("A bottom-up X8R8G8B8 surface is captured the right way up", "[screens
     const RuntimeDir runtime;
     Device           device;
     const auto       first = tmloader::sequence.load();
-    device.surface.format  = d3d8::kFormatX8R8G8B8;
+    device.surface.format  = d3d8::FormatX8R8G8B8;
     device.surface.pitch   = -kSurfacePitch;
     requestScreenshot();
     saveRequestedScreenshot(&device);

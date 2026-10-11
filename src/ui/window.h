@@ -4,7 +4,11 @@
 namespace tmloader
 {
 
-constexpr UINT kSettingsMessage = WM_APP + 0x54;
+enum MouseButton : BYTE
+{
+    LeftButton  = 1,
+    RightButton = 2,
+};
 
 enum class WindowAction : WPARAM
 {
@@ -24,7 +28,7 @@ auto gameContentRect() -> RECT;
 void toggleSettingsPanel();
 void stopSettingsPanel();
 auto settingsPanelOpen() -> bool;
-// Returns and clears clicks seen since the last call (bit 0 left, bit 1 right).
+// Returns and clears the MouseButton clicks seen since the last call.
 auto takeMousePresses() -> BYTE;
 // Runs the action on the game's window thread. renderScale takes an index into renderScales.
 void postWindowAction(WindowAction action, LPARAM value = 0);

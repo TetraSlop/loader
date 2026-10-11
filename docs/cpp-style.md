@@ -35,6 +35,10 @@ The same commands are available as the CMake targets `format` and
   never inside a function body. Native offsets are named constants in the file
   whose hook uses them. Constants shared across files go in a header as
   `constexpr` in the `tmloader` namespace.
+- **Enums.** A set of related values (vtable slots, table indices, message
+  types, flag bits) is an enum, never a run of constants. ABI values that
+  index or mask use an unscoped enum with a fixed underlying type; loader
+  state uses `enum class`.
 - **Internal linkage.** Implementation helpers and module state go in an
   anonymous namespace in their `.cpp`.
 - **Hooks.** Replacement functions are named `hooked<ApiName>`, such as
