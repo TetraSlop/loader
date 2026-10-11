@@ -156,108 +156,116 @@ void sample(LocalMouse& mouse, LONG x, LONG y, LONG dx, LONG dy)
 TEST_CASE("pointer movement is reported as relative motion", "[input_bridge]")
 {
     resetDesktop(640, 480);
-    LocalMouse mouse;
-    mouse.SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+    const auto mouse = Microsoft::WRL::Make<LocalMouse>();
+    REQUIRE(mouse);
+    mouse->SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
 
-    sample(mouse, 200, 200, 0, 0);
-    sample(mouse, 210, 195, 10, -5);
+    sample(*mouse.Get(), 200, 200, 0, 0);
+    sample(*mouse.Get(), 210, 195, 10, -5);
 }
 
 TEST_CASE("regaining focus does not report the distance travelled meanwhile", "[input_bridge]")
 {
     resetDesktop(640, 480);
-    LocalMouse mouse;
-    mouse.SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
-    sample(mouse, 210, 195, 0, 0);
+    const auto mouse = Microsoft::WRL::Make<LocalMouse>();
+    REQUIRE(mouse);
+    mouse->SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+    sample(*mouse.Get(), 210, 195, 0, 0);
 
     testFocused = false;
-    sample(mouse, 1800, 900, 0, 0);
+    sample(*mouse.Get(), 1800, 900, 0, 0);
     testFocused = true;
-    sample(mouse, 50, 40, 0, 0);
-    sample(mouse, 60, 45, 10, 5);
+    sample(*mouse.Get(), 50, 40, 0, 0);
+    sample(*mouse.Get(), 60, 45, 10, 5);
 }
 
 TEST_CASE("re-entering the client area does not report a jump", "[input_bridge]")
 {
     resetDesktop(640, 480);
-    LocalMouse mouse;
-    mouse.SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
-    sample(mouse, 60, 45, 0, 0);
+    const auto mouse = Microsoft::WRL::Make<LocalMouse>();
+    REQUIRE(mouse);
+    mouse->SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+    sample(*mouse.Get(), 60, 45, 0, 0);
 
-    sample(mouse, -20, 40, 0, 0);
-    sample(mouse, 30, 50, 0, 0);
-    sample(mouse, 40, 50, 10, 0);
+    sample(*mouse.Get(), -20, 40, 0, 0);
+    sample(*mouse.Get(), 30, 50, 0, 0);
+    sample(*mouse.Get(), 40, 50, 10, 0);
 }
 
 TEST_CASE("motion is scaled to 640x480 after the window is resized", "[input_bridge]")
 {
     resetDesktop(640, 480);
-    LocalMouse mouse;
-    mouse.SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
-    sample(mouse, 40, 50, 0, 0);
+    const auto mouse = Microsoft::WRL::Make<LocalMouse>();
+    REQUIRE(mouse);
+    mouse->SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+    sample(*mouse.Get(), 40, 50, 0, 0);
 
     testWidth  = 1280;
     testHeight = 960;
-    sample(mouse, 80, 100, 0, 0);
-    sample(mouse, 100, 110, 10, 5);
+    sample(*mouse.Get(), 80, 100, 0, 0);
+    sample(*mouse.Get(), 100, 110, 10, 5);
 }
 
 TEST_CASE("reacquiring the device does not report a jump", "[input_bridge]")
 {
     resetDesktop(1280, 960);
-    LocalMouse mouse;
-    mouse.SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
-    sample(mouse, 100, 110, 0, 0);
+    const auto mouse = Microsoft::WRL::Make<LocalMouse>();
+    REQUIRE(mouse);
+    mouse->SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+    sample(*mouse.Get(), 100, 110, 0, 0);
 
-    mouse.Unacquire();
-    mouse.Acquire();
-    sample(mouse, 900, 700, 0, 0);
-    sample(mouse, 880, 680, -10, -10);
+    mouse->Unacquire();
+    mouse->Acquire();
+    sample(*mouse.Get(), 900, 700, 0, 0);
+    sample(*mouse.Get(), 880, 680, -10, -10);
 }
 
 TEST_CASE("the game cursor follows the pointer only while the pointer moves", "[input_bridge]")
 {
     resetDesktop(1280, 960);
-    LocalMouse mouse;
-    mouse.SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
-    sample(mouse, 880, 680, 0, 0);
+    const auto mouse = Microsoft::WRL::Make<LocalMouse>();
+    REQUIRE(mouse);
+    mouse->SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+    sample(*mouse.Get(), 880, 680, 0, 0);
 
     enableMapper(300, 300);
-    sample(mouse, 900, 700, 150, 50);
+    sample(*mouse.Get(), 900, 700, 150, 50);
     // Keyboard/focus animation may move the game cursor while the physical
     // pointer stays still. Do not fight it until physical input takes over.
     virtualX = 600;
     virtualY = 400;
-    sample(mouse, 900, 700, 0, 0);
+    sample(*mouse.Get(), 900, 700, 0, 0);
     REQUIRE(mappedSamples == 1);
     REQUIRE(virtualX == 600);
-    sample(mouse, 902, 702, -149, -49);
+    sample(*mouse.Get(), 902, 702, -149, -49);
 }
 
 TEST_CASE("a click moves the game cursor to a still pointer once", "[input_bridge]")
 {
     resetDesktop(1280, 960);
-    LocalMouse mouse;
-    mouse.SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
-    sample(mouse, 902, 702, 0, 0);
+    const auto mouse = Microsoft::WRL::Make<LocalMouse>();
+    REQUIRE(mouse);
+    mouse->SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+    sample(*mouse.Get(), 902, 702, 0, 0);
 
     enableMapper(100, 100);
     testButton = kKeyDown;
-    sample(mouse, 902, 702, 351, 251);
+    sample(*mouse.Get(), 902, 702, 351, 251);
     REQUIRE(mappedSamples == 1);
-    sample(mouse, 902, 702, 0, 0);
+    sample(*mouse.Get(), 902, 702, 0, 0);
     REQUIRE(mappedSamples == 1);
 }
 
 TEST_CASE("the game cursor stops at the last game pixel", "[input_bridge]")
 {
     resetDesktop(1280, 960);
-    LocalMouse mouse;
-    mouse.SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
-    sample(mouse, 902, 702, 0, 0);
+    const auto mouse = Microsoft::WRL::Make<LocalMouse>();
+    REQUIRE(mouse);
+    mouse->SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+    sample(*mouse.Get(), 902, 702, 0, 0);
 
     enableMapper(451, 351);
-    sample(mouse, 1279, 959, 188, 128);
+    sample(*mouse.Get(), 1279, 959, 188, 128);
     REQUIRE(virtualX == 639);
     REQUIRE(virtualY == 479);
 }
@@ -265,15 +273,16 @@ TEST_CASE("the game cursor stops at the last game pixel", "[input_bridge]")
 TEST_CASE("a press latched between polls is reported once", "[input_bridge]")
 {
     resetDesktop(640, 480);
-    LocalMouse mouse;
-    mouse.SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
-    sample(mouse, 200, 200, 0, 0);
+    const auto mouse = Microsoft::WRL::Make<LocalMouse>();
+    REQUIRE(mouse);
+    mouse->SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+    sample(*mouse.Get(), 200, 200, 0, 0);
 
     latchedPresses = 1;
     auto state     = DIMOUSESTATE2{};
-    mouse.GetDeviceState(sizeof(state), &state);
+    mouse->GetDeviceState(sizeof(state), &state);
     REQUIRE(state.rgbButtons[0] == 0x80);
-    mouse.GetDeviceState(sizeof(state), &state);
+    mouse->GetDeviceState(sizeof(state), &state);
     REQUIRE(state.rgbButtons[0] == 0);
 }
 
@@ -282,35 +291,64 @@ TEST_CASE("pillarbox bars neither click nor move the game cursor", "[input_bridg
     // 16:9 client with 4:3 game content.
     resetDesktop(1920, 1080);
     enableMapper(0, 0);
-    LocalMouse mouse;
-    mouse.SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+    const auto mouse = Microsoft::WRL::Make<LocalMouse>();
+    REQUIRE(mouse);
+    mouse->SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
 
-    sample(mouse, 240, 0, 0, 0);
-    sample(mouse, 960, 540, 320, 240);
-    sample(mouse, 1679, 1079, 319, 239);
+    sample(*mouse.Get(), 240, 0, 0, 0);
+    sample(*mouse.Get(), 960, 540, 320, 240);
+    sample(*mouse.Get(), 1679, 1079, 319, 239);
     latchedPresses = 1;
-    sample(mouse, 100, 500, 0, 0);
+    sample(*mouse.Get(), 100, 500, 0, 0);
     REQUIRE(latchedPresses == 0);
     REQUIRE(virtualX == 639);
-    sample(mouse, 960, 540, -319, -239);
+    sample(*mouse.Get(), 960, 540, -319, -239);
 }
 
 TEST_CASE("the settings window never feeds the game", "[input_bridge]")
 {
     resetDesktop(1920, 1080);
     enableMapper(320, 240);
-    LocalMouse mouse;
-    mouse.SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
-    sample(mouse, 960, 540, 0, 0);
+    const auto mouse = Microsoft::WRL::Make<LocalMouse>();
+    REQUIRE(mouse);
+    mouse->SetCooperativeLevel(kTestWindow, DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+    sample(*mouse.Get(), 960, 540, 0, 0);
 
     // It shares the process, so the foreground window has to be compared as well.
     testForeground = kOtherWindow;
-    sample(mouse, 1200, 800, 0, 0);
+    sample(*mouse.Get(), 1200, 800, 0, 0);
     testForeground = kTestWindow;
     panelOpen      = true;
     latchedPresses = 1;
-    sample(mouse, 1200, 800, 0, 0);
+    sample(*mouse.Get(), 1200, 800, 0, 0);
     REQUIRE(latchedPresses == 0);
     panelOpen = false;
-    sample(mouse, 960, 540, 0, 0);
+    sample(*mouse.Get(), 960, 540, 0, 0);
+}
+
+TEST_CASE("the input objects answer the interfaces the game asks for", "[input_bridge]")
+{
+    REQUIRE(__uuidof(IDirectInput8A) == IID_IDirectInput8A);
+    REQUIRE(__uuidof(IDirectInputDevice8A) == IID_IDirectInputDevice8A);
+
+    const Microsoft::WRL::ComPtr<IDirectInput8A> input = Microsoft::WRL::Make<LocalInput>();
+    REQUIRE(input);
+    void* out = nullptr;
+    REQUIRE(input->QueryInterface(IID_IDirectInput8A, &out) == S_OK);
+    REQUIRE(out == input.Get());
+    REQUIRE(input.Get()->Release() == 1);
+    REQUIRE(input->QueryInterface(IID_IDirectInput8W, &out) == E_NOINTERFACE);
+    REQUIRE(out == nullptr);
+
+    IDirectInputDevice8A* device = nullptr;
+    REQUIRE(input->CreateDevice(GUID_SysKeyboard, &device, nullptr) == DIERR_DEVICENOTREG);
+    REQUIRE(device == nullptr);
+    REQUIRE(input->CreateDevice(GUID_SysMouse, &device, nullptr) == S_OK);
+    REQUIRE(device != nullptr);
+
+    // The mouse answers any interface ID with itself.
+    REQUIRE(device->QueryInterface(IID_IDirectInput8W, &out) == S_OK);
+    REQUIRE(out == device);
+    REQUIRE(device->Release() == 1);
+    REQUIRE(device->Release() == 0);
 }

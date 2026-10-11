@@ -37,40 +37,6 @@ Replacement::Replacement(IUnknown* texture, TextureCategory category) noexcept
 {
 }
 
-auto STDMETHODCALLTYPE Replacement::QueryInterface(REFIID iid, void** output) -> HRESULT
-{
-    if (!output)
-    {
-        return E_POINTER;
-    }
-
-    *output = nullptr;
-    if (iid != __uuidof(IUnknown))
-    {
-        return E_NOINTERFACE;
-    }
-
-    *output = this;
-    AddRef();
-    return S_OK;
-}
-
-auto STDMETHODCALLTYPE Replacement::AddRef() -> ULONG
-{
-    return ++references_;
-}
-
-auto STDMETHODCALLTYPE Replacement::Release() -> ULONG
-{
-    const auto remaining = --references_;
-    if (!remaining)
-    {
-        delete this;
-    }
-
-    return remaining;
-}
-
 auto Replacement::texture() const noexcept -> IUnknown*
 {
     return texture_.Get();
@@ -138,9 +104,13 @@ void initializeTextureReplacements(HMODULE game, const std::filesystem::path& ma
 
 auto attachTextureReplacement(void* original, void* replacement, TextureCategory category) -> HRESULT
 {
-    auto* const attachment = new Replacement(static_cast<IUnknown*>(replacement), category);
-    const auto  hr         = callMethod(original, d3d8::SetPrivateData, &kReplacementKey, static_cast<const void*>(attachment), DWORD{ sizeof(IUnknown*) }, d3d8::kPrivateDataObject);
-    attachment->Release();
+    const Microsoft::WRL::ComPtr<IUnknown> attachment = Microsoft::WRL::Make<Replacement>(static_cast<IUnknown*>(replacement), category);
+    if (!attachment)
+    {
+        return E_OUTOFMEMORY;
+    }
+
+    const auto hr = callMethod(original, d3d8::SetPrivateData, &kReplacementKey, static_cast<const void*>(attachment.Get()), DWORD{ sizeof(IUnknown*) }, d3d8::kPrivateDataObject);
     if (SUCCEEDED(hr))
     {
         ++loadedCount;

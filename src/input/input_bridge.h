@@ -2,6 +2,14 @@
 #include <windows.h>
 
 #include <dinput.h>
+#include <wrl/implements.h>
+
+// dinput.h declares its interfaces without a uuid; WRL answers QueryInterface through __uuidof.
+// NOLINTBEGIN(cppcoreguidelines-virtual-class-destructor)
+struct __declspec(uuid("BF798030-483A-4DA2-AA99-5D64ED369700")) IDirectInput8A;
+struct __declspec(uuid("54D41080-DC15-4833-A41B-748F73A38179")) IDirectInputDevice8A;
+
+// NOLINTEND(cppcoreguidelines-virtual-class-destructor)
 
 namespace tmloader
 {
@@ -11,18 +19,11 @@ namespace tmloader
 auto mapGameMouse(LONG x, LONG y, LONG* dx, LONG* dy) -> bool;
 
 // DirectInput mouse backed by the Windows pointer, mapped into the 640x480 game area.
-class LocalMouse final : public IDirectInputDevice8A
+class LocalMouse final : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IDirectInputDevice8A>
 {
 public:
-    ~LocalMouse()                                    = default;
-    LocalMouse(const LocalMouse&)                    = delete;
-    auto operator=(const LocalMouse&) -> LocalMouse& = delete;
-    LocalMouse(LocalMouse&&)                         = delete;
-    auto operator=(LocalMouse&&) -> LocalMouse&      = delete;
-    LocalMouse()                                     = default;
+    // The game gets the device back for whatever interface it asks.
     auto STDMETHODCALLTYPE QueryInterface(REFIID, void** out) -> HRESULT override;
-    auto STDMETHODCALLTYPE AddRef() -> ULONG override;
-    auto STDMETHODCALLTYPE Release() -> ULONG override;
     auto STDMETHODCALLTYPE GetCapabilities(LPDIDEVCAPS p) -> HRESULT override;
     auto STDMETHODCALLTYPE EnumObjects(LPDIENUMDEVICEOBJECTSCALLBACKA, LPVOID, DWORD) -> HRESULT override;
     auto STDMETHODCALLTYPE GetProperty(REFGUID, LPDIPROPHEADER) -> HRESULT override;
@@ -56,7 +57,6 @@ public:
 private:
     void invalidateSample() noexcept;
 
-    ULONG references_       = 1;
     HWND  window_           = nullptr;
     POINT previous_         = {};
     bool  mouseSampleValid_ = false;
@@ -65,19 +65,10 @@ private:
     BYTE  previousButtons_  = 0;
 };
 
-class LocalInput final : public IDirectInput8A
+class LocalInput final : public Microsoft::WRL::RuntimeClass<Microsoft::WRL::RuntimeClassFlags<Microsoft::WRL::ClassicCom>, IDirectInput8A>
 {
 public:
-    LocalInput()                                                  = default;
-    ~LocalInput()                                                 = default;
-    LocalInput(const LocalInput&)                                 = delete;
-    auto operator=(const LocalInput&) -> LocalInput&              = delete;
-    LocalInput(LocalInput&&)                                      = delete;
-    auto                   operator=(LocalInput&&) -> LocalInput& = delete;
     static auto            supports(REFIID iid) noexcept -> bool;
-    auto STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) -> HRESULT override;
-    auto STDMETHODCALLTYPE AddRef() -> ULONG override;
-    auto STDMETHODCALLTYPE Release() -> ULONG override;
     auto STDMETHODCALLTYPE CreateDevice(REFGUID guid, LPDIRECTINPUTDEVICE8A* out, LPUNKNOWN outer) -> HRESULT override;
     auto STDMETHODCALLTYPE EnumDevices(DWORD, LPDIENUMDEVICESCALLBACKA, LPVOID, DWORD) -> HRESULT override;
     auto STDMETHODCALLTYPE GetDeviceStatus(REFGUID guid) -> HRESULT override;
@@ -86,9 +77,6 @@ public:
     auto STDMETHODCALLTYPE FindDevice(REFGUID, LPCSTR, LPGUID) -> HRESULT override;
     auto STDMETHODCALLTYPE EnumDevicesBySemantics(LPCSTR, LPDIACTIONFORMATA, LPDIENUMDEVICESBYSEMANTICSCBA, LPVOID, DWORD) -> HRESULT override;
     auto STDMETHODCALLTYPE ConfigureDevices(LPDICONFIGUREDEVICESCALLBACK, LPDICONFIGUREDEVICESPARAMSA, DWORD, LPVOID) -> HRESULT override;
-
-private:
-    ULONG references_ = 1;
 };
 
 } // namespace tmloader

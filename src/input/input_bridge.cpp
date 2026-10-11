@@ -12,35 +12,6 @@ auto LocalInput::supports(REFIID iid) noexcept -> bool
     return iid == IID_IDirectInput8A;
 }
 
-auto STDMETHODCALLTYPE LocalInput::QueryInterface(REFIID iid, void** out) -> HRESULT
-{
-    if (iid != IID_IDirectInput8A && iid != IID_IUnknown)
-    {
-        *out = nullptr;
-        return E_NOINTERFACE;
-    }
-
-    *out = this;
-    AddRef();
-    return S_OK;
-}
-
-auto STDMETHODCALLTYPE LocalInput::AddRef() -> ULONG
-{
-    return ++references_;
-}
-
-auto STDMETHODCALLTYPE LocalInput::Release() -> ULONG
-{
-    const auto n = --references_;
-    if (!n)
-    {
-        delete this;
-    }
-
-    return n;
-}
-
 auto STDMETHODCALLTYPE LocalInput::CreateDevice(REFGUID guid, LPDIRECTINPUTDEVICE8A* out, LPUNKNOWN outer) -> HRESULT
 {
     if (outer)
@@ -54,7 +25,13 @@ auto STDMETHODCALLTYPE LocalInput::CreateDevice(REFGUID guid, LPDIRECTINPUTDEVIC
         return DIERR_DEVICENOTREG;
     }
 
-    *out = new LocalMouse();
+    Microsoft::WRL::ComPtr<IDirectInputDevice8A> mouse = Microsoft::WRL::Make<LocalMouse>();
+    *out                                               = mouse.Detach();
+    if (!*out)
+    {
+        return E_OUTOFMEMORY;
+    }
+
     logLine("Input bridge created mouse");
     return S_OK;
 }
@@ -101,25 +78,9 @@ auto STDMETHODCALLTYPE LocalInput::ConfigureDevices(LPDICONFIGUREDEVICESCALLBACK
 
 auto STDMETHODCALLTYPE LocalMouse::QueryInterface(REFIID, void** out) -> HRESULT
 {
-    *out = this;
+    *out = static_cast<IDirectInputDevice8A*>(this);
     AddRef();
     return S_OK;
-}
-
-auto STDMETHODCALLTYPE LocalMouse::AddRef() -> ULONG
-{
-    return ++references_;
-}
-
-auto STDMETHODCALLTYPE LocalMouse::Release() -> ULONG
-{
-    const auto n = --references_;
-    if (!n)
-    {
-        delete this;
-    }
-
-    return n;
 }
 
 auto STDMETHODCALLTYPE LocalMouse::GetCapabilities(LPDIDEVCAPS p) -> HRESULT

@@ -27,7 +27,13 @@ auto WINAPI hookedDirectInput8Create(HINSTANCE, DWORD version, REFIID iid, void*
         return DIERR_NOINTERFACE;
     }
 
-    *output = new LocalInput();
+    Microsoft::WRL::ComPtr<IDirectInput8A> input = Microsoft::WRL::Make<LocalInput>();
+    *output                                      = input.Detach();
+    if (!*output)
+    {
+        return E_OUTOFMEMORY;
+    }
+
     return S_OK;
 }
 
