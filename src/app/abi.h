@@ -38,24 +38,22 @@ enum CoreMethod : unsigned
 };
 
 // Indices into the Viewer's cdecl common-function table.
-namespace viewer
+enum ViewerCommand : unsigned
 {
-
-constexpr unsigned kSetInstallDirectory = 125;
-constexpr unsigned kGameIrcOpen         = 132;
-constexpr unsigned kGameIrcOpenCheck    = 133;
-constexpr unsigned kLoadHandle          = 171;
-constexpr unsigned kLoadCharacter       = 175;
-constexpr unsigned kLoadStatus          = 193;
-constexpr unsigned kProfileReadCheck    = 349;
-constexpr unsigned kSetRegistryRoot     = 367;
-constexpr unsigned kSetUiLanguage       = 420;
-constexpr unsigned kSetAccount          = 851;
-constexpr unsigned kEncodeAccount       = 854;
-constexpr unsigned kFileLayerStatus     = 932;
-constexpr unsigned kSetRegistryLanguage = 965;
-constexpr unsigned kTableSize           = 1200;
-
-} // namespace viewer
+    SetInstallDirectory = 125,
+    GameIrcOpen         = 132,
+    GameIrcOpenCheck    = 133,
+    LoadHandle          = 171,
+    LoadCharacter       = 175,
+    LoadStatus          = 193,
+    ProfileReadCheck    = 349,
+    SetRegistryRoot     = 367,
+    SetUiLanguage       = 420,
+    SetAccount          = 851,
+    EncodeAccount       = 854,
+    FileLayerStatus     = 932,
+    SetRegistryLanguage = 965,
+    ViewerCommandCount  = 1200,
+};
 
 } // namespace tmloader::abi

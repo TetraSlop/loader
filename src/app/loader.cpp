@@ -130,11 +130,11 @@ auto loadViewer(const Config& config) -> IUnknown*
         throw std::runtime_error("Unsupported Viewer command table");
     }
 
-    table[abi::viewer::kSetRegistryLanguage](1);
-    table[abi::viewer::kSetUiLanguage](1);
-    table[abi::viewer::kSetRegistryRoot]("SOFTWARE\\PlayOnlineUS");
-    table[abi::viewer::kSetInstallDirectory](runtimeRoot);
-    logLine("Viewer file layer={:08X}", hex(table[abi::viewer::kFileLayerStatus]()));
+    table[abi::SetRegistryLanguage](1);
+    table[abi::SetUiLanguage](1);
+    table[abi::SetRegistryRoot]("SOFTWARE\\PlayOnlineUS");
+    table[abi::SetInstallDirectory](runtimeRoot);
+    logLine("Viewer file layer={:08X}", hex(table[abi::FileLayerStatus]()));
     initializeViewerSession(module, table);
     return core;
 }

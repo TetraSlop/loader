@@ -3,6 +3,7 @@
 #include "app/log.h"
 #include "platform/patch.h"
 #include <cstring>
+#include <utility>
 
 namespace tmloader
 {
@@ -28,7 +29,7 @@ constexpr DWORD kSub19BA0            = 0x19ba0;
 
 constexpr DWORD kProfileRequestTimeoutMs = 5000;
 
-Command original[abi::viewer::kTableSize]{};
+Command original[abi::ViewerCommandCount]{};
 BYTE*   viewerBase    = nullptr;
 bool    profileLoaded = false;
 // Game IRC slots are reused after a match; the profile cipher and its matrix must outlive them.
@@ -82,7 +83,7 @@ auto WSAAPI hookedGetHostByName(const char* host) -> hostent*
 auto __cdecl hookedGameIrcOpen(const char*, const char*, const char*, const char* version, int mode, void* callbacks, void* cipher, void* queue, int count) -> int
 {
     logLine("GameIRC open to configured server; version={} mode={}", version, mode);
-    return original[abi::viewer::kGameIrcOpen](options.server.c_str(), options.polId.c_str(), options.password.c_str(), version, mode, callbacks, cipher, queue, count);
+    return original[abi::GameIrcOpen](options.server.c_str(), options.polId.c_str(), options.password.c_str(), version, mode, callbacks, cipher, queue, count);
 }
 
 void seedProfile(int slot)
@@ -101,7 +102,7 @@ void seedProfile(int slot)
 void loadProfile()
 {
     // Each request returns a ticket polled by the next table entry.
-    for (const auto request : { abi::viewer::kLoadHandle, abi::viewer::kLoadCharacter, abi::viewer::kLoadStatus })
+    for (const auto request : { abi::LoadHandle, abi::LoadCharacter, abi::LoadStatus })
     {
         const int  ticket  = original[request]();
         int        status  = 0;
@@ -112,13 +113,13 @@ void loadProfile()
             Sleep(10);
         }
 
-        logLine("Profile bootstrap Common{} ticket={} result={}", request, ticket, status);
+        logLine("Profile bootstrap Common{} ticket={} result={}", std::to_underlying(request), ticket, status);
     }
 }
 
 auto __cdecl hookedGameIrcOpenCheck(int slot) -> int
 {
-    const int result = original[abi::viewer::kGameIrcOpenCheck](slot);
+    const int result = original[abi::GameIrcOpenCheck](slot);
     if (result == 1 && !profileLoaded)
     {
         profileLoaded = true;
@@ -131,7 +132,7 @@ auto __cdecl hookedGameIrcOpenCheck(int slot) -> int
 
 auto __cdecl hookedProfileReadCheck(int ticket) -> int
 {
-    const int result = original[abi::viewer::kProfileReadCheck](ticket);
+    const int result = original[abi::ProfileReadCheck](ticket);
     if (options.diagnostics)
     {
         logLine("Profile read ticket={} result={}", ticket, result);
@@ -155,8 +156,8 @@ void initializeViewerSession(HMODULE viewer, Command* table)
 
     // The game caches the account identity, so the Viewer must know it first.
     BYTE encodedAccount[8]{};
-    original[abi::viewer::kEncodeAccount](encodedAccount, options.polId.c_str());
-    original[abi::viewer::kSetAccount](encodedAccount);
+    original[abi::EncodeAccount](encodedAccount, options.polId.c_str());
+    original[abi::SetAccount](encodedAccount);
     logLine("Viewer account context initialized before game caches its identity");
     logLine("Native INET initialization={}", viewerFunction(kInitializeInet)());
 
@@ -176,9 +177,9 @@ void initializeViewerSession(HMODULE viewer, Command* table)
     std::memcpy(viewerBase + kProfileEndpoint, endpoint, sizeof(endpoint));
     viewerFunction(kSub19BA0)();
 
-    replacePointer(viewer, reinterpret_cast<void*>(table[abi::viewer::kGameIrcOpen]), reinterpret_cast<void*>(hookedGameIrcOpen));
-    replacePointer(viewer, reinterpret_cast<void*>(table[abi::viewer::kGameIrcOpenCheck]), reinterpret_cast<void*>(hookedGameIrcOpenCheck));
-    replacePointer(viewer, reinterpret_cast<void*>(table[abi::viewer::kProfileReadCheck]), reinterpret_cast<void*>(hookedProfileReadCheck));
+    replacePointer(viewer, reinterpret_cast<void*>(table[abi::GameIrcOpen]), reinterpret_cast<void*>(hookedGameIrcOpen));
+    replacePointer(viewer, reinterpret_cast<void*>(table[abi::GameIrcOpenCheck]), reinterpret_cast<void*>(hookedGameIrcOpenCheck));
+    replacePointer(viewer, reinterpret_cast<void*>(table[abi::ProfileReadCheck]), reinterpret_cast<void*>(hookedProfileReadCheck));
 }
 
 } // namespace tmloader
