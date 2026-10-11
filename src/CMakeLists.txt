@@ -90,7 +90,7 @@ if(TMLOADER_HOSTED)
         hosted/session.h
         hosted/tunnel.cpp
         hosted/tunnel.h)
-    target_link_libraries(loader_hosted PUBLIC loader_config winhttp crypt32 ws2_32 PRIVATE nlohmann_json::nlohmann_json)
+    target_link_libraries(loader_hosted PUBLIC loader_config winhttp crypt32 ws2_32 PRIVATE nlohmann_json::nlohmann_json httplib::httplib)
     target_sources(tmloader PRIVATE
         ui/image.cpp
         ui/image.h

@@ -31,7 +31,7 @@ server supplies the account.
 | Step | Loader behaviour |
 |---|---|
 | Discover | `GET /v1/auth/config`; only protocol 1 with the `discord` provider is accepted |
-| Sign in | Supabase PKCE: random verifier, S256 challenge, a one-time loopback callback on `127.0.0.1` with a random path, a five-minute limit, then `POST /auth/v1/token?grant_type=pkce` |
+| Sign in | Supabase PKCE: random verifier, S256 challenge, a one-time loopback callback on `127.0.0.1` with a random path served by cpp-httplib, a five-minute limit, then `POST /auth/v1/token?grant_type=pkce` |
 | Remember | The refresh token is stored in Credential Manager, keyed by server origin and Supabase project; refreshes are serialized and rotated tokens replace both |
 | Play | `POST /v1/play/tickets` with the access token, then `POST /v1/play/sessions`; stream URLs must be on the server's origin |
 | Tunnel | Loopback listeners replace the game and profile endpoints. Each native connection opens its own WebSocket with `Authorization: Bearer <play token>` and subprotocol `tm-stream-v1`, carrying binary chunks of at most 64 KiB unchanged |

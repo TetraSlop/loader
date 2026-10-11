@@ -29,7 +29,7 @@ folders.
 | `graphics/graphics` | Direct3D 8 hooks: device creation, reset and presentation |
 | `graphics/render_scale` | Resolution presets, automatic selection and the scale shader |
 | `graphics/screenshot` | F12 backbuffer capture and PNG encoding |
-| `hosted/` | Hosted play: WinHTTP client and WebSockets, Supabase PKCE sign-in, Credential Manager, play sessions and the loopback tunnel (see [hosted play](hosted.md)) |
+| `hosted/` | Hosted play: WinHTTP client and WebSockets, Supabase PKCE sign-in with a cpp-httplib loopback callback, Credential Manager, play sessions and the loopback tunnel (see [hosted play](hosted.md)) |
 | `input/` | DirectInput factory hook and the mouse bridge |
 | `platform/system` | File-write boundary, virtual registry, message boxes |
 | `platform/network` | Connect/DNS redirection and the Viewer profile session |

@@ -73,7 +73,9 @@ struct Callback
 auto base64Url(std::span<const std::uint8_t> bytes) -> std::string;
 auto makeVerifier() -> std::string;
 auto challengeFor(std::string_view verifier) -> std::string;
-auto parseCallback(std::string_view request, std::string_view path) -> Callback;
+// Serves the callback on 127.0.0.1 and reports the chosen port through `listening`. Returns the
+// code or error the browser brought to `path`, or nothing once `stop` is requested; throws on timeout.
+auto awaitCallback(const std::string& path, const std::function<void(unsigned short port)>& listening, const std::stop_token& stop, std::chrono::steady_clock::duration timeout) -> std::optional<Callback>;
 auto parseAuthSettings(const Response& response) -> AuthSettings;
 auto parseTokens(const Response& response) -> Tokens;
 auto parsePlaySession(const Response& response) -> PlaySession;

@@ -297,27 +297,4 @@ auto percentEncode(std::string_view text) -> std::string
     return result;
 }
 
-auto percentDecode(std::string_view text) -> std::string
-{
-    auto result = std::string{};
-    for (size_t i = 0; i < text.size(); ++i)
-    {
-        if (text[i] == '%' && i + 2 < text.size() && std::isxdigit(static_cast<unsigned char>(text[i + 1])) && std::isxdigit(static_cast<unsigned char>(text[i + 2])))
-        {
-            result += static_cast<char>(std::stoi(std::string(text.substr(i + 1, 2)), nullptr, 16));
-            i += 2;
-        }
-        else if (text[i] == '+')
-        {
-            result += ' ';
-        }
-        else
-        {
-            result += text[i];
-        }
-    }
-
-    return result;
-}
-
 } // namespace tmloader::hosted

@@ -1,13 +1,17 @@
+#include <httplib.h>
+
 #include "config/config.h"
 #include "hosted/auth.h"
 #include <algorithm>
 #include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <thread>
 
 namespace
 {
 
-constexpr std::string_view kCallbackPath = "/callback/nonce";
+constexpr auto kCallbackPath    = "/callback/nonce";
+constexpr auto kCallbackTimeout = std::chrono::seconds(30);
 
 } // namespace
 
@@ -29,6 +33,47 @@ namespace
 auto jsonResponse(DWORD status, std::string body) -> Response
 {
     return { status, "application/json", std::move(body) };
+}
+
+struct Reply
+{
+    int         status = 0;
+    std::string body;
+    std::string cacheControl;
+};
+
+struct Visit
+{
+    std::optional<Callback> callback;
+    std::vector<Reply>      replies;
+};
+
+// Stands in for the browser: requests each target once the listener reports its port.
+auto visit(const std::vector<std::string>& targets) -> Visit
+{
+    auto       result  = Visit{};
+    auto       browser = std::jthread{};
+    const auto stop    = std::stop_source{};
+    result.callback    = awaitCallback(
+        kCallbackPath,
+        [&](unsigned short port)
+        {
+            browser = std::jthread([&result, &targets, port]
+                                   {
+                                       auto client = httplib::Client("127.0.0.1", port);
+                                       for (const auto& target : targets)
+                                       {
+                                           if (const auto response = client.Get(target))
+                                           {
+                                               result.replies.push_back({ response->status, response->body, response->get_header_value("Cache-Control") });
+                                           }
+                                       }
+                                   });
+        },
+        stop.get_token(),
+        kCallbackTimeout);
+    browser.join();
+    return result;
 }
 
 template <typename Parse>
@@ -62,35 +107,113 @@ TEST_CASE("PKCE matches RFC 7636 and uses unreserved characters", "[hosted]")
     REQUIRE(makeVerifier() != verifier);
 }
 
-TEST_CASE("Percent encoding round-trips callback URLs", "[hosted]")
+TEST_CASE("Percent encoding keeps only unreserved characters", "[hosted]")
 {
     const auto url = std::string("http://127.0.0.1:5123/callback/a b~");
     REQUIRE(percentEncode(url) == "http%3A%2F%2F127.0.0.1%3A5123%2Fcallback%2Fa%20b~");
-    REQUIRE(percentDecode(percentEncode(url)) == url);
-    REQUIRE(percentDecode("a+b%2") == "a b%2");
 }
 
 TEST_CASE("The pending callback path yields its decoded code", "[hosted]")
 {
-    const auto code = parseCallback("GET /callback/nonce?code=abc%2Fdef&state=x HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", kCallbackPath);
-    REQUIRE(code.kind == Callback::Kind::code);
-    REQUIRE(code.value == "abc/def");
+    const auto seen = visit({ "/callback/nonce?code=abc%2Fdef+g&state=x" });
+    REQUIRE(seen.callback);
+    REQUIRE(seen.callback->kind == Callback::Kind::code);
+    REQUIRE(seen.callback->value == "abc/def g");
+    REQUIRE(seen.replies.size() == 1);
+    REQUIRE(seen.replies[0].status == 200);
+    REQUIRE(seen.replies[0].body.contains("You're signed in"));
+    REQUIRE(seen.replies[0].cacheControl == "no-store");
 }
 
 TEST_CASE("A denied sign-in yields the provider's description", "[hosted]")
 {
-    const auto denied = parseCallback("GET /callback/nonce?error=access_denied&error_description=User+cancelled HTTP/1.1\r\n\r\n", kCallbackPath);
-    REQUIRE(denied.kind == Callback::Kind::error);
-    REQUIRE(denied.value == "User cancelled");
+    const auto denied = visit({ "/callback/nonce?error=access_denied&error_description=User+cancelled" });
+    REQUIRE(denied.callback);
+    REQUIRE(denied.callback->kind == Callback::Kind::error);
+    REQUIRE(denied.callback->value == "User cancelled");
+    REQUIRE(denied.replies.size() == 1);
+    REQUIRE(denied.replies[0].status == 400);
+    REQUIRE(denied.replies[0].body.contains("Sign-in cancelled"));
+
+    const auto bare = visit({ "/callback/nonce?error=access_denied" });
+    REQUIRE(bare.callback);
+    REQUIRE(bare.callback->kind == Callback::Kind::error);
+    REQUIRE(bare.callback->value == "access_denied");
+
+    const auto empty = visit({ "/callback/nonce?state=x" });
+    REQUIRE(empty.callback);
+    REQUIRE(empty.callback->kind == Callback::Kind::error);
+    REQUIRE(empty.callback->value == "sign-in failed");
 }
 
-TEST_CASE("Requests that are not the pending callback are ignored", "[hosted]")
+TEST_CASE("Requests that are not the pending callback do not end sign-in", "[hosted]")
 {
-    for (const auto* const request : { "GET /callback/other?code=abc HTTP/1.1\r\n\r\n", "GET /callback/nonce HTTP/1.1\r\n\r\n", "POST /callback/nonce?code=abc HTTP/1.1\r\n\r\n", "GET /callback/nonce?code=abc", "GET /favicon.ico HTTP/1.1\r\n\r\n" })
+    const auto seen = visit({ "/callback/other?code=wrong", "/callback/nonce", "/callback/nonce/more?code=wrong", "/favicon.ico", "/callback/nonce?code=right" });
+    REQUIRE(seen.callback);
+    REQUIRE(seen.callback->kind == Callback::Kind::code);
+    REQUIRE(seen.callback->value == "right");
+    REQUIRE(seen.replies.size() == 5);
+    for (auto i = size_t{ 0 }; i < 4; ++i)
     {
-        CAPTURE(request);
-        REQUIRE(parseCallback(request, kCallbackPath).kind == Callback::Kind::other);
+        CAPTURE(i);
+        REQUIRE(seen.replies[i].status == 404);
+        REQUIRE(seen.replies[i].body.contains("This sign-in link is no longer valid."));
+        REQUIRE(seen.replies[i].cacheControl == "no-store");
     }
+
+    REQUIRE(seen.replies[4].status == 200);
+}
+
+TEST_CASE("Only a GET of the callback path is accepted", "[hosted]")
+{
+    auto       stop     = std::stop_source{};
+    auto       statuses = std::vector<int>{};
+    auto       browser  = std::jthread{};
+    const auto callback = awaitCallback(
+        kCallbackPath,
+        [&](unsigned short port)
+        {
+            browser = std::jthread([&stop, &statuses, port]
+                                   {
+                                       auto client = httplib::Client("127.0.0.1", port);
+                                       if (const auto response = client.Post("/callback/nonce?code=abc"))
+                                       {
+                                           statuses.push_back(response->status);
+                                       }
+
+                                       if (const auto response = client.Head("/callback/nonce?code=abc"))
+                                       {
+                                           statuses.push_back(response->status);
+                                       }
+
+                                       stop.request_stop();
+                                   });
+        },
+        stop.get_token(),
+        kCallbackTimeout);
+    browser.join();
+    REQUIRE(!callback);
+    REQUIRE(statuses == std::vector{ 404, 404 });
+}
+
+TEST_CASE("Waiting for the callback ends on cancellation and on timeout", "[hosted]")
+{
+    auto stop = std::stop_source{};
+    stop.request_stop();
+    const auto started = std::chrono::steady_clock::now();
+    REQUIRE(!awaitCallback(kCallbackPath, [](unsigned short)
+                           {
+                           },
+                           stop.get_token(),
+                           kCallbackTimeout));
+    REQUIRE(std::chrono::steady_clock::now() - started < std::chrono::seconds(5));
+
+    REQUIRE_THROWS_AS(awaitCallback(kCallbackPath, [](unsigned short)
+                                    {
+                                    },
+                                    std::stop_token{},
+                                    std::chrono::milliseconds(50)),
+                      std::runtime_error);
 }
 
 TEST_CASE("Server configuration is read from the gateway", "[hosted]")

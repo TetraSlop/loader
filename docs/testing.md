@@ -27,7 +27,7 @@ Pillow, OpenCV). The loader does not depend on them.
 | Area | Tests | Coverage |
 |---|---|---|
 | app | `abi_tests`, `runtime_tests` | COM slot dispatch against a fully named mock Viewer vtable (including the SetAreaCode slot 27 versus 25 regression), launch descriptor layout, low-integrity labels on writable folders |
-| hosted | `hosted_tests` | PKCE (RFC 7636 vector), callback parsing, server/token/play-session responses and error codes, origin rules, Credential Manager round trip. The hidden `[.gateway]` case runs against a live gateway through `tests/hosted/gateway_harness.py` (see [hosted play](hosted.md)) |
+| hosted | `hosted_tests` | PKCE (RFC 7636 vector), the loopback sign-in callback (code, error, other paths, cancellation, timeout), server/token/play-session responses and error codes, origin rules, Credential Manager round trip. The hidden `[.gateway]` case runs against a live gateway through `tests/hosted/gateway_harness.py` (see [hosted play](hosted.md)) |
 | config | `config_tests` | Defaults, CLI-over-file precedence, duplicate and unknown keys, endpoints and ports, `ppNNN` hostname aliases, path boundaries, account ID and credential shape, SHA256 |
 | graphics | `graphics_tests`, `render_scale_tests`, `screenshot_tests` | Device hooks, presentation and reset, scale shader and vertex-buffer dispatch, pixel-exact comparison of scaled rendering against a CPU-scaled reference at every preset, automatic resolution selection, PNG capture, row pitch, filename collisions and low-integrity writes |
 | input | `input_bridge_tests` | Focus and acquisition transitions, scaled and letterboxed mouse mapping, short-click latch |

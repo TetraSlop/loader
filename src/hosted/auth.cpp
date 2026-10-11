@@ -1,13 +1,15 @@
-#include <winsock2.h>
+#include <httplib.h>
 
 #include "app/log.h"
 #include "config/config.h"
 #include "hosted/auth.h"
-#include "hosted/tunnel.h"
 #include <algorithm>
 #include <bcrypt.h>
+#include <condition_variable>
 #include <format>
+#include <mutex>
 #include <nlohmann/json.hpp>
+#include <thread>
 #include <wincred.h>
 #include <wincrypt.h>
 
@@ -17,7 +19,9 @@ namespace
 {
 
 constexpr auto kSignInTimeout = std::chrono::minutes(5);
-constexpr auto kBase64Flags   = CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF;
+// A connection that sends no complete request is dropped after this long.
+constexpr auto kCallbackReadTimeout = std::chrono::seconds(2);
+constexpr auto kBase64Flags         = CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF;
 
 // Shared by the pages the loopback listener serves after sign-in.
 constexpr auto kPageStyle = "body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0c0e14;color:#e8e6e3;"
@@ -76,29 +80,6 @@ auto succeeded(Response response) -> Response
     return response;
 }
 
-auto queryValue(std::string_view query, std::string_view name) -> std::optional<std::string>
-{
-    while (!query.empty())
-    {
-        const auto end   = query.find('&');
-        const auto pair  = query.substr(0, end);
-        const auto split = pair.find('=');
-        if (pair.substr(0, split) == name && split != std::string_view::npos)
-        {
-            return percentDecode(pair.substr(split + 1));
-        }
-
-        if (end == std::string_view::npos)
-        {
-            break;
-        }
-
-        query.remove_prefix(end + 1);
-    }
-
-    return std::nullopt;
-}
-
 // Streams must stay on the configured server; its token is never sent elsewhere.
 void requireSameOrigin(const std::string& stream, const std::string& origin)
 {
@@ -114,42 +95,41 @@ void requireSameOrigin(const std::string& stream, const std::string& origin)
     }
 }
 
-auto page(const char* status, const char* heading, const char* message) -> std::string
+void servePage(httplib::Response& response, httplib::StatusCode status, const char* heading, const char* message)
 {
     // Tabs the page opened itself can close; otherwise the message stays.
-    const auto body = std::format("<!doctype html><meta charset=utf-8><title>Tetra Master</title><style>{}</style>"
-                                  "<main><h1>{}</h1><p>{}</p></main><script>setTimeout(()=>window.close(),1500)</script>",
-                                  kPageStyle,
-                                  heading,
-                                  message);
-    return std::format("HTTP/1.1 {}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n{}", status, body.size(), body);
+    response.status = status;
+    response.set_content(std::format("<!doctype html><meta charset=utf-8><title>Tetra Master</title><style>{}</style>"
+                                     "<main><h1>{}</h1><p>{}</p></main><script>setTimeout(()=>window.close(),1500)</script>",
+                                     kPageStyle,
+                                     heading,
+                                     message),
+                         "text/html; charset=utf-8");
+    response.set_header("Cache-Control", "no-store");
 }
 
-// Reads one HTTP request head from an accepted loopback connection.
-auto readRequest(SOCKET client) -> std::string
+// What a request on the pending callback path carries. The GET route also receives HEAD.
+auto callbackFrom(const httplib::Request& request) -> Callback
 {
-    auto timeout = DWORD{ 2000 };
-    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
-    auto request = std::string{};
-    auto chunk   = std::array<char, 2048>{};
-    while (request.size() < 8192 && request.find("\r\n\r\n") == std::string::npos)
+    if (request.method != "GET" || !request.target.contains('?'))
     {
-        const auto read = recv(client, chunk.data(), static_cast<int>(chunk.size()), 0);
-        if (read <= 0)
-        {
-            break;
-        }
-
-        request.append(chunk.data(), static_cast<size_t>(read));
+        return {};
     }
 
-    return request;
-}
+    if (auto code = request.get_param_value("code"); !code.empty())
+    {
+        return { Callback::Kind::code, std::move(code) };
+    }
 
-void reply(SOCKET client, const std::string& response)
-{
-    send(client, response.data(), static_cast<int>(response.size()), 0);
-    shutdown(client, SD_BOTH);
+    for (const auto* const key : { "error_description", "error" })
+    {
+        if (request.has_param(key))
+        {
+            return { Callback::Kind::error, request.get_param_value(key) };
+        }
+    }
+
+    return { Callback::Kind::error, "sign-in failed" };
 }
 
 } // namespace
@@ -198,30 +178,84 @@ auto challengeFor(std::string_view verifier) -> std::string
     return base64Url(sha256(verifier.data(), verifier.size()));
 }
 
-auto parseCallback(std::string_view request, std::string_view path) -> Callback
+auto awaitCallback(const std::string& path, const std::function<void(unsigned short port)>& listening, const std::stop_token& stop, std::chrono::steady_clock::duration timeout) -> std::optional<Callback>
 {
-    const auto lineEnd = request.find("\r\n");
-    const auto line    = request.substr(0, lineEnd);
-    if (lineEnd == std::string_view::npos || !line.starts_with("GET ") || !line.ends_with(" HTTP/1.1"))
+    auto server   = httplib::Server{};
+    auto mutex    = std::mutex{};
+    auto arrived  = std::condition_variable_any{};
+    auto callback = std::optional<Callback>{};
+
+    server.set_keep_alive_max_count(1);
+    server.set_read_timeout(kCallbackReadTimeout);
+    server.set_error_handler([](const httplib::Request&, httplib::Response& response)
+                             {
+                                 if (response.body.empty())
+                                 {
+                                     servePage(response, httplib::StatusCode::NotFound_404, "TETRA MASTER", "This sign-in link is no longer valid.");
+                                 }
+                             });
+    // The path is base64url, so it holds nothing the route pattern treats specially.
+    server.Get(path, [&](const httplib::Request& request, httplib::Response& response)
+               {
+                   auto seen = callbackFrom(request);
+                   if (seen.kind == Callback::Kind::other)
+                   {
+                       response.status = httplib::StatusCode::NotFound_404;
+                       return;
+                   }
+
+                   if (seen.kind == Callback::Kind::error)
+                   {
+                       servePage(response, httplib::StatusCode::BadRequest_400, "Sign-in cancelled", "Return to Tetra Master to try again. You can close this tab.");
+                   }
+                   else
+                   {
+                       servePage(response, httplib::StatusCode::OK_200, "You're signed in", "Returning to Tetra Master. You can close this tab.");
+                   }
+
+                   {
+                       const auto lock = std::scoped_lock(mutex);
+                       if (!callback)
+                       {
+                           callback = std::move(seen);
+                       }
+                   }
+
+                   arrived.notify_all();
+               });
+
+    const auto port = server.bind_to_any_port("127.0.0.1");
+    if (port < 0)
     {
-        return {};
+        throw std::runtime_error("Cannot listen for the sign-in callback");
     }
 
-    const auto target = line.substr(4, line.size() - 4 - 9);
-    const auto split  = target.find('?');
-    if (target.substr(0, split) != path || split == std::string_view::npos)
+    // Stopping lets requests in flight finish, so the browser still gets its page.
+    const auto serving    = std::jthread([&server]
+                                         {
+                                          server.listen_after_bind();
+                                         });
+    const auto stopServer = wil::scope_exit([&server]
+                                            {
+                                                server.stop();
+                                            });
+    listening(static_cast<unsigned short>(port));
+
+    auto lock = std::unique_lock(mutex);
+    if (arrived.wait_for(lock, stop, timeout, [&callback]
+                         {
+                             return callback.has_value();
+                         }))
     {
-        return {};
+        return callback;
     }
 
-    const auto query = target.substr(split + 1);
-    if (const auto code = queryValue(query, "code"); code && !code->empty())
+    if (stop.stop_requested())
     {
-        return { Callback::Kind::code, *code };
+        return std::nullopt;
     }
 
-    const auto error = queryValue(query, "error_description").value_or(queryValue(query, "error").value_or("sign-in failed"));
-    return { Callback::Kind::error, error };
+    throw std::runtime_error("Sign-in timed out");
 }
 
 auto parseAuthSettings(const Response& response) -> AuthSettings
@@ -319,53 +353,32 @@ auto AuthClient::settings() -> const AuthSettings&
 auto AuthClient::signIn(const OpenBrowser& openBrowser, const std::stop_token& stop) -> std::optional<Tokens>
 {
     const auto& auth     = settings();
-    auto        port     = static_cast<unsigned short>(0);
-    const auto  listener = listenLoopback(port);
-
-    const auto verifier = makeVerifier();
-    const auto path     = "/callback/" + base64Url(randomBytes(16));
-    const auto redirect = std::format("http://127.0.0.1:{}{}", port, path);
-    openBrowser(std::format("{}/auth/v1/authorize?provider=discord&redirect_to={}&code_challenge={}&code_challenge_method=s256",
-                            auth.supabaseUrl,
-                            percentEncode(redirect),
-                            percentEncode(challengeFor(verifier))));
-
-    const auto deadline = std::chrono::steady_clock::now() + kSignInTimeout;
-    while (!stop.stop_requested())
+    const auto  verifier = makeVerifier();
+    const auto  path     = "/callback/" + base64Url(randomBytes(16));
+    const auto  callback = awaitCallback(
+        path,
+        [&](unsigned short port)
+        {
+            const auto redirect = std::format("http://127.0.0.1:{}{}", port, path);
+            openBrowser(std::format("{}/auth/v1/authorize?provider=discord&redirect_to={}&code_challenge={}&code_challenge_method=s256",
+                                    auth.supabaseUrl,
+                                    percentEncode(redirect),
+                                    percentEncode(challengeFor(verifier))));
+        },
+        stop,
+        kSignInTimeout);
+    if (!callback)
     {
-        if (std::chrono::steady_clock::now() >= deadline)
-        {
-            throw std::runtime_error("Sign-in timed out");
-        }
-
-        auto ready = fd_set{};
-        FD_SET(listener.get(), &ready);
-        const auto wait = timeval{ 0, 250000 };
-        if (select(0, &ready, nullptr, nullptr, &wait) <= 0)
-        {
-            continue;
-        }
-
-        const auto client   = wil::unique_socket(accept(listener.get(), nullptr, nullptr));
-        const auto callback = parseCallback(readRequest(client.get()), path);
-        if (callback.kind == Callback::Kind::other)
-        {
-            reply(client.get(), page("404 Not Found", "TETRA MASTER", "This sign-in link is no longer valid."));
-            continue;
-        }
-
-        if (callback.kind == Callback::Kind::error)
-        {
-            reply(client.get(), page("400 Bad Request", "Sign-in cancelled", "Return to Tetra Master to try again. You can close this tab."));
-            throw std::runtime_error("Sign-in was cancelled: " + callback.value);
-        }
-
-        reply(client.get(), page("200 OK", "You're signed in", "Returning to Tetra Master. You can close this tab."));
-        const auto body = nlohmann::json{ { "auth_code", callback.value }, { "code_verifier", verifier } }.dump();
-        return parseTokens(http_.send("POST", auth.supabaseUrl + "/auth/v1/token?grant_type=pkce", { { "apikey", auth.publishableKey }, { "Content-Type", "application/json" } }, body));
+        return std::nullopt;
     }
 
-    return std::nullopt;
+    if (callback->kind == Callback::Kind::error)
+    {
+        throw std::runtime_error("Sign-in was cancelled: " + callback->value);
+    }
+
+    const auto body = nlohmann::json{ { "auth_code", callback->value }, { "code_verifier", verifier } }.dump();
+    return parseTokens(http_.send("POST", auth.supabaseUrl + "/auth/v1/token?grant_type=pkce", { { "apikey", auth.publishableKey }, { "Content-Type", "application/json" } }, body));
 }
 
 auto AuthClient::refresh(const std::string& refreshToken) -> Tokens

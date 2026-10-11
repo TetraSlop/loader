@@ -68,6 +68,5 @@ private:
 
 // Percent-encodes everything except RFC 3986 unreserved characters.
 auto percentEncode(std::string_view text) -> std::string;
-auto percentDecode(std::string_view text) -> std::string;
 
 } // namespace tmloader::hosted
