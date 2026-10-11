@@ -1,3 +1,4 @@
+#include "app/abi.h"
 #include "app/hooks.h"
 #include "app/log.h"
 #include "graphics/d3d8_abi.h"
@@ -20,7 +21,6 @@ namespace
 constexpr DWORD kDirect3DCreateImport = 0x204260;
 constexpr DWORD kGraphicsGate         = 0x2ff22c;
 constexpr DWORD kBatchGate            = 0x2fe8ec;
-constexpr DWORD kWindowedFlag         = 0x2ff248;
 constexpr DWORD kSoundEngine          = 0x2ff164;
 constexpr DWORD kGameState            = 0x2ff270;
 constexpr DWORD kGameActive           = 0x2ff228;
@@ -105,16 +105,6 @@ auto WINAPI hookedReset(void* device, d3d8::PresentParameters* parameters) -> HR
 
     logLine("D3D8 windowed Reset={:08X}", hex(hr));
     return hr;
-}
-
-// Devices may share a vtable; never record our own hook as the original.
-template <class T>
-void rememberOriginal(T& destination, void* entry, T hook)
-{
-    if (entry != reinterpret_cast<void*>(hook))
-    {
-        destination = reinterpret_cast<T>(entry);
-    }
 }
 
 auto gameValue(DWORD rva) -> DWORD&
@@ -210,18 +200,13 @@ auto monitorRenderScale(HWND window, UINT fallbackWidth, UINT fallbackHeight) ->
 
 void hookDevice(void* device)
 {
-    auto* const vtable = *static_cast<void***>(device);
-    rememberOriginal(originalReset, vtable[d3d8::Reset], hookedReset);
-    rememberOriginal(originalPresent, vtable[d3d8::Present], hookedPresent);
-    rememberOriginal(originalCreateVertexBuffer, vtable[d3d8::CreateVertexBuffer], hookedCreateVertexBuffer);
-    rememberOriginal(originalSetVertexShader, vtable[d3d8::SetVertexShader], hookedSetVertexShader);
-
-    auto protection = DWORD{};
+    auto* const vtable     = *static_cast<void***>(device);
+    auto        protection = DWORD{};
     VirtualProtect(vtable, d3d8::DeviceMethodCount * sizeof(void*), PAGE_READWRITE, &protection);
-    vtable[d3d8::Reset]              = reinterpret_cast<void*>(hookedReset);
-    vtable[d3d8::Present]            = reinterpret_cast<void*>(hookedPresent);
-    vtable[d3d8::CreateVertexBuffer] = reinterpret_cast<void*>(hookedCreateVertexBuffer);
-    vtable[d3d8::SetVertexShader]    = reinterpret_cast<void*>(hookedSetVertexShader);
+    hook(originalReset, vtable[d3d8::Reset], hookedReset);
+    hook(originalPresent, vtable[d3d8::Present], hookedPresent);
+    hook(originalCreateVertexBuffer, vtable[d3d8::CreateVertexBuffer], hookedCreateVertexBuffer);
+    hook(originalSetVertexShader, vtable[d3d8::SetVertexShader], hookedSetVertexShader);
 #ifdef TMLOADER_HD_TEXTURES
     hookTextureDraws(vtable);
 #endif
@@ -232,7 +217,7 @@ auto WINAPI hookedCreateDevice(void* d3d, UINT adapter, DWORD type, HWND window,
 {
     logLine("D3D8 CreateDevice adapter={} type={} behavior={:X} window={} {}x{} format={} windowed={}", adapter, type, behavior, address(window), parameters->width, parameters->height, parameters->format, parameters->windowed);
     initializeGameWindow(window);
-    gameValue(kWindowedFlag) = 1;
+    gameValue(abi::kWindowedFlag) = 1;
 
     auto       mode   = d3d8::DisplayMode{};
     const auto modeHr = callMethod(d3d, d3d8::GetAdapterDisplayMode, adapter, &mode);

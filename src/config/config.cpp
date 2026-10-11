@@ -10,9 +10,6 @@ namespace
 
 constexpr auto kPolIdAlphabet = "EFKAOYMJVNGTDSWBQLPCIRHZXU6328401795";
 
-// The client always dials Game IRC on this port; the loader redirects it.
-constexpr unsigned short kReservedGamePort = 51241;
-
 void defineOptions(CLI::App& app, Config& config)
 {
     app.set_help_flag();
@@ -77,7 +74,7 @@ void validate(const Config& config)
         throw std::runtime_error("Game and profile ports must differ");
     }
 
-    if (config.profilePort == kReservedGamePort)
+    if (config.profilePort == kClientGamePort)
     {
         throw std::runtime_error("Profile port cannot use the client's reserved Game IRC port 51241");
     }

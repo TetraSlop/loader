@@ -10,6 +10,9 @@
 namespace tmloader::hosted
 {
 
+// Listens on an ephemeral 127.0.0.1 port and reports it through port.
+auto listenLoopback(unsigned short& port) -> wil::unique_socket;
+
 // Loopback listeners for the game's two services. Each accepted native
 // connection is forwarded byte for byte over its own authenticated WebSocket.
 class Tunnel

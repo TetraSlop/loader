@@ -272,8 +272,9 @@ TEST_CASE("A vtable that already holds our hooks keeps the recorded originals", 
 {
     using namespace tmloader;
     installFakeDevice();
-    rememberOriginal(originalPresent, reinterpret_cast<void*>(hookedPresent), hookedPresent);
-    rememberOriginal(originalReset, reinterpret_cast<void*>(hookedReset), hookedReset);
+    void* entries[] = { reinterpret_cast<void*>(hookedPresent), reinterpret_cast<void*>(hookedReset) };
+    hook(originalPresent, entries[0], hookedPresent);
+    hook(originalReset, entries[1], hookedReset);
     // Parenthesised so Catch2 does not try to print __stdcall function pointers.
     REQUIRE((originalPresent == present));
     REQUIRE((originalReset == reset));

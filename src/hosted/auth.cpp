@@ -3,6 +3,7 @@
 #include "app/log.h"
 #include "config/config.h"
 #include "hosted/auth.h"
+#include "hosted/tunnel.h"
 #include <algorithm>
 #include <bcrypt.h>
 #include <format>
@@ -317,20 +318,13 @@ auto AuthClient::settings() -> const AuthSettings&
 
 auto AuthClient::signIn(const OpenBrowser& openBrowser, const std::stop_token& stop) -> std::optional<Tokens>
 {
-    const auto& auth        = settings();
-    const auto  listener    = wil::unique_socket(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
-    auto        address     = sockaddr_in{ AF_INET };
-    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    auto length             = int{ sizeof(address) };
-    if (!listener || bind(listener.get(), reinterpret_cast<sockaddr*>(&address), sizeof(address)) || listen(listener.get(), 4) ||
-        getsockname(listener.get(), reinterpret_cast<sockaddr*>(&address), &length))
-    {
-        throw std::runtime_error("Cannot open the sign-in callback listener");
-    }
+    const auto& auth     = settings();
+    auto        port     = static_cast<unsigned short>(0);
+    const auto  listener = listenLoopback(port);
 
     const auto verifier = makeVerifier();
     const auto path     = "/callback/" + base64Url(randomBytes(16));
-    const auto redirect = std::format("http://127.0.0.1:{}{}", ntohs(address.sin_port), path);
+    const auto redirect = std::format("http://127.0.0.1:{}{}", port, path);
     openBrowser(std::format("{}/auth/v1/authorize?provider=discord&redirect_to={}&code_challenge={}&code_challenge_method=s256",
                             auth.supabaseUrl,
                             percentEncode(redirect),
@@ -427,8 +421,7 @@ void AuthClient::revokeAccountSession(const std::string& access)
 
 CredentialStore::CredentialStore(std::string_view origin, std::string_view supabaseUrl)
 {
-    const auto target = std::format("tmloader:{}|{}", origin, supabaseUrl);
-    target_           = std::wstring(target.begin(), target.end());
+    target_ = widen(std::format("tmloader:{}|{}", origin, supabaseUrl));
 }
 
 auto CredentialStore::load() const -> std::optional<std::string>

@@ -31,6 +31,14 @@ auto narrow(const wchar_t* text) -> std::string
     return narrow(std::wstring_view{ text });
 }
 
+auto widen(std::string_view text) -> std::wstring
+{
+    const auto length = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
+    auto       result = std::wstring(static_cast<size_t>(length), wchar_t{});
+    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), length);
+    return result;
+}
+
 auto address(const void* pointer) -> const void*
 {
     return pointer;

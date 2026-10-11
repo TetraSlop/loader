@@ -9,9 +9,6 @@ namespace tmloader
 namespace
 {
 
-// The client hardcodes this Game IRC port; it is redirected to the configured one.
-constexpr u_short kLegacyGamePort = 51241;
-
 // Viewer internals. Unnamed functions are only known by call order.
 constexpr DWORD kGameIrcSlots        = 0x3e58a0;
 constexpr DWORD kGameIrcSlotSize     = 0x3a00;
@@ -53,7 +50,7 @@ auto WSAAPI hookedConnect(SOCKET socket, const sockaddr* address, int length) ->
 
     auto target = *reinterpret_cast<const sockaddr_in*>(address);
     auto port   = ntohs(target.sin_port);
-    if (port == kLegacyGamePort)
+    if (port == kClientGamePort)
     {
         port = options.gamePort;
     }

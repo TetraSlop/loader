@@ -25,6 +25,8 @@ using GetClass  = HRESULT(STDAPICALLTYPE*)(REFCLSID, REFIID, void**);
 using GameStart = HRESULT(__stdcall*)(IUnknown*, IUnknown*, LaunchDescriptor*);
 
 constexpr unsigned kGameStartSlot = 9;
+// RVA of the game's windowed-mode flag.
+constexpr DWORD kWindowedFlag = 0x2ff248;
 
 // IPOLCoreCom vtable slots. 23/24 and 25/26 are the PlayOnline and SquareEnix
 // registry-name getters; both pairs precede SetAreaCode.

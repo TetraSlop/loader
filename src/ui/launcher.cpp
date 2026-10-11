@@ -93,8 +93,7 @@ auto describe(const std::exception& error) -> std::string
 
 void openBrowser(const std::string& url)
 {
-    const auto wide = std::wstring(url.begin(), url.end()); // Percent-encoded, so ASCII.
-    ShellExecuteW(nullptr, L"open", wide.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    ShellExecuteW(nullptr, L"open", widen(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 // Returns from the browser to the launcher. Windows only lets the foreground

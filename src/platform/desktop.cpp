@@ -1,3 +1,4 @@
+#include "app/abi.h"
 #include "app/hooks.h"
 #include "app/log.h"
 #include "platform/patch.h"
@@ -20,8 +21,7 @@ constexpr DWORD kSetActiveWindowImport     = 0x204258;
 constexpr DWORD kCursorSyncBegin           = 0x185753;
 constexpr DWORD kCursorSyncEnd             = 0x185830;
 // A near jump over the legacy cursor synchronization.
-constexpr BYTE  kCursorSyncJump[] = { 0xe9, kCursorSyncEnd - kCursorSyncBegin - 5, 0, 0, 0 };
-constexpr DWORD kWindowedFlag     = 0x2ff248;
+constexpr BYTE kCursorSyncJump[] = { 0xe9, kCursorSyncEnd - kCursorSyncBegin - 5, 0, 0, 0 };
 
 auto WINAPI hookedSetWindowsHookExA(int kind, HOOKPROC callback, HINSTANCE instance, DWORD thread) -> HHOOK
 {
@@ -94,20 +94,12 @@ void skipLegacyCursorSync(HMODULE module)
     BYTE* const site    = base + kCursorSyncBegin;
     auto        operand = DWORD{};
     std::memcpy(&operand, site + 1, sizeof(operand));
-    if (site[0] != 0xa1 || operand != reinterpret_cast<DWORD>(base + kWindowedFlag))
+    if (site[0] != 0xa1 || operand != reinterpret_cast<DWORD>(base + abi::kWindowedFlag))
     {
         throw std::runtime_error("Unsupported live cursor synchronization layout");
     }
 
-    auto protection = DWORD{};
-    if (!VirtualProtect(site, 5, PAGE_EXECUTE_READWRITE, &protection))
-    {
-        throw std::runtime_error("Cannot disable legacy cursor synchronization");
-    }
-
-    std::memcpy(site, kCursorSyncJump, sizeof(kCursorSyncJump));
-    VirtualProtect(site, 5, protection, &protection);
-    FlushInstructionCache(GetCurrentProcess(), site, 5);
+    writeCode(site, kCursorSyncJump);
 }
 
 } // namespace

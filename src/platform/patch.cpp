@@ -73,19 +73,24 @@ auto redirectCall(HMODULE module, DWORD callRva, DWORD targetRva, void* replacem
         throw std::runtime_error(std::format("Unsupported call at +{:X}", callRva));
     }
 
-    auto protection = DWORD{};
-    if (!VirtualProtect(site, 5, PAGE_EXECUTE_READWRITE, &protection))
-    {
-        throw std::runtime_error("Cannot make call site writable");
-    }
-
     // x86 relative CALL arithmetic wraps at 32 bits.
     const auto redirected = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(replacement)) -
                             static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(site + 5));
-    std::memcpy(site + 1, &redirected, sizeof(redirected));
-    VirtualProtect(site, 5, protection, &protection);
-    FlushInstructionCache(GetCurrentProcess(), site, 5);
+    writeCode(site + 1, { reinterpret_cast<const BYTE*>(&redirected), sizeof(redirected) });
     return base + targetRva;
+}
+
+void writeCode(void* site, std::span<const BYTE> bytes)
+{
+    auto protection = DWORD{};
+    if (!VirtualProtect(site, bytes.size(), PAGE_EXECUTE_READWRITE, &protection))
+    {
+        throw std::runtime_error("Cannot make code writable");
+    }
+
+    std::memcpy(site, bytes.data(), bytes.size());
+    VirtualProtect(site, bytes.size(), protection, &protection);
+    FlushInstructionCache(GetCurrentProcess(), site, bytes.size());
 }
 
 } // namespace tmloader

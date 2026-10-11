@@ -1,6 +1,7 @@
 #include <winsock2.h>
 
 #include "app/log.h"
+#include "config/config.h"
 #include "hosted/tunnel.h"
 #include <array>
 #include <utility>
@@ -12,28 +13,12 @@ namespace
 
 constexpr int kChunkBytes = 65536;
 
-auto listenLoopback(unsigned short& port) -> wil::unique_socket
-{
-    auto listener           = wil::unique_socket(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
-    auto address            = sockaddr_in{ AF_INET };
-    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    auto length             = int{ sizeof(address) };
-    if (!listener || bind(listener.get(), reinterpret_cast<sockaddr*>(&address), sizeof(address)) || listen(listener.get(), SOMAXCONN) ||
-        getsockname(listener.get(), reinterpret_cast<sockaddr*>(&address), &length))
-    {
-        throw std::runtime_error("Cannot open a local tunnel listener");
-    }
-
-    port = ntohs(address.sin_port);
-    return listener;
-}
-
 // The client's hardcoded Game IRC port is redirected to the game tunnel, so the
 // profile listener must not land on it.
 auto listenProfile(unsigned short& port) -> wil::unique_socket
 {
     auto listener = listenLoopback(port);
-    if (port == 51241)
+    if (port == kClientGamePort)
     {
         auto other = listenLoopback(port);
         return other;
@@ -59,6 +44,22 @@ auto sendAll(SOCKET native, std::span<const char> data) -> bool
 }
 
 } // namespace
+
+auto listenLoopback(unsigned short& port) -> wil::unique_socket
+{
+    auto listener           = wil::unique_socket(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
+    auto address            = sockaddr_in{ AF_INET };
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    auto length             = int{ sizeof(address) };
+    if (!listener || bind(listener.get(), reinterpret_cast<sockaddr*>(&address), sizeof(address)) || listen(listener.get(), SOMAXCONN) ||
+        getsockname(listener.get(), reinterpret_cast<sockaddr*>(&address), &length))
+    {
+        throw std::runtime_error("Cannot open a local listener");
+    }
+
+    port = ntohs(address.sin_port);
+    return listener;
+}
 
 Tunnel::Tunnel(HttpClient& http, Streams streams)
 : http_(http)

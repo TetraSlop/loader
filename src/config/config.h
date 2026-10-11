@@ -8,6 +8,9 @@
 namespace tmloader
 {
 
+// The client always dials Game IRC on this port; the loader redirects it.
+constexpr unsigned short kClientGamePort = 51241;
+
 struct Config
 {
     std::filesystem::path runtimeDir;
@@ -18,7 +21,7 @@ struct Config
     std::string           server      = "127.0.0.1";
     std::string           polId       = "EEEEEEEF";
     std::string           password    = "tm-local-test";
-    unsigned short        gamePort    = 51241;
+    unsigned short        gamePort    = kClientGamePort;
     unsigned short        profilePort = 51220;
     // Hosted mode: sign in through this HTTPS origin; it supplies the account and streams.
     std::string hostedServer;

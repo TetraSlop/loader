@@ -1,4 +1,5 @@
 #include "graphics/d3d8_abi.h"
+#include "platform/patch.h"
 #include "textures/texture_replacements.h"
 #include "ui/window.h"
 
@@ -45,17 +46,6 @@ auto WINAPI hookedDrawIndexedPrimitiveUP(void* device, DWORD type, UINT minIndex
 {
     const auto binding = bindReplacement(device);
     return originalDrawIndexedUP(device, type, minIndex, vertices, count, indices, indexFormat, data, stride);
-}
-
-// Devices may share a vtable, so an entry that is already ours is left alone.
-template <class T>
-void hook(T& original, void*& entry, T replacement)
-{
-    if (entry != reinterpret_cast<void*>(replacement))
-    {
-        original = reinterpret_cast<T>(entry);
-        entry    = reinterpret_cast<void*>(replacement);
-    }
 }
 
 } // namespace

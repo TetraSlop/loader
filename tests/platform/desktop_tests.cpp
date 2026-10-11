@@ -10,7 +10,6 @@ namespace
 constexpr SIZE_T kImageSize       = 0x310000;
 constexpr DWORD  kSyncSiteRva     = 0x185753;
 constexpr DWORD  kSyncResumeRva   = 0x185830;
-constexpr DWORD  kWindowedFlagRva = 0x2ff248;
 constexpr DWORD  kKeyboardHookRva = 0x2041e4;
 constexpr DWORD  kParametersRva   = 0x2041e8;
 constexpr DWORD  kCursorPosRva    = 0x2041f0;
@@ -61,6 +60,11 @@ void setImport(HMODULE, DWORD rva, void* function)
     imports[rva] = function;
 }
 
+void writeCode(void* site, std::span<const BYTE> bytes)
+{
+    std::memcpy(site, bytes.data(), bytes.size());
+}
+
 } // namespace tmloader
 
 using namespace tmloader;
@@ -83,7 +87,7 @@ void writeCursorSync(BYTE* base)
     site[-1]              = kBreakpoint;
     site[kNearJumpLength] = kBreakpoint;
     site[0]               = kLoadEaxAbsolute;
-    const auto operand    = reinterpret_cast<DWORD>(base + kWindowedFlagRva);
+    const auto operand    = reinterpret_cast<DWORD>(base + tmloader::abi::kWindowedFlag);
     std::memcpy(site + 1, &operand, sizeof(operand));
 }
 

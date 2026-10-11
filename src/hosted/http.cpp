@@ -13,14 +13,6 @@ namespace
 constexpr size_t kMaxResponseBytes = 1024 * 1024;
 constexpr size_t kMaxMessageBytes  = 65536;
 
-auto widen(std::string_view text) -> std::wstring
-{
-    const auto length = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
-    auto       result = std::wstring(static_cast<size_t>(length), wchar_t{});
-    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), length);
-    return result;
-}
-
 [[noreturn]] void fail(const char* action)
 {
     throw TransportError(std::format("{} failed (error {})", action, GetLastError()));

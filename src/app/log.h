@@ -27,6 +27,7 @@ void logLine(std::format_string<Args...> format, Args&&... args)
 auto printable(const char* text) -> const char*;
 auto narrow(std::wstring_view text) -> std::string;
 auto narrow(const wchar_t* text) -> std::string;
+auto widen(std::string_view text) -> std::wstring;
 // Formats a handle or typed pointer as an address.
 auto address(const void* pointer) -> const void*;
 // Formats an HRESULT or status code as its unsigned hex bit pattern.
