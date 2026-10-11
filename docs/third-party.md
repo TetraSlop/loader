@@ -2,8 +2,9 @@
 
 CMake fetches every dependency from a pinned archive and verifies its SHA256.
 None adds a runtime DLL. Include each license notice with redistributed loader
-binaries; the notices live in `third_party/` and are copied into the
-`licenses/` folder of packaged clients.
+binaries; the notices live in `third_party/`, and `tools/build_release.py`
+writes those of the linked libraries into each archive's
+`THIRD_PARTY_NOTICES.txt`.
 
 | Library | Version | License | Used for | Notice |
 |---|---|---|---|---|

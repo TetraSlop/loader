@@ -12,8 +12,8 @@ The six tiles `gW201/1001/title_0` to `title_5` are joined into their native
 640x448 composition and processed once with D (`RealESRGAN_x4plus.pth`). The
 full pass includes the title, its reflection and the Final Fantasy IX
 subtitle; an earlier approach that restored the original filtered logo over
-the model output left the title visibly pixelated. The result is AI
-reconstruction, not recovered original art.
+the model output left the title visibly pixelated. The result is the model's
+reconstruction of the art.
 
 The image is split at the original tile boundaries, and the builder checks
 that the tiles reassemble exactly. Its cache checks the composed-image recipe
@@ -33,9 +33,9 @@ The version is drawn from `on_title`, not the font atlases, so it follows the
 | `friend3` | Status counters in Arial digits; the unknown-count cell is intact. |
 | `cursor` | Three glove poses drawn as cubic curves with a light white bevel, keeping the 40x40 cells, pose order, ink extents, transparent gutters and pointer coordinates. |
 
-These are deliberate substitutes, not the original typefaces. Fonts are read
-from Windows only during the offline build; their hashes are recorded and the
-font files are not bundled. `title_glyphs.py` rebuilds 35 audited regions;
+These are substitutes for the original typefaces. Fonts are read from Windows
+only during the offline build; their hashes are recorded and the font files
+are not bundled. `title_glyphs.py` rebuilds 35 audited regions;
 the version sprite layout comes from executing the original constructor
 `+1480F0` through its sprite registrations. Duplicate source PNGs receive
 identical replacements, and the builders assert that unaudited atlas pixels
@@ -52,6 +52,7 @@ out/hd-work/venv/Scripts/python.exe tools/assemble_texture_pack.py --output out/
 ```
 
 The assembler needs a new output directory (without `--output` it rebuilds
-`assets/runtime/textures`) and checks every source and output hash and dimension. Point `texture-pack` at the new `pack.json` and relaunch;
-a running client keeps its current pack. The artwork toggle still compares
-against the originals, and the font toggle is independent.
+`assets/runtime/textures`) and checks every source and output hash and
+dimension. Point `texture-pack` at the new `pack.json` and relaunch; a running
+client keeps its current pack. The artwork toggle still compares against the
+originals, and the font toggle is independent.

@@ -1,7 +1,7 @@
 # UI asset plan
 
-`tools/build_ui_pack.py` builds replacements for the **181 UI and background
-textures and 30 portraits**. Card illustrations and the 42 font atlases have
+`tools/build_ui_pack.py` builds replacements for the 181 UI and background
+textures and 30 portraits. Card illustrations and the 42 font atlases have
 their own workflows. Every output keeps its original image coordinates and
 animation-frame placement at exactly 4x size, and the game archives are only
 read.
@@ -40,8 +40,8 @@ identical outputs, as the runtime's hash matching requires.
 | Main-menu room background | All six tiles joined, D applied once, split back into tiles |
 | Title, game background, four- and five-row boards | Same joined processing, with baked-in logos and lettering protected from D |
 
-The deterministic treatment preserves existing glyph shapes and wording; it
-does not recover vector outlines. The menu labels (Play, VS. COM, Card Shop,
+The deterministic treatment keeps the existing glyph shapes and wording and
+recovers no vector outlines. The menu labels (Play, VS. COM, Card Shop,
 Auction, Player Data, Rankings, Options, Back) are the exception. The builder
 checks their label and shadow bounds and verifies that no pixel outside the
 eight audited rectangles changes. System fonts are read locally and their
@@ -98,24 +98,23 @@ against the original, and regeneration is idempotent. Small white stat
 characters, handwritten score digits and the COMBO mark are not changed.
 
 Digits use the installed `ariblk.ttf` (Arial Black), with its SHA256 recorded
-as `stat_font_sha256`. The original ink
-coordinates and digit widths are authoritative, so font advances cannot change
-the game's number layout.
+as `stat_font_sha256`. The original ink coordinates and digit widths are
+authoritative, so font advances cannot change the game's number layout.
 
 ## Background arrangement
 
-Menu, title and game backgrounds form a **640x448** image: columns of 256, 256
+Menu, title and game backgrounds form a 640x448 image: columns of 256, 256
 and 128 pixels and rows of 256 and 192 pixels, with names ending 0-5 in row
 order. `back0` drawing starts at `+D3DD4`; the rectangles at `+D3DF9`,
 `+D3E5D`, `+D3EC3` and following calls confirm the arrangement. `menu_bg0`
 starts at `+D419C`.
 
-The boards form **360x448** images with 256/104-pixel columns and 256/192-pixel
+The boards form 360x448 images with 256/104-pixel columns and 256/192-pixel
 rows. Table `+233A74` selects `masu_4a` to `masu_4d` or `masu_5a` to `masu_5d`,
 and drawing at `+D44A0..+D4752` confirms the grid, with the on-screen origin at
 X=171. Two native quirks are kept: the top-right board tile samples from source
 X=1, and some title and menu draws sample 194 rows from a 192-row PNG plus GPU
-padding. Replacements must therefore scale the whole original GPU allocation,
+padding. Replacements therefore scale the whole original GPU allocation,
 including padding.
 
 Tiles are split from one processed image and the builder checks byte-for-byte

@@ -15,9 +15,8 @@ compatible server (the separate tmserver project) is required to play.
 - HD texture and font packs loaded at runtime; original archives are never
   modified.
 - An F10 settings panel and F12 PNG screenshots at the internal resolution.
-- Working sound through the game's own DirectSound 8 engine.
-- Desktop-friendly input: no global keyboard hook, pointer warping or focus
-  stealing.
+- Sound through the game's own DirectSound 8 engine.
+- Input without a global keyboard hook, pointer warping or focus stealing.
 - Pinned DLL hashes and a read-only `--check` mode that validates a setup
   without launching the game.
 
@@ -58,6 +57,10 @@ cmake -S . -B build -A Win32
 cmake --build build --config Release
 .\build\Release\tmloader.exe --config .\tmloader.ini --check
 ```
+
+HD texture packs, Discord Rich Presence and hosted play are optional; see
+[optional features](docs/architecture.md#optional-features) to build without
+them.
 
 `py tools/prepare_runtime.py` copies the committed [assets](assets/README.md)
 into the ignored `runtime/` folder and writes a matching `tmloader.ini` (or
@@ -108,10 +111,11 @@ Logs, screenshots and per-account preferences are written under
 
 With `discord-app-id` set, Discord shows "Playing online on <server>" or
 "Playing on a local server", what you are doing (in the menus, in the lobby, in
-a match, viewing results or watching a match) and how long you have been at it. Use the application ID from
-the Discord developer portal (the same application as hosted sign-in works) and
-upload a Rich Presence art asset named `logo`. Discord must be running before
-the game starts; the loader talks to it over Discord's local IPC pipe.
+a match, viewing results or watching a match) and how long you have been at
+it. Use the application ID from the Discord developer portal (the same
+application as hosted sign-in works) and upload a Rich Presence art asset named
+`logo`. Discord must be running before the game starts; the loader talks to it
+over Discord's local IPC pipe.
 
 ## Controls
 
@@ -134,10 +138,12 @@ src/
   app/        entry point, loader, COM and Viewer ABI, logging, shared runtime
   config/     CLI and config parsing, endpoint and path rules, DLL validation
   graphics/   Direct3D 8 hooks, render scaling, screenshots
+  hosted/     Discord sign-in, play sessions and the WebSocket tunnel
   input/      DirectInput hook and mouse bridge
   platform/   file and registry boundary, network, desktop, audio, patching
+  presence/   Discord Rich Presence
   textures/   texture packs and native texture hooks
-  ui/         game window, preferences, ImGui settings panel
+  ui/         game window, preferences, ImGui settings panel, hosted launcher
 tests/        Catch2 tests mirroring src/; Python tool tests in tests/tools
 tools/        packaging, release and texture-pack scripts
 assets/       game files and HD pack for the full release archive

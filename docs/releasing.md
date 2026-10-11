@@ -33,8 +33,8 @@ itself, and publishing runs in the same workflow.
 
 | File | Contents |
 |---|---|
-| `tmloader-VERSION-windows-x86.zip` | Loader, setup and import helpers, connection settings. No game files, HD textures, Python or server. |
-| `tmloader-VERSION-windows-x86-full.zip` | The same client plus the supported game and Viewer DLLs, original data and audio, factory Viewer settings and the HD texture pack. |
+| `tmloader-VERSION-windows-x86.zip` | `tmloader.exe`, a sample `tmloader.ini` and license notices. No game files, HD textures or server. |
+| `tmloader-VERSION-windows-x86-full.zip` | The same, plus the supported game and Viewer DLLs, original data and audio, factory Viewer settings and the HD texture pack. |
 | `SHA256SUMS.txt` | Archive hashes |
 | `validation.json` | Verification results |
 

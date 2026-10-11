@@ -1,4 +1,4 @@
-"""Validate the reviewed texture-lab packs and merge them into the engine texture pack (assets/runtime/textures)."""
+"""Validate the reviewed texture-lab packs and merge them into the loader's texture pack (assets/runtime/textures)."""
 
 import argparse
 import json

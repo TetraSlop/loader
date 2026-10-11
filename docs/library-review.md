@@ -1,8 +1,8 @@
 # Library review
 
-This review records which libraries the loader adopted, which were evaluated
-and deferred, and why. Versions and licenses of adopted libraries are listed
-in [third-party code](third-party.md).
+Libraries the loader adopted, and libraries that were evaluated and deferred.
+Versions and licenses of the adopted ones are in
+[third-party code](third-party.md).
 
 | Library | Decision | Scope in this loader |
 |---|---|---|
@@ -12,7 +12,7 @@ in [third-party code](third-party.md).
 | Microsoft WIL | Adopted | Ownership of CNG, token, local-allocation and file handles |
 | CLI11 | Adopted | Command-line and config file parsing |
 | spdlog | Deferred | Only with a feature that needs log levels or an in-panel log viewer |
-| MinHook | Deferred | Only if an internal function needs a genuine entry-point detour |
+| MinHook | Deferred | Only if an internal function needs an entry-point detour |
 | d3d8to9 | Deferred | A separate, optional rendering backend |
 
 For any adopted library: pin an immutable revision and archive hash, include
@@ -25,15 +25,15 @@ Microsoft and MIT licensed. It owns:
 
 - the CNG algorithm and hash handles used for SHA256 in
   `config/validation.cpp` (the hash is destroyed before the algorithm);
-- the process token and SID in the low-integrity setup (`app/runtime`). `ConvertStringSidToSidA`
-  memory needs `LocalFree`, so it uses `unique_hlocal`, not `unique_sid`, whose
-  deleter is `FreeSid`;
-- temporary file handles in output-path validation (`config/endpoints`).
+- the process token and SID in the low-integrity setup (`app/runtime`).
+  `ConvertStringSidToSidA` memory needs `LocalFree`, so it uses
+  `unique_hlocal`; the deleter of `unique_sid` is `FreeSid`;
+- temporary file handles in output-path validation (`config/policy`).
 
 Native callbacks use the non-throwing owner types and keep their error-code
 returns. WIL's official CMake integration requires CMake 3.29. COM objects
-keep using the SDK's `WRL::ComPtr`. Game and Viewer objects are deliberately
-never released automatically, because their teardown is not supported.
+keep using the SDK's `WRL::ComPtr`. Game and Viewer objects are never
+released automatically, because their teardown is not supported.
 
 ## CLI11: command-line and config parsing
 
@@ -54,11 +54,11 @@ Credentials are never printed in help or default values.
 
 `app/log` formats with `std::format_to_n` into a stack buffer, so format
 strings are checked at compile time and the crash handler can log without
-allocating. That alone does not justify a framework. The crash path must stay
-independent of any logging library, because an exception filter cannot rely on
-allocation or on locks the failing thread may hold.
+allocating. The crash path must stay independent of any logging library,
+because an exception filter cannot rely on allocation or on locks the failing
+thread may hold.
 
-[spdlog](https://github.com/gabime/spdlog) (MIT) becomes worthwhile with a
+[spdlog](https://github.com/gabime/spdlog) (MIT) is worth adding with a
 feature that needs it, such as an F10 diagnostics tab showing recent warnings,
 renderer and texture-pack status, and a copyable summary. Adopting it would
 mean:
@@ -73,9 +73,9 @@ mean:
 ## MinHook: deferred
 
 [MinHook](https://github.com/TsudaKageyu/minhook) (BSD-2-Clause) provides
-function entry-point trampolines. The loader does something different: it
+function entry-point trampolines. The loader has no entry-point detours: it
 replaces import and vtable pointers (`platform/patch`, `graphics/graphics`),
-redirects seven verified call sites (`textures/texture_hooks`), and skips one
+redirects seven verified call sites (`textures/texture_replacements`), and skips one
 verified code block (`platform/desktop`). Detouring a Windows API entry point
 would also affect the loader and ImGui, whereas the current hooks target only
 the game DLL's imports.

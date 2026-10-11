@@ -1,8 +1,8 @@
 """Replace the 95 printable ASCII font cells with MS UI Gothic vector glyphs fitted to the native ink boxes.
 
-This is a deliberate substitute typeface, not a recovery of the original one. MS UI Gothic had the lowest
-normalized alpha error of the installed Windows fonts (see docs/ui-texture-upscaling.md). Unmapped cells are
-copied unchanged from the conservative pack built by build_font_pack.py.
+The original typeface is unidentified. MS UI Gothic had the lowest normalized alpha error of the installed
+Windows fonts (see docs/ui-texture-upscaling.md). Unmapped cells are copied unchanged from the conservative pack
+built by build_font_pack.py.
 """
 
 import argparse

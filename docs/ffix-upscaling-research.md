@@ -1,16 +1,16 @@
 # FFIX upscaling research
 
-The HD pack's illustrations use **D**, the general `RealESRGAN_x4plus` model
-(see [texture upscaling](texture-upscaling.md)). This page summarizes how the
-Final Fantasy IX Moguri mod approached upscaling, and how its author-published
-model compares with D on Tetra Master cards.
+The HD pack's illustrations use D, the general `RealESRGAN_x4plus` model (see
+[texture upscaling](texture-upscaling.md)). The Final Fantasy IX Moguri mod is
+the nearest comparable project; its workflow is summarized below, and its
+author-published model is compared with D on Tetra Master cards.
 
 ## Moguri's workflow
 
 [Moguri's official site](https://sites.google.com/view/moguri-mod/) describes
 ESRGAN and Stable Diffusion followed by manual polishing, including redrawing
-layer boundaries. It is an edited asset pipeline, not one model applied
-uniformly.
+layer boundaries. Assets were edited individually; no single model was applied
+to everything.
 
 The developers' posts describe several generations of the workflow:
 
@@ -25,7 +25,7 @@ The developers' posts describe several generations of the workflow:
   RealisticVision 6.0 (SD 1.5), blended lineart ControlNets, FFIX-10,
   dreamshaper and more_details LoRAs, a fixed seed, zePilot's upscaler and
   Ultimate SD Upscale, with denoise 0.15-0.25 and partial restoration of the
-  original colors. These were settings for backgrounds, not a universal preset.
+  original colors. These settings were for backgrounds only.
 - [May 2024 preview](https://www.reddit.com/r/FinalFantasyIX/comments/1chjulc/):
   several ESRGAN results, de-dithering, Stable Diffusion in ComfyUI, and manual
   composition and retouching.
@@ -33,8 +33,8 @@ The developers' posts describe several generations of the workflow:
 zePilot published [FFIX_Upscale_Scripts](https://github.com/ZePilOt/FFIX_Upscale_Scripts)
 (MIT), including `GAN_Trained/ff9_trained.pth`. Its
 [upscale script](https://github.com/ZePilOt/FFIX_Upscale_Scripts/blob/master/4-Upscale.py)
-uses that checkpoint with a 4x, 23-block RRDB network. It is the historical
-background model, not the complete Moguri pipeline.
+uses that checkpoint with a 4x, 23-block RRDB network. It is Moguri's older
+background model and only one part of its pipeline.
 
 ## FFIX model comparison
 
@@ -47,26 +47,26 @@ samples were run through the same chaiNNer backend as D:
 out/hd-work/venv/Scripts/python.exe tools/upscale_textures.py --model out/hd-work/models/zepilot_ff9_trained.pth --output variants/zepilot-ff9 gW001/1000/cad00000 gW001/1002/cad00020
 ```
 
-This is a direct model comparison with the same sources and alpha, without
-Moguri's de-dithering or manual edits. The FFIX model produces harder outlines
-and segmented shading, especially on the green creature. Some details are
-clearer, but it is not a clear improvement over D, so D remains the baseline.
+The comparison uses the same sources and alpha, without Moguri's de-dithering
+or manual edits. The FFIX model produces harder outlines and segmented
+shading, especially on the green creature. Some details are clearer, but
+overall it does not improve on D, so D remains the baseline.
 
-## Takeaways
+## Conclusions
 
 - Compare any candidate model against D on the same 72x96 card sources, at the
   same 4x size and with identical alpha.
-- Select and blend by asset type. A model tuned for backgrounds is not
-  automatically better for small transparent creature illustrations.
+- Select and blend by asset type. A model tuned for backgrounds may do worse
+  on small transparent creature illustrations.
 - De-dither only assets that are actually dithered; a blanket pass erases the
   small details worth keeping.
-- The March 2024 diffusion settings are not suitable for cards as-is: card
+- The March 2024 diffusion settings do not suit cards as they are: card
   silhouettes, eyes, weapons and symbols need stricter fidelity than
   decorative backgrounds.
 - Moguri's [credits](https://sites.google.com/view/moguri-mod/about) name
-  Teaito's Alexandria font, now in Memoria. That is a lead for font research,
-  not evidence that it matches the PlayOnline game's font.
+  Teaito's Alexandria font, now in Memoria. It is a lead for font research;
+  nothing shows that it matches the PlayOnline game's font.
 
-No drop-in PlayOnline texture pack or card-specific Moguri model exists. The
-shared subject matter does not imply matching texture layouts, resolutions or
-coverage.
+No drop-in PlayOnline texture pack or card-specific Moguri model exists.
+Shared subject matter does not mean the texture layouts, resolutions or
+coverage match.

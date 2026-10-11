@@ -1,7 +1,7 @@
 # Distribution
 
-`tools/build_release.py` builds two unzip-and-run archives. Neither contains a
-server; the loader connects to the server named in `tmloader.ini`.
+`tools/build_release.py` builds two archives. Neither contains a server; the
+loader connects to the server named in `tmloader.ini`.
 
 | Archive | Contents |
 |---|---|

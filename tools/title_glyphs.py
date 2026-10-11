@@ -1,7 +1,7 @@
 """Redraw title-screen and PlayOnline toolbar text cells as vector glyphs inside their native rectangles.
 
-These are deliberate substitute typefaces, not recovered originals. The +offsets refer to the decoded TM code
-image with SHA-256 422e46ab2ad6fd02db570a2384424dd1540b197e1ccd7e3da2645ca2b40b1879.
+The typefaces are substitutes for the unidentified originals. The +offsets refer to the decoded TM code image
+with SHA-256 422e46ab2ad6fd02db570a2384424dd1540b197e1ccd7e3da2645ca2b40b1879.
 """
 
 from pathlib import Path

@@ -7,16 +7,16 @@ Working files live in the ignored `out/` directory, and the original game data
 is only read.
 
 The pack covers all 503 exported images: 250 cards, 30 portraits, 42 font
-atlases and 181 UI and background images. Illustrations use **D**, the general
+atlases and 181 UI and background images. Illustrations use D, the general
 `RealESRGAN_x4plus` model. Verified Latin characters, main-menu labels, large
 card digits and direction arrows have vector replacements, and remaining
-lettering and symbols are conservatively filtered. See
+lettering and symbols are filtered. See
 [UI asset plan](ui-asset-plan.md), [UI texture upscaling](ui-texture-upscaling.md)
 and [HD review](hd-review.md).
 
 ## Game texture archives
 
-The seven `data/gW*.dat` archives contain **503 PNG images**. Archive records
+The seven `data/gW*.dat` archives contain 503 PNG images. Archive records
 are 32 bytes:
 
 | Offset | Field |
@@ -110,17 +110,17 @@ The older releases publish no asset digests; the hashes were computed locally
 and the file sizes match the release assets. Side-by-side sheets of bilinear,
 sharpened Lanczos, the anime model, D, ESRNet and a 25% D blend showed that the
 general GAN keeps more surface variation than the anime model and that ESRNet
-is smoother, so D was selected. All models interpret ambiguous pixels; compare
-outputs rather than assuming an improvement. See
+is smoother, so D was selected. Every model guesses at ambiguous pixels, so
+judge a candidate by its output. See
 [FFIX upscaling research](ffix-upscaling-research.md) for a comparison with an
 FFIX-trained model.
 
 ## Using a pack
 
-Set `texture-pack=textures/pack.json` (relative to the runtime directory)
-to use the pack; the default is `textures/pack.json`. `tmloader --check`
-verifies every listed image, and at runtime the loader logs indexed images,
-uploads and fallback reasons.
+`texture-pack` names the pack manifest, relative to the runtime directory; the
+default is `textures/pack.json`. `tmloader --check` verifies every listed
+image, and at runtime the loader logs indexed images, uploads and fallback
+reasons.
 
 ## Loader contract
 
@@ -130,7 +130,7 @@ uploads and fallback reasons.
 - The game reads texture dimensions with `GetLevelDesc(0)` at
   `+17C568..+17C5AB` and stores them in its texture entry at `+0xC`/`+0x10`.
   Named fonts are registered at `+17BC34..+17BC7E` with the same dimensions.
-  The game must keep seeing the **original logical dimensions** while the GPU
+  The game must keep seeing the original logical dimensions while the GPU
   texture is larger; normalized UVs then address the same regions at 4x.
 - The loader hooks the seven native upload call sites, always returns the
   original texture and attaches the HD texture as private data. Draws bind it
@@ -142,7 +142,8 @@ See [texture load path](texture-load-path.md) for the ABI and offsets.
 ## Limits
 
 - Model output smooths some textures and can turn small details into flat
-  shapes. It is reconstructed detail, not original art. The alpha mask stays
+  shapes. Its detail is reconstructed and was never in the original art. The
+  alpha mask stays
   closer to the original and can look softer than the RGB edges.
 - Backgrounds are split into tiles (`menu_bg0`, `menu_bg1`, ...). They must be
   joined, processed together and split again to avoid seams; `build_ui_pack.py`

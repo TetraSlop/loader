@@ -33,17 +33,17 @@ themes. Other names need checking individually.
 
 ## Assets to split or recreate
 
-- **Font atlases** (`gW000/0090/font_00` to `font_41`): never send through an
+- The font atlases (`gW000/0090/font_00` to `font_41`) never go through an
   illustration model.
-- **Mixed text and control atlases** (`window`, `window2`, `on_card1`,
-  `on_card2`, `point`, `get_card`, `menu`, `head`, `ttl_menu`, `game_st`,
-  result banners and event atlases): whole-atlas AI processing can alter text.
+- Whole-atlas AI processing can alter text in the mixed text and control
+  atlases: `window`, `window2`, `on_card1`, `on_card2`, `point`, `get_card`,
+  `menu`, `head`, `ttl_menu`, `game_st`, result banners and event atlases.
   Preserve or regenerate those regions using verified source rectangles.
-- **Functional symbols** (arrows, crosses, button markers, stat digits,
-  P/M/X/A): exact silhouettes matter more than texture; use vector shapes or
-  pixel reconstruction. Cursors must keep their hotspot and frame layout.
-- **Backgrounds and board tiles**: join before upscaling and split at scaled
-  boundaries to avoid seams.
+- For functional symbols (arrows, crosses, button markers, stat digits,
+  P/M/X/A) the exact silhouette matters more than texture; use vector shapes
+  or pixel reconstruction. Cursors must keep their hotspot and frame layout.
+- Join backgrounds and board tiles before upscaling and split them at the
+  scaled boundaries to avoid seams.
 
 Keep logical coordinates, frame order, dimensions and empty gutters. Filter
 individual components with padding when neighbors would bleed into each other.
@@ -52,11 +52,11 @@ Keep unusual partial opacity, such as `onstatus` (maximum alpha 237).
 ## Font atlas layout
 
 Every font PNG is 256x256 with white RGB and coverage in alpha. The background
-alpha is **1**, not 0 (`font_01` has 52,775 such pixels); other values are
+alpha is 1, not 0 (`font_01` has 52,775 such pixels); other values are
 quantized, such as 24, 64, 128, 194 and 255.
 
-The grid is **14 by 14** glyph slots (196 per atlas) with an **18-pixel
-pitch**, not 16x16. The renderer at `+184872..+184893` divides the glyph index
+The grid is 14 by 14 glyph slots (196 per atlas) on an 18-pixel pitch, not
+16x16. The renderer at `+184872..+184893` divides the glyph index
 by 196 and at `+184A68..+184AE9` computes:
 
 ```text
@@ -105,9 +105,8 @@ opposite sign subtract two more pre-offset units (`+1848BE..+184995`,
 
 The helper at `+185130` converts the Shift-JIS pair to a JIS row and column,
 and the renderer computes `glyph_index = jis_row*94 + jis_column - 0xC3F`.
-All **95 printable ASCII records** were run through that helper under
-emulation and matched this conversion, so the code-to-cell map does not rely
-on OCR. The half-width, double-byte and special `0x85` paths (including style
+All 95 printable ASCII records were run through that helper under emulation
+and matched this conversion, so the code-to-cell map does not rely on OCR. The half-width, double-byte and special `0x85` paths (including style
 bit `0x200`) have not been mapped; unmapped glyphs keep their original shapes.
 
 ## Conservative font pack
@@ -126,8 +125,8 @@ bit `0x200`) have not been mapped; unmapped glyphs keep their original shapes.
 The builder validates source hashes, checks all 8,232 cells and preserves the
 822 empty ones (including the empty `font_40`). Filtering changes total cell
 coverage by a factor of 0.983 to 1.168; printable ASCII averages +3.3%, the
-most being the thin underscore at +13%. These are coverage changes, not width
-or spacing changes.
+most being the thin underscore at +13%. Glyph widths and spacing do not
+change.
 
 ```powershell
 out/hd-work/venv/Scripts/python.exe tools/build_font_pack.py --self-check
@@ -142,8 +141,8 @@ native shadows or outlines.
 
 ## Vector Latin font pack
 
-The HD pack uses **MS UI Gothic Regular** for the 95 mapped ASCII glyphs. It is
-a deliberate substitute, not an identification of the original typeface.
+The HD pack uses MS UI Gothic Regular for the 95 mapped ASCII glyphs. It is a
+substitute; the original typeface is unidentified.
 `tools/build_vector_font_pack.py` renders each glyph from its native JIS
 character (the game's ASCII `A` draws the full-width JIS `A`), rasterizes it at
 256px, crops to its ink and fits it into the original glyph's occupied box at
@@ -174,8 +173,8 @@ The tool needs the conservative pack and the original exports. Only the 95
 mapped cells in `font_00` and `font_01` change (one is the blank space); every
 other pixel matches the conservative pack, and `font_02` to `font_41` are
 copied unchanged. The font is read from `C:/Windows/Fonts/msgothic.ttc`
-(collection index 1; `--font` for another path) and never distributed; its hash is recorded, and another
-font revision may produce different output.
+(collection index 1; `--font` for another path) and never distributed; its
+hash is recorded, and another font revision may produce different output.
 
 The tool validates the 95 Shift-JIS/Unicode mappings against the helper
 results, all metrics, glyph boxes, unchanged pixels, the 40 untouched atlases
@@ -188,8 +187,8 @@ and all PNG hashes, including JIS row-boundary punctuation.
   synthetic test covers the 18px cell and 17-texel UV layout, alpha floor,
   tint and shadow pass at 1440p and 2160p; it does not cover every native
   text effect.
-- The original typeface is unidentified; the conservative pack remains the
-  fallback if the substitute is not preferred.
+- The conservative pack remains the fallback if the substitute typeface is
+  not wanted.
 - Unmapped characters must not be inferred by OCR. The half-width,
   double-byte and `0x85` paths need their own mapping and spacing work.
 - Bitmap wordmarks and control labels outside the font atlases are handled by
