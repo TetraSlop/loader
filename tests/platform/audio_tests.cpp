@@ -1,10 +1,20 @@
 #include "platform/audio.cpp"
 #include <catch2/catch_test_macros.hpp>
-#include <cstdio>
 #include <stdexcept>
 #include <wrl/client.h>
 
 using Microsoft::WRL::ComPtr;
+
+namespace
+{
+
+// Exact flags and sizes the game passes at TM +1AAF9C/+1AAFA9 (BGM) and +1AA901/+1AA90E (SE).
+constexpr DWORD kMusicFlags  = 0x50080;
+constexpr DWORD kMusicBytes  = 0xc0000;
+constexpr DWORD kEffectFlags = 0x500c0;
+constexpr DWORD kEffectBytes = 0x30000;
+
+} // namespace
 
 namespace tmloader
 {
@@ -15,14 +25,16 @@ void setImport(HMODULE, DWORD, void*)
 
 } // namespace tmloader
 
-static void checked(HRESULT result, const char* operation)
+namespace
 {
-    printf("%s=%08lX\n", operation, result);
+
+void checked(HRESULT result, const char* operation)
+{
     INFO(operation);
     REQUIRE(SUCCEEDED(result));
 }
 
-static void checkBuffer(IDirectSound8* sound, DWORD flags, DWORD bytes)
+void checkBuffer(IDirectSound8* sound, DWORD flags, DWORD bytes)
 {
     auto format        = WAVEFORMATEX{ WAVE_FORMAT_PCM, 2, 44100, 176400, 4, 16, 0 };
     auto desc          = DSBUFFERDESC{};
@@ -47,6 +59,8 @@ static void checkBuffer(IDirectSound8* sound, DWORD flags, DWORD bytes)
     REQUIRE((status & DSBSTATUS_PLAYING) == 0);
 }
 
+} // namespace
+
 TEST_CASE("Native music and effect buffers support required interfaces", "[audio-device]")
 {
     // Uses Windows' audio device, but creates no window and never calls Play.
@@ -61,8 +75,6 @@ TEST_CASE("Native music and effect buffers support required interfaces", "[audio
 
     checked(result, "Audio device");
     checked(sound->SetCooperativeLevel(GetDesktopWindow(), DSSCL_NORMAL), "SetCooperativeLevel");
-    // Exact flags/sizes at TM +1AAF9C/+1AAFA9 (BGM), +1AA901/+1AA90E (SE).
-    checkBuffer(sound.Get(), 0x50080, 0xc0000);
-    checkBuffer(sound.Get(), 0x500c0, 0x30000);
-    puts("PASS music and effect buffers; no playback requested");
+    checkBuffer(sound.Get(), kMusicFlags, kMusicBytes);
+    checkBuffer(sound.Get(), kEffectFlags, kEffectBytes);
 }

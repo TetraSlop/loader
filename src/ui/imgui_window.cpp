@@ -16,7 +16,7 @@ namespace tmloader
 namespace
 {
 
-constexpr auto className = L"TMLoaderImGui";
+constexpr auto kClassName = L"TMLoaderImGui";
 
 // Per-window state, reachable from the window procedure through GWLP_USERDATA.
 struct WindowState
@@ -192,23 +192,20 @@ auto runImGuiWindow(const ImGuiWindowSpec& spec, const std::function<bool()>& fr
     wc.lpfnWndProc          = windowProc;
     wc.hInstance            = instance;
     wc.hCursor              = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512)); // IDC_ARROW
-    wc.lpszClassName        = className;
+    wc.lpszClassName        = kClassName;
     RegisterClassExW(&wc); // Fails harmlessly when a previous window registered it.
 
     const auto scale     = ImGui_ImplWin32_GetDpiScaleForMonitor(MonitorFromWindow(spec.owner, MONITOR_DEFAULTTOPRIMARY));
     const auto frameRect = placement(spec, scale);
     auto       state     = WindowState{};
-    const auto style     = [&]() -> DWORD
+    auto       style     = DWORD{ WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU };
+    // Owned windows minimize with their owner; a standalone launcher gets its own button.
+    if (!spec.owner)
     {
-        // Owned windows minimize with their owner; a standalone launcher gets its own button.
-        if (spec.owner)
-        {
-            return WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
-        }
+        style |= WS_MINIMIZEBOX;
+    }
 
-        return WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
-    }();
-    const auto hwnd = CreateWindowExW(0, className, spec.title, style, frameRect.left, frameRect.top, frameRect.right - frameRect.left, frameRect.bottom - frameRect.top, spec.owner, nullptr, instance, nullptr);
+    const auto hwnd = CreateWindowExW(0, kClassName, spec.title, style, frameRect.left, frameRect.top, frameRect.right - frameRect.left, frameRect.bottom - frameRect.top, spec.owner, nullptr, instance, nullptr);
     if (!hwnd)
     {
         return false;
@@ -223,15 +220,12 @@ auto runImGuiWindow(const ImGuiWindowSpec& spec, const std::function<bool()>& fr
     parameters.SwapEffect                               = D3DSWAPEFFECT_DISCARD;
     parameters.BackBufferFormat                         = D3DFMT_UNKNOWN;
     parameters.PresentationInterval                     = D3DPRESENT_INTERVAL_ONE;
-    const auto hr                                       = [&]() -> HRESULT
+    auto hr                                             = HRESULT{ E_FAIL };
+    if (d3d)
     {
-        if (!d3d)
-        {
-            return E_FAIL;
-        }
+        hr = d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &parameters, device.GetAddressOf());
+    }
 
-        return d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hwnd, D3DCREATE_SOFTWARE_VERTEXPROCESSING, &parameters, device.GetAddressOf());
-    }();
     if (FAILED(hr))
     {
         logLine("ImGui window graphics initialization failed: {:08X}", hex(hr));

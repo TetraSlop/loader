@@ -17,7 +17,8 @@ namespace tmloader
 namespace
 {
 
-constexpr uint8_t pngSignature[]{ 137, 80, 78, 71, 13, 10, 26, 10 };
+constexpr uint8_t kPngSignature[]{ 137, 80, 78, 71, 13, 10, 26, 10 };
+constexpr auto    kFontAtlasPrefix = std::string_view{ "gW000/0090/font_" };
 
 auto bigEndian(const uint8_t* bytes) -> uint32_t
 {
@@ -82,13 +83,12 @@ auto dimension(const nlohmann::json& value) -> unsigned
 // painted into menus and cards is artwork.
 auto categoryFor(std::string_view id) -> TextureCategory
 {
-    constexpr auto prefix = std::string_view{ "gW000/0090/font_" };
-    if (!id.starts_with(prefix) || id.size() != prefix.size() + 2)
+    if (!id.starts_with(kFontAtlasPrefix) || id.size() != kFontAtlasPrefix.size() + 2)
     {
         return TextureCategory::artwork;
     }
 
-    const auto digits = id.substr(prefix.size());
+    const auto digits = id.substr(kFontAtlasPrefix.size());
     auto       index  = 0U;
     const auto parsed = std::from_chars(digits.data(), digits.data() + digits.size(), index);
     if (parsed.ec == std::errc{} && parsed.ptr == digits.data() + digits.size() && index < 42)
@@ -109,7 +109,7 @@ auto pngInfo(const void* data, size_t bytes) -> PngInfo
     }
 
     const auto* const png = static_cast<const uint8_t*>(data);
-    if (std::memcmp(png, pngSignature, sizeof(pngSignature)) || bigEndian(png + 8) != 13 || std::memcmp(png + 12, "IHDR", 4))
+    if (std::memcmp(png, kPngSignature, sizeof(kPngSignature)) || bigEndian(png + 8) != 13 || std::memcmp(png + 12, "IHDR", 4))
     {
         return {};
     }
@@ -144,6 +144,11 @@ auto pngInfo(const void* data, size_t bytes) -> PngInfo
     }
 
     return {};
+}
+
+auto TexturePack::size() const -> size_t
+{
+    return assets_.size();
 }
 
 void TexturePack::load(const std::filesystem::path& manifest)

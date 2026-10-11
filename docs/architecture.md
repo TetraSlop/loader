@@ -26,7 +26,7 @@ folders.
 | `app/log`, `app/runtime` | `std::format` logging (`logLine`), crash logging, low-integrity token, shared native state |
 | `config/` | CLI and config parsing (CLI11), host and path policy, DLL hash validation, SHA256 |
 | `graphics/d3d8_abi.h` | Direct3D 8 vtable slots and structures, declared without the obsolete SDK |
-| `graphics/graphics` | Direct3D 8 hooks: device creation, reset, presentation, draws |
+| `graphics/graphics` | Direct3D 8 hooks: device creation, reset and presentation |
 | `graphics/render_scale` | Resolution presets, automatic selection and the scale shader |
 | `graphics/screenshot` | F12 backbuffer capture and PNG encoding |
 | `hosted/` | Hosted play: WinHTTP client and WebSockets, Supabase PKCE sign-in, Credential Manager, play sessions and the loopback tunnel (see [hosted play](hosted.md)) |
@@ -35,14 +35,35 @@ folders.
 | `platform/network` | Connect/DNS redirection and the Viewer profile session |
 | `platform/desktop` | Removal of global keyboard hooks, cursor warping and focus stealing |
 | `platform/audio` | DirectSound 8 factory |
-| `platform/discord_presence` | Discord Rich Presence over the desktop client's IPC pipe, opened before the process lowers its integrity |
-| `platform/game_messages` | Game phase (menus, lobby, match, results, watching) from incoming game messages, for Rich Presence |
-| `platform/patch` | `replacePointer` and `setImport` |
-| `textures/` | Texture pack manifests, HD companions and native upload hooks |
+| `platform/patch` | `replacePointer`, `setImport` and `redirectCall` |
+| `presence/` | Discord Rich Presence over the desktop client's IPC pipe, and the game phase it reports |
+| `textures/` | Texture pack manifests, HD companions, and the upload and draw hooks |
 | `ui/` | Game window, per-account preferences, the shared ImGui window host, the settings panel and the hosted launcher |
 
 Hook functions are named `hooked<ApiName>`, for example `hookedCreateFileA` or
 `hookedPresent`.
+
+## Optional features
+
+Three features can be left out of a build. Each has a CMake option, its own
+folder and static library, and a short list of places that refer to it, all
+behind `#ifdef` on the option's name.
+
+| Option | Folder | Referenced from |
+|---|---|---|
+| `TMLOADER_HD_TEXTURES` | `textures/` | `app/loader` (install), `app/main` (`--check`), `graphics/graphics` (draw hooks), `ui/settings_ui` (the Artwork tab), `config/config` (`--texture-pack`) |
+| `TMLOADER_DISCORD_PRESENCE` | `presence/` | `app/main` (connect), `app/loader` (game-phase hook), `config/config` (`--discord-app-id`) |
+| `TMLOADER_HOSTED` | `hosted/`, `ui/launcher`, `ui/image` | `app/main` (launcher and session), `config/config` (`--hosted-server`, `--hosted-insecure-loopback`) |
+
+All three default to on. Configure with, for example,
+`-DTMLOADER_HD_TEXTURES=OFF` to build without one; its options then disappear
+from `--help` and its tests are not built. To remove a feature for good,
+delete its folder and tests, then the guarded blocks and the option. The
+`hdTextures` and `hdFonts` preferences and the `Config` fields stay as plain
+data either way; drop them too when removing the feature permanently.
+
+The hosted launcher draws the title artwork from the HD pack when one is
+installed and falls back to a plain background otherwise.
 
 ## Startup sequence
 
@@ -214,7 +235,7 @@ no readback or disk I/O.
 ## Textures
 
 `textures/` replaces artwork without changing native texture objects. The
-game's seven PNG upload call sites are verified byte for byte and redirected;
+game's seven calls to its PNG texture loader are redirected with `redirectCall`;
 the original texture is always created first, and an HD companion is attached
 to it as private data. Draw hooks bind the companion and restore the original
 binding afterwards. The companion carries an artwork or font category: only
@@ -293,9 +314,9 @@ Preferences are stored per account as JSON in
 protections as logs. Malformed files fall back to defaults; out-of-range sizes
 and scales fall back individually. Only the eight advertised scales are accepted.
 
-## Game messages
+## Game phase
 
-Every incoming game message passes the game's `GTM0` ingress check at `+1A2B90`,
+Rich Presence reports what the player is doing. Every incoming game message passes the game's `GTM0` ingress check at `+1A2B90`,
 which receives one queued 0x220-byte record with the message text at `+0x1D`.
 The message pump's call to it at `+19E57F` is redirected to a wrapper that calls
 the original check and, for accepted messages, reads the `GTM0G` header: family,

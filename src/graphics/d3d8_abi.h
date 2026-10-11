@@ -59,17 +59,17 @@ enum Resource : unsigned
     TextureUnlock   = 17,
 };
 
-constexpr DWORD formatA8R8G8B8           = 21;
-constexpr DWORD formatX8R8G8B8           = 22;
-constexpr DWORD poolDefault              = 0;
-constexpr DWORD poolManaged              = 1;
-constexpr DWORD swapEffectCopy           = 3;
-constexpr DWORD lockReadOnly             = 0x10;
-constexpr DWORD lockDiscard              = 0x2000;
-constexpr DWORD triangleStrip            = 5;
-constexpr DWORD deviceTypeHal            = 1;
-constexpr DWORD softwareVertexProcessing = 0x20;
-constexpr DWORD privateDataObject        = 1; // D3DSPD_IUNKNOWN
+constexpr DWORD kFormatA8R8G8B8           = 21;
+constexpr DWORD kFormatX8R8G8B8           = 22;
+constexpr DWORD kPoolDefault              = 0;
+constexpr DWORD kPoolManaged              = 1;
+constexpr DWORD kSwapEffectCopy           = 3;
+constexpr DWORD kLockReadOnly             = 0x10;
+constexpr DWORD kLockDiscard              = 0x2000;
+constexpr DWORD kTriangleStrip            = 5;
+constexpr DWORD kDeviceTypeHal            = 1;
+constexpr DWORD kSoftwareVertexProcessing = 0x20;
+constexpr DWORD kPrivateDataObject        = 1; // D3DSPD_IUNKNOWN
 
 struct PresentParameters
 {

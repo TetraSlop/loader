@@ -11,21 +11,18 @@ namespace tmloader
 namespace
 {
 
-constexpr DWORD directSoundCreateImport = 0x20401c;
+constexpr DWORD kDirectSoundCreateImport = 0x20401c;
 
 // Music and effects need IDirectSoundBuffer8, which only DirectSoundCreate8 devices provide.
 auto WINAPI hookedDirectSoundCreate8(LPCGUID device, LPDIRECTSOUND8* output, LPUNKNOWN outer) -> HRESULT
 {
     static const auto factory = reinterpret_cast<decltype(&DirectSoundCreate8)>(GetProcAddress(LoadLibraryW(L"dsound.dll"), "DirectSoundCreate8"));
-    const auto        result  = [&]() -> HRESULT
+    auto              result  = HRESULT{ E_NOINTERFACE };
+    if (factory)
     {
-        if (!factory)
-        {
-            return E_NOINTERFACE;
-        }
+        result = factory(device, output, outer);
+    }
 
-        return factory(device, output, outer);
-    }();
     logLine("DirectSoundCreate8={:08X}", hex(result));
     return result;
 }
@@ -34,7 +31,7 @@ auto WINAPI hookedDirectSoundCreate8(LPCGUID device, LPDIRECTSOUND8* output, LPU
 
 void installAudioHooks(HMODULE game)
 {
-    setImport(game, directSoundCreateImport, reinterpret_cast<void*>(hookedDirectSoundCreate8));
+    setImport(game, kDirectSoundCreateImport, reinterpret_cast<void*>(hookedDirectSoundCreate8));
 }
 
 } // namespace tmloader

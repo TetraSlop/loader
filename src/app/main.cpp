@@ -1,29 +1,37 @@
 #include "app/log.h"
 #include "app/runtime.h"
-#include "platform/discord_presence.h"
-#include "platform/game_messages.h"
-#include "textures/texture_pack.h"
-#include "ui/launcher.h"
 #include <algorithm>
-#include <chrono>
 #include <cstdio>
 #include <exception>
+#ifdef TMLOADER_DISCORD_PRESENCE
+#include "presence/presence.h"
+#endif
+#ifdef TMLOADER_HD_TEXTURES
+#include "textures/texture_pack.h"
+#endif
+#ifdef TMLOADER_HOSTED
+#include "ui/launcher.h"
+#endif
 
 namespace
 {
 
-auto check(const tmloader::Config& config) -> int
+using tmloader::Config;
+
+auto check(const Config& config) -> int
 {
     tmloader::validateRuntime(config);
+#ifdef TMLOADER_HD_TEXTURES
     if (std::filesystem::exists(config.texturePack))
     {
         auto pack = tmloader::TexturePack{};
         pack.load(config.texturePack);
         pack.validateFiles();
-        std::printf("HD texture pack: %zu source images, dimensions and file hashes verified.\n", pack.size());
+        std::printf("Texture pack verified: %zu images.\n", pack.size());
     }
+#endif
 
-    std::puts("Runtime and supported DLL hashes verified. No DLL loaded or game launched.");
+    std::puts("Runtime verified.");
     return 0;
 }
 
@@ -46,7 +54,7 @@ auto withDefaultConfig(std::vector<std::string> args) -> std::vector<std::string
     return args;
 }
 
-// Double-clicked GUI processes have no console, so errors also get a message box.
+// A double-clicked GUI process has no console, so errors also get a message box.
 void report(const char* error)
 {
     std::fprintf(stderr, "tmloader: %s\n", error);
@@ -56,55 +64,27 @@ void report(const char* error)
     }
 }
 
-// Discord shows the time since startedAt, so it restarts with each phase.
-auto activityFor(const tmloader::Config& config, tmloader::GamePhase phase) -> tmloader::Activity
+auto play(const Config& config) -> int
 {
-    const auto startedAt = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    auto       activity  = tmloader::Activity{ "Playing on a local server", tmloader::describePhase(phase), startedAt, "logo", "Tetra Master" };
+#ifdef TMLOADER_DISCORD_PRESENCE
+    tmloader::startPresence(config);
+#endif
+#ifdef TMLOADER_HOSTED
     if (!config.hostedServer.empty())
     {
-        activity.details = "Playing online on " + config.hostedServer.substr(config.hostedServer.find("://") + 3);
-    }
-
-    return activity;
-}
-
-auto play(const tmloader::Config& config) -> int
-{
-    auto session = std::unique_ptr<tmloader::hosted::HostedSession>{};
-    if (!config.hostedServer.empty())
-    {
-        session = tmloader::runLauncher(config);
+        const auto session = tmloader::runLauncher(config);
         if (!session)
         {
             return 0;
         }
-    }
 
-    // Connect before launch lowers the process integrity; see DiscordPresence.
-    auto presence = tmloader::DiscordPresence(config.discordApplicationId);
-    presence.set(activityFor(config, tmloader::GamePhase::menus));
-    tmloader::setGamePhaseListener([&](tmloader::GamePhase phase)
-                                   {
-                                       presence.set(activityFor(config, phase));
-                                   });
-    const auto exitCode = [&]
-    {
-        if (session)
-        {
-            return tmloader::launch(session->gameConfig(config));
-        }
-
-        return tmloader::launch(config);
-    }();
-    if (session)
-    {
+        const auto exitCode = tmloader::launch(session->gameConfig(config));
         session->endPlay();
+        return exitCode;
     }
+#endif
 
-    // Legacy DLL teardown is unverified; exit without unloading them.
-    TerminateProcess(GetCurrentProcess(), static_cast<UINT>(exitCode));
-    return exitCode;
+    return tmloader::launch(config);
 }
 
 } // namespace
@@ -133,9 +113,12 @@ auto main(int argc, char** argv) -> int
 
         tmloader::validateRuntime(config);
         tmloader::options = config;
-        // Open the log before lowering integrity; the low-integrity token cannot create it.
+        // The log is opened first because a low-integrity token cannot create it.
         tmloader::openLog(config.log);
-        return play(config);
+        const auto exitCode = play(config);
+        // The legacy DLLs are not safe to unload, so skip their teardown.
+        TerminateProcess(GetCurrentProcess(), static_cast<UINT>(exitCode));
+        return exitCode;
     }
     catch (const std::exception& e)
     {

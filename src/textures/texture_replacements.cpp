@@ -1,6 +1,7 @@
 #include "textures/texture_replacements.h"
 #include "app/log.h"
 #include "graphics/d3d8_abi.h"
+#include "platform/patch.h"
 #include "textures/texture_pack.h"
 #include "textures/texture_replacement.h"
 #include <atomic>
@@ -13,7 +14,11 @@ namespace
 {
 
 // Private-data key under which each original texture owns its replacement.
-constexpr GUID replacementKey{ 0x75b28fd7, 0x62b1, 0x48a8, { 0x93, 0x28, 0x4e, 0x98, 0xa8, 0xca, 0x47, 0x6d } };
+constexpr GUID kReplacementKey{ 0x75b28fd7, 0x62b1, 0x48a8, { 0x93, 0x28, 0x4e, 0x98, 0xa8, 0xca, 0x47, 0x6d } };
+
+// Every call the game makes to its texture loader.
+constexpr DWORD kUploadRva     = 0x1b9aa4;
+constexpr DWORD kUploadCalls[] = { 0x17ba39, 0x17c061, 0x17c1f5, 0x17c393, 0x17c528, 0x17ccfa, 0x17ce91 };
 
 TexturePack           pack;
 TextureUploadFn       nativeUpload = nullptr;
@@ -110,13 +115,13 @@ void configureTextureReplacements(const std::filesystem::path& manifest, Texture
     loadedCount  = 0;
 }
 
-void initializeTextureReplacements(BYTE* game, const std::filesystem::path& manifest)
+void initializeTextureReplacements(HMODULE game, const std::filesystem::path& manifest)
 {
     try
     {
         if (!std::filesystem::exists(manifest))
         {
-            logLine("HD artwork: no texture pack installed");
+            logLine("Texture pack: none installed");
             return;
         }
 
@@ -126,13 +131,17 @@ void initializeTextureReplacements(BYTE* game, const std::filesystem::path& mani
             return;
         }
 
-        nativeUpload = installTextureCallHooks(game, uploadTextureWithReplacement);
-        packCount    = pack.size();
-        logLine("HD artwork: indexed {} source images from {}", pack.size(), narrow(manifest.native()));
+        for (const auto call : kUploadCalls)
+        {
+            nativeUpload = reinterpret_cast<TextureUploadFn>(redirectCall(game, call, kUploadRva, reinterpret_cast<void*>(uploadTextureWithReplacement)));
+        }
+
+        packCount = pack.size();
+        logLine("Texture pack: {} images from {}", pack.size(), narrow(manifest.native()));
     }
     catch (const std::exception& e)
     {
-        logLine("HD artwork disabled; originals retained: {}", e.what());
+        logLine("Texture pack not loaded: {}", e.what());
     }
 }
 
@@ -150,7 +159,7 @@ auto attachTextureReplacement(void* original, void* replacement, TextureCategory
         return E_OUTOFMEMORY;
     }
 
-    const auto hr = callMethod(original, d3d8::SetPrivateData, &replacementKey, static_cast<const void*>(attachment), DWORD{ sizeof(IUnknown*) }, d3d8::privateDataObject);
+    const auto hr = callMethod(original, d3d8::SetPrivateData, &kReplacementKey, static_cast<const void*>(attachment), DWORD{ sizeof(IUnknown*) }, d3d8::kPrivateDataObject);
     attachment->Release();
     if (SUCCEEDED(hr))
     {
@@ -192,7 +201,7 @@ auto WINAPI uploadTextureWithReplacement(void* device, const void* source, UINT 
         const auto                       replacementPng = pack.read(*asset);
         Microsoft::WRL::ComPtr<IUnknown> replacement;
         // Scale the padded power-of-two footprint so the game's UVs stay valid.
-        auto hr     = nativeUpload(device, replacementPng.data(), static_cast<UINT>(replacementPng.size()), desc.width * asset->scale, desc.height * asset->scale, 1, 0, desc.format, d3d8::poolManaged, filter, mipFilter, 0, nullptr, nullptr, reinterpret_cast<void**>(replacement.GetAddressOf()));
+        auto hr     = nativeUpload(device, replacementPng.data(), static_cast<UINT>(replacementPng.size()), desc.width * asset->scale, desc.height * asset->scale, 1, 0, desc.format, d3d8::kPoolManaged, filter, mipFilter, 0, nullptr, nullptr, reinterpret_cast<void**>(replacement.GetAddressOf()));
         auto actual = d3d8::SurfaceDesc{};
         if (SUCCEEDED(hr) && replacement)
         {
@@ -211,16 +220,16 @@ auto WINAPI uploadTextureWithReplacement(void* device, const void* source, UINT 
 
         if (SUCCEEDED(hr))
         {
-            logLine("HD artwork: {} logical={}x{} GPU={}x{}", asset->id, desc.width, desc.height, actual.width, actual.height);
+            logLine("Texture pack: {} {}x{} -> {}x{}", asset->id, desc.width, desc.height, actual.width, actual.height);
         }
         else
         {
-            logLine("HD artwork fallback: {} upload={:08X}", asset->id, hex(hr));
+            logLine("Texture pack: {} kept its original ({:08X})", asset->id, hex(hr));
         }
     }
     catch (const std::exception& e)
     {
-        logLine("HD artwork fallback: {}", e.what());
+        logLine("Texture pack: {}", e.what());
     }
 
     return originalResult;
@@ -240,7 +249,7 @@ TextureDrawBinding::TextureDrawBinding(void* device, bool artworkEnabled, bool f
     }
 
     auto size = DWORD{ sizeof(IUnknown*) };
-    if (FAILED(callMethod(original_, d3d8::GetPrivateData, &replacementKey, static_cast<void*>(&attachment_), &size)) || !attachment_)
+    if (FAILED(callMethod(original_, d3d8::GetPrivateData, &kReplacementKey, static_cast<void*>(&attachment_), &size)) || !attachment_)
     {
         return;
     }
@@ -256,7 +265,7 @@ TextureDrawBinding::~TextureDrawBinding()
 {
     if (bound_ && FAILED(callMethod(device_, d3d8::SetTexture, 0U, original_)))
     {
-        logLine("HD artwork: could not restore native texture binding");
+        logLine("Texture pack: cannot restore the original texture binding");
     }
 
     release(attachment_);

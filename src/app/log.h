@@ -24,44 +24,12 @@ void logLine(std::format_string<Args...> format, Args&&... args)
 }
 
 // Native callers may pass null strings to logged APIs.
-inline auto printable(const char* text) -> const char*
-{
-    if (text)
-    {
-        return text;
-    }
-
-    return "";
-}
-
-inline auto narrow(std::wstring_view text) -> std::string
-{
-    const auto length = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
-    auto       result = std::string(static_cast<size_t>(length), char{});
-    WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), length, nullptr, nullptr);
-    return result;
-}
-
-inline auto narrow(const wchar_t* text) -> std::string
-{
-    if (!text)
-    {
-        return {};
-    }
-
-    return narrow(std::wstring_view{ text });
-}
-
+auto printable(const char* text) -> const char*;
+auto narrow(std::wstring_view text) -> std::string;
+auto narrow(const wchar_t* text) -> std::string;
 // Formats a handle or typed pointer as an address.
-inline auto address(const void* pointer) -> const void*
-{
-    return pointer;
-}
-
+auto address(const void* pointer) -> const void*;
 // Formats an HRESULT or status code as its unsigned hex bit pattern.
-inline auto hex(long value) -> unsigned long
-{
-    return static_cast<unsigned long>(value);
-}
+auto hex(long value) -> unsigned long;
 
 } // namespace tmloader

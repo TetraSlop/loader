@@ -4,11 +4,16 @@
 
 using namespace tmloader;
 
-static void rect(const LONG width, const LONG height, const bool aspect, const RECT expected)
+namespace
+{
+
+void rect(const LONG width, const LONG height, const bool aspect, const RECT expected)
 {
     const auto actual = contentRect(width, height, aspect);
     REQUIRE(EqualRect(&actual, &expected));
 }
+
+} // namespace
 
 TEST_CASE("Automatic rendering chooses the monitor-sized preset", "[window_settings]")
 {

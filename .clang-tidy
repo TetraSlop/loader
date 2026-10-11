@@ -1,5 +1,38 @@
-Checks: '-*,google-readability-casting,modernize-use-nullptr,modernize-use-using,modernize-use-trailing-return-type,misc-const-correctness'
-WarningsAsErrors: 'google-readability-casting,modernize-use-nullptr,modernize-use-using,modernize-use-trailing-return-type,misc-const-correctness'
+---
+# LandSandBoat's checks, plus the conventions this project enforces on top:
+# trailing return types, const-correct locals, named casts and kConstant naming.
+Checks: >
+  -*,
+  cppcoreguidelines-avoid-goto,
+  cppcoreguidelines-init-variables,
+  cppcoreguidelines-no-malloc,
+  cppcoreguidelines-pro-type-const-cast,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-slicing,
+  cppcoreguidelines-special-member-functions,
+  cppcoreguidelines-virtual-class-destructor,
+  google-readability-casting,
+  misc-const-correctness,
+  misc-definitions-in-headers,
+  modernize-loop-convert,
+  modernize-pass-by-value,
+  modernize-raw-string-literal,
+  modernize-use-emplace,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-ranges,
+  modernize-use-starts-ends-with,
+  modernize-use-trailing-return-type,
+  modernize-use-using,
+  performance-*,
+  -performance-enum-size,
+  -performance-no-int-to-ptr,
+  readability-braces-around-statements,
+  readability-identifier-naming
+
+WarningsAsErrors: '*'
+# The loader only builds for 32-bit Windows; ABI checks depend on it.
+ExtraArgs: ['--target=i686-pc-windows-msvc']
 HeaderFilterRegex: '[/\\](src|tests)[/\\]'
 ExcludeHeaderFilterRegex: '[/\\](_deps|third_party)[/\\]'
 CheckOptions:
@@ -8,3 +41,6 @@ CheckOptions:
   misc-const-correctness.TransformPointersAsValues: true
   misc-const-correctness.WarnPointersAsPointers: false
   misc-const-correctness.TransformPointersAsPointers: false
+  cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor: true
+  readability-identifier-naming.GlobalConstantCase: CamelCase
+  readability-identifier-naming.GlobalConstantPrefix: k

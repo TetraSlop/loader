@@ -36,7 +36,7 @@ public:
     void closeConnections() noexcept;
 
 private:
-    void acceptLoop(std::stop_token stop);
+    void acceptLoop(const std::stop_token& stop);
     void forward(SOCKET native, const std::string& url);
 
     HttpClient& http_;

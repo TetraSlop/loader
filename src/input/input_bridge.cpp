@@ -9,19 +9,19 @@ namespace tmloader
 namespace
 {
 
-constexpr auto inputIID  = IID{ 0xbf798030, 0x483a, 0x4da2, { 0xaa, 0x99, 0x5d, 0x64, 0xed, 0x36, 0x97, 0x00 } };
-constexpr auto mouseGUID = GUID{ 0x6f1d2b60, 0xd5a0, 0x11cf, { 0xbf, 0xc7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
+constexpr auto kInputIid  = IID{ 0xbf798030, 0x483a, 0x4da2, { 0xaa, 0x99, 0x5d, 0x64, 0xed, 0x36, 0x97, 0x00 } };
+constexpr auto kMouseGuid = GUID{ 0x6f1d2b60, 0xd5a0, 0x11cf, { 0xbf, 0xc7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 } };
 
 } // namespace
 
 auto LocalInput::supports(REFIID iid) noexcept -> bool
 {
-    return iid == inputIID;
+    return iid == kInputIid;
 }
 
 auto STDMETHODCALLTYPE LocalInput::QueryInterface(REFIID iid, void** out) -> HRESULT
 {
-    if (iid != inputIID && iid != IID_IUnknown)
+    if (iid != kInputIid && iid != IID_IUnknown)
     {
         *out = nullptr;
         return E_NOINTERFACE;
@@ -55,7 +55,7 @@ auto STDMETHODCALLTYPE LocalInput::CreateDevice(REFGUID guid, LPDIRECTINPUTDEVIC
         return CLASS_E_NOAGGREGATION;
     }
 
-    if (guid != mouseGUID)
+    if (guid != kMouseGuid)
     {
         *out = nullptr;
         return DIERR_DEVICENOTREG;
@@ -73,7 +73,7 @@ auto STDMETHODCALLTYPE LocalInput::EnumDevices(DWORD, LPDIENUMDEVICESCALLBACKA, 
 
 auto STDMETHODCALLTYPE LocalInput::GetDeviceStatus(REFGUID guid) -> HRESULT
 {
-    if (guid == mouseGUID)
+    if (guid == kMouseGuid)
     {
         return S_OK;
     }
@@ -230,15 +230,12 @@ auto STDMETHODCALLTYPE LocalMouse::GetDeviceState(DWORD size, void* output) -> H
 
     const auto pointerMoved   = !mouseSampleValid_ || current.x != previous_.x || current.y != previous_.y ||
                                 width != previousWidth_ || height != previousHeight_;
-    const auto pointerClicked = [&]() -> bool
+    auto       pointerClicked = buttons != 0;
+    if (mouseSampleValid_)
     {
-        if (!mouseSampleValid_)
-        {
-            return buttons != 0;
-        }
+        pointerClicked = (buttons & ~previousButtons_) != 0;
+    }
 
-        return (buttons & ~previousButtons_) != 0;
-    }();
     if (mouseSampleValid_ && width == previousWidth_ && height == previousHeight_)
     {
         m->lX = MulDiv(current.x, 640, width) - MulDiv(previous_.x, 640, width);
@@ -302,8 +299,8 @@ auto STDMETHODCALLTYPE LocalMouse::GetDeviceInfo(LPDIDEVICEINSTANCEA p) -> HRESU
     const auto size = p->dwSize;
     std::memset(p, 0, size);
     p->dwSize       = size;
-    p->guidInstance = mouseGUID;
-    p->guidProduct  = mouseGUID;
+    p->guidInstance = kMouseGuid;
+    p->guidProduct  = kMouseGuid;
     p->dwDevType    = DI8DEVTYPE_MOUSE;
     strcpy_s(p->tszInstanceName, "Local mouse");
     strcpy_s(p->tszProductName, "Local mouse");

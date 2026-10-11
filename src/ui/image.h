@@ -15,10 +15,7 @@ struct Image
     UINT                                      width  = 0;
     UINT                                      height = 0;
 
-    explicit operator bool() const noexcept
-    {
-        return texture != nullptr;
-    }
+    explicit operator bool() const noexcept;
 };
 
 // Decodes a PNG or JPEG (via WIC) into a managed texture; empty on any failure.

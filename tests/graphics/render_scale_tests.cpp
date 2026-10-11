@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <array>
 #include <catch2/catch_test_macros.hpp>
-#include <cstdio>
 #include <cstring>
 #include <unknwn.h>
 #include <vector>
@@ -17,6 +16,12 @@ using tmloader::callMethod;
 
 namespace
 {
+
+constexpr UINT  kSdkVersion  = 220;
+constexpr DWORD kClearColor  = 0xff123456;
+constexpr DWORD kBufferUsage = 0x238;
+// Largest per-channel difference that still counts as the same pixel.
+constexpr unsigned kChannelTolerance = 2;
 
 void check(const HRESULT hr)
 {
@@ -47,7 +52,7 @@ auto pixels(void* device, const float factor) -> std::vector<DWORD>
     REQUIRE(desc.width == 640U * factor);
     REQUIRE(desc.height == 480U * factor);
     auto locked = d3d8::LockedRect{};
-    check(callMethod(surface.Get(), d3d8::SurfaceLockRect, &locked, nullptr, d3d8::lockReadOnly));
+    check(callMethod(surface.Get(), d3d8::SurfaceLockRect, &locked, nullptr, d3d8::kLockReadOnly));
     auto result = std::vector<DWORD>(desc.width * desc.height);
     for (DWORD y = 0; y < desc.height; ++y)
     {
@@ -76,13 +81,13 @@ auto render(void* device, void* buffer, const DWORD shader, const float factor, 
     }
 
     void* data = nullptr;
-    check(callMethod(buffer, d3d8::BufferLock, 0, sizeof(vertices), &data, d3d8::lockDiscard));
+    check(callMethod(buffer, d3d8::BufferLock, 0, sizeof(vertices), &data, d3d8::kLockDiscard));
     std::memcpy(data, vertices.data(), sizeof(vertices));
     check(callMethod(buffer, d3d8::BufferUnlock));
     check(callMethod(device, d3d8::SetStreamSource, 0, buffer, sizeof(Vertex)));
     if (reference)
     {
-        check(callMethod(device, d3d8::SetVertexShader, gameVertexFormat));
+        check(callMethod(device, d3d8::SetVertexShader, kGameVertexFormat));
     }
     else
     {
@@ -90,16 +95,14 @@ auto render(void* device, void* buffer, const DWORD shader, const float factor, 
         check(callMethod(device, d3d8::SetVertexShader, shader));
     }
 
-    check(callMethod(device, d3d8::Clear, 0, nullptr, 1, 0xff123456, 1.0f, 0));
+    check(callMethod(device, d3d8::Clear, 0, nullptr, 1, kClearColor, 1.0f, 0));
     check(callMethod(device, d3d8::BeginScene));
-    check(callMethod(device, d3d8::DrawPrimitive, d3d8::triangleStrip, 0, 2));
+    check(callMethod(device, d3d8::DrawPrimitive, d3d8::kTriangleStrip, 0, 2));
     check(callMethod(device, d3d8::EndScene));
     return pixels(device, factor);
 }
 
-} // namespace
-
-TEST_CASE("Scaled rendering matches independently scaled geometry", "[graphics-device]")
+auto openDirect3D() -> ComPtr<IUnknown>
 {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     REQUIRE(tmloader::lowerIntegrity());
@@ -113,122 +116,151 @@ TEST_CASE("Scaled rendering matches independently scaled geometry", "[graphics-d
     }
 
     ComPtr<IUnknown> d3d;
-    d3d.Attach(factory(220));
+    d3d.Attach(factory(kSdkVersion));
     if (!d3d)
     {
         SKIP("Direct3D 8 unavailable");
     }
 
-    auto mode = d3d8::DisplayMode{};
-    check(callMethod(d3d.Get(), d3d8::GetAdapterDisplayMode, 0, &mode));
-    for (const float factor : renderScales)
+    return d3d;
+}
+
+auto createDevice(IUnknown* d3d, const DWORD format, const float factor) -> ComPtr<IUnknown>
+{
+    auto pp     = d3d8::PresentParameters{};
+    pp.width    = static_cast<UINT>(640 * factor);
+    pp.height   = static_cast<UINT>(480 * factor);
+    pp.format   = format;
+    pp.count    = 1;
+    pp.swap     = d3d8::kSwapEffectCopy;
+    pp.window   = GetDesktopWindow();
+    pp.windowed = TRUE;
+    pp.flags    = 1;
+    ComPtr<IUnknown> device;
+    check(callMethod(d3d, d3d8::CreateDevice, 0, d3d8::kDeviceTypeHal, pp.window, d3d8::kSoftwareVertexProcessing, &pp, device.GetAddressOf()));
+    return device;
+}
+
+auto createCheckerTexture(void* device) -> ComPtr<IUnknown>
+{
+    ComPtr<IUnknown> texture;
+    check(callMethod(device, d3d8::CreateTexture, 8, 8, 1, 0, d3d8::kFormatA8R8G8B8, d3d8::kPoolManaged, texture.GetAddressOf()));
+    auto locked = d3d8::LockedRect{};
+    check(callMethod(texture.Get(), d3d8::TextureLockRect, 0, &locked, nullptr, 0));
+    for (int y = 0; y < 8; ++y)
     {
-        auto pp     = d3d8::PresentParameters{};
-        pp.width    = static_cast<UINT>(640 * factor);
-        pp.height   = static_cast<UINT>(480 * factor);
-        pp.format   = mode.format;
-        pp.count    = 1;
-        pp.swap     = d3d8::swapEffectCopy;
-        pp.window   = GetDesktopWindow();
-        pp.windowed = TRUE;
-        pp.flags    = 1;
-        ComPtr<IUnknown> device;
-        check(callMethod(d3d.Get(), d3d8::CreateDevice, 0, d3d8::deviceTypeHal, pp.window, d3d8::softwareVertexProcessing, &pp, device.GetAddressOf()));
-        DWORD shader = 0;
-        check(createScaleShader(device.Get(), &shader));
-        ComPtr<IUnknown> buffer;
-        ComPtr<IUnknown> texture;
-        // The scale adapter clears the FVF tag: a buffer tagged XYZRHW
-        // bypasses shader input preparation in D3D8's software path.
-        check(callMethod(device.Get(), d3d8::CreateVertexBuffer, 4 * sizeof(Vertex), 0x238, 0, 0, buffer.GetAddressOf()));
-        check(callMethod(device.Get(), d3d8::CreateTexture, 8, 8, 1, 0, d3d8::formatA8R8G8B8, d3d8::poolManaged, texture.GetAddressOf()));
-        auto locked = d3d8::LockedRect{};
-        check(callMethod(texture.Get(), d3d8::TextureLockRect, 0, &locked, nullptr, 0));
-        for (int y = 0; y < 8; ++y)
+        for (int x = 0; x < 8; ++x)
         {
-            for (int x = 0; x < 8; ++x)
+            reinterpret_cast<DWORD*>(locked.bits + y * locked.pitch)[x] = [&]() -> DWORD
             {
-                reinterpret_cast<DWORD*>(locked.bits + y * locked.pitch)[x] = [&]() -> DWORD
+                if ((x + y) % 2)
                 {
-                    if ((x + y) % 2)
-                    {
-                        return 0xffdddddd;
-                    }
-
-                    return 0xff336699;
-                }();
-            }
-        }
-
-        check(callMethod(texture.Get(), d3d8::TextureUnlock, 0));
-        // Lighting, clipping, cull, z, alpha blend, src/dest blend.
-        for (const auto [state, value] : { std::pair<DWORD, DWORD>{ 137, 0 }, { 136, 0 }, { 22, 1 }, { 7, 0 }, { 27, 1 }, { 19, 5 }, { 20, 6 } })
-        {
-            check(callMethod(device.Get(), d3d8::SetRenderState, state, value));
-        }
-
-        // Color/alpha ops and args, mag/min/mip filters, U/V addressing.
-        for (const auto [state, value] : { std::pair<DWORD, DWORD>{ 1, 4 }, { 2, 2 }, { 3, 0 }, { 4, 4 }, { 5, 2 }, { 6, 0 }, { 16, 2 }, { 17, 2 }, { 18, 0 }, { 13, 3 }, { 14, 3 } })
-        {
-            check(callMethod(device.Get(), d3d8::SetTextureStageState, 0, state, value));
-        }
-
-        check(callMethod(device.Get(), d3d8::SetTextureStageState, 1, 1, 1)); // Stage 1 COLOROP = DISABLE
-        for (const bool textured : { false, true })
-        {
-            if (textured)
-            {
-                check(callMethod(device.Get(), d3d8::SetTexture, 0, texture.Get()));
-            }
-            else
-            {
-                check(callMethod(device.Get(), d3d8::SetTexture, 0, static_cast<void*>(nullptr)));
-            }
-
-            const auto expected  = render(device.Get(), buffer.Get(), shader, factor, true);
-            const auto actual    = render(device.Get(), buffer.Get(), shader, factor, false);
-            size_t     differing = 0;
-            size_t     painted   = 0;
-            unsigned   maxDelta  = 0;
-            for (size_t i = 0; i < actual.size(); ++i)
-            {
-                if ((expected[i] & 0xffffff) != 0x123456)
-                {
-                    ++painted;
+                    return 0xffdddddd;
                 }
 
-                for (const int shift : { 0, 8, 16 })
-                {
-                    const auto delta = static_cast<unsigned>(std::abs(
-                        static_cast<int>((expected[i] >> shift) & 255) -
-                        static_cast<int>((actual[i] >> shift) & 255)));
-                    maxDelta         = (std::max)(delta, maxDelta);
-                    if (delta > 2)
-                    {
-                        ++differing;
-                        break;
-                    }
-                }
-            }
-
-            const auto* const kind = [&]() -> const char*
-            {
-                if (textured)
-                {
-                    return "textured";
-                }
-
-                return "colored";
+                return 0xff336699;
             }();
-            printf("%gx %s: %zu pixels, %zu differ by >2, max delta %u\n", factor, kind, painted, differing, maxDelta);
-            CAPTURE(factor, textured, painted, differing, maxDelta);
-            REQUIRE(painted >= actual.size() / 2);
-            REQUIRE(differing <= actual.size() / 10000);
         }
-
-        check(callMethod(device.Get(), d3d8::SetVertexShader, gameVertexFormat));
-        deleteScaleShader(device.Get(), shader);
     }
 
-    puts("PASS: actual rendering through 4K and 6x matches independently scaled geometry");
+    check(callMethod(texture.Get(), d3d8::TextureUnlock, 0));
+    return texture;
+}
+
+void applyGameStates(void* device)
+{
+    // Lighting, clipping, cull, z, alpha blend, src/dest blend.
+    for (const auto [state, value] : { std::pair<DWORD, DWORD>{ 137, 0 }, { 136, 0 }, { 22, 1 }, { 7, 0 }, { 27, 1 }, { 19, 5 }, { 20, 6 } })
+    {
+        check(callMethod(device, d3d8::SetRenderState, state, value));
+    }
+
+    // Color/alpha ops and args, mag/min/mip filters, U/V addressing.
+    for (const auto [state, value] : { std::pair<DWORD, DWORD>{ 1, 4 }, { 2, 2 }, { 3, 0 }, { 4, 4 }, { 5, 2 }, { 6, 0 }, { 16, 2 }, { 17, 2 }, { 18, 0 }, { 13, 3 }, { 14, 3 } })
+    {
+        check(callMethod(device, d3d8::SetTextureStageState, 0, state, value));
+    }
+
+    check(callMethod(device, d3d8::SetTextureStageState, 1, 1, 1)); // Stage 1 COLOROP = DISABLE
+}
+
+struct Difference
+{
+    size_t   painted   = 0;
+    size_t   differing = 0;
+    unsigned maxDelta  = 0;
+};
+
+auto compare(const std::vector<DWORD>& expected, const std::vector<DWORD>& actual) -> Difference
+{
+    auto result = Difference{};
+    for (size_t i = 0; i < actual.size(); ++i)
+    {
+        if ((expected[i] & 0xffffff) != (kClearColor & 0xffffff))
+        {
+            ++result.painted;
+        }
+
+        for (const int shift : { 0, 8, 16 })
+        {
+            const auto delta = static_cast<unsigned>(std::abs(
+                static_cast<int>((expected[i] >> shift) & 255) -
+                static_cast<int>((actual[i] >> shift) & 255)));
+            result.maxDelta  = (std::max)(delta, result.maxDelta);
+            if (delta > kChannelTolerance)
+            {
+                ++result.differing;
+                break;
+            }
+        }
+    }
+
+    return result;
+}
+
+void requireScaledQuadMatches(const bool textured)
+{
+    const auto d3d  = openDirect3D();
+    auto       mode = d3d8::DisplayMode{};
+    check(callMethod(d3d.Get(), d3d8::GetAdapterDisplayMode, 0, &mode));
+    for (const float factor : kRenderScales)
+    {
+        const auto device = createDevice(d3d.Get(), mode.format, factor);
+        DWORD      shader = 0;
+        check(createScaleShader(device.Get(), &shader));
+        ComPtr<IUnknown> buffer;
+        // The scale adapter clears the FVF tag: a buffer tagged XYZRHW
+        // bypasses shader input preparation in D3D8's software path.
+        check(callMethod(device.Get(), d3d8::CreateVertexBuffer, 4 * sizeof(Vertex), kBufferUsage, 0, 0, buffer.GetAddressOf()));
+        applyGameStates(device.Get());
+        ComPtr<IUnknown> texture;
+        if (textured)
+        {
+            texture = createCheckerTexture(device.Get());
+        }
+
+        check(callMethod(device.Get(), d3d8::SetTexture, 0, static_cast<void*>(texture.Get())));
+
+        const auto expected   = render(device.Get(), buffer.Get(), shader, factor, true);
+        const auto actual     = render(device.Get(), buffer.Get(), shader, factor, false);
+        const auto difference = compare(expected, actual);
+        CAPTURE(factor, textured, difference.painted, difference.differing, difference.maxDelta);
+        REQUIRE(difference.painted >= actual.size() / 2);
+        REQUIRE(difference.differing <= actual.size() / 10000);
+
+        check(callMethod(device.Get(), d3d8::SetVertexShader, kGameVertexFormat));
+        deleteScaleShader(device.Get(), shader);
+    }
+}
+
+} // namespace
+
+TEST_CASE("Scaled colored quads match independently scaled geometry", "[graphics-device]")
+{
+    requireScaledQuadMatches(false);
+}
+
+TEST_CASE("Scaled textured quads match independently scaled geometry", "[graphics-device]")
+{
+    requireScaledQuadMatches(true);
 }

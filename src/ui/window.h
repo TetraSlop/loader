@@ -4,7 +4,7 @@
 namespace tmloader
 {
 
-constexpr UINT settingsMessage = WM_APP + 0x54;
+constexpr UINT kSettingsMessage = WM_APP + 0x54;
 
 enum class WindowAction : WPARAM
 {

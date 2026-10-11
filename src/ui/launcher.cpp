@@ -11,6 +11,7 @@
 #include <optional>
 #include <shellapi.h>
 #include <thread>
+#include <utility>
 
 namespace tmloader
 {
@@ -20,17 +21,17 @@ namespace
 using namespace std::chrono_literals;
 
 // Signed-in players go straight to the game after this pause unless they switch account.
-constexpr auto autoPlayDelay = 3s;
+constexpr auto kAutoPlayDelay = 3s;
 
 // The title screen is six tiles forming a 640x448 composition.
 struct TitleTile
 {
-    const char* name;
+    const char* name{};
     ImVec2      position;
     ImVec2      size;
 };
 
-constexpr std::array<TitleTile, 6> titleTiles{ {
+constexpr std::array<TitleTile, 6> kTitleTiles{ {
     { "title_0", { 0, 0 }, { 256, 256 } },
     { "title_1", { 256, 0 }, { 256, 256 } },
     { "title_2", { 512, 0 }, { 128, 256 } },
@@ -39,7 +40,7 @@ constexpr std::array<TitleTile, 6> titleTiles{ {
     { "title_5", { 512, 256 }, { 128, 192 } },
 } };
 
-constexpr auto discordBlurple = ImVec4(0.345f, 0.396f, 0.949f, 1.0f);
+constexpr auto kDiscordBlurple = ImVec4(0.345f, 0.396f, 0.949f, 1.0f);
 
 enum class Stage
 {
@@ -124,7 +125,7 @@ public:
     explicit Launcher(const Config& config)
     : config_(config)
     {
-        run([this](std::stop_token)
+        run([this](const std::stop_token&)
             {
                 connect();
             });
@@ -136,9 +137,9 @@ public:
         device_ = device;
         // The HD pack's title art; the launcher still works without it.
         const auto folder = config_.texturePack.parent_path() / "gW201/1001";
-        for (size_t i = 0; i < titleTiles.size(); ++i)
+        for (size_t i = 0; i < kTitleTiles.size(); ++i)
         {
-            title_[i] = loadImage(device, folder / (std::string(titleTiles[i].name) + ".png"));
+            title_[i] = loadImage(device, folder / (std::string(kTitleTiles[i].name) + ".png"));
         }
     }
 
@@ -180,14 +181,14 @@ private:
         // Cover the window with the 640x448 composition, cropping any overflow.
         const auto scale  = std::max(size.x / 640, size.y / 448);
         const auto offset = ImVec2(origin.x + (size.x - 640 * scale) / 2, origin.y + (size.y - 448 * scale) / 2);
-        for (size_t i = 0; i < titleTiles.size(); ++i)
+        for (size_t i = 0; i < kTitleTiles.size(); ++i)
         {
             if (!title_[i])
             {
                 continue;
             }
 
-            const auto& tile = titleTiles[i];
+            const auto& tile = kTitleTiles[i];
             const auto  from = ImVec2(offset.x + tile.position.x * scale, offset.y + tile.position.y * scale);
             draw->AddImage(title_[i].texture.Get(), from, ImVec2(from.x + tile.size.x * scale, from.y + tile.size.y * scale));
         }
@@ -200,15 +201,12 @@ private:
     void drawPanel(Stage stage, const std::string& message, ImVec2 origin, ImVec2 size)
     {
         const auto padding = ImGui::GetStyle().WindowPadding;
-        const auto rows    = [&]() -> float
+        auto       rows    = 3.5f;
+        if (!message.empty())
         {
-            if (message.empty())
-            {
-                return 3.5f;
-            }
+            rows = 6.0f;
+        }
 
-            return 6.0f;
-        }();
         ImGui::SetCursorScreenPos(ImVec2(origin.x + padding.x, origin.y + size.y - ImGui::GetFrameHeightWithSpacing() * rows - padding.y));
         ImGui::PushTextWrapPos(origin.x + size.x - padding.x);
         const auto profile = [&]
@@ -290,7 +288,7 @@ private:
             case Stage::unavailable:
                 if (ImGui::Button("Retry"))
                 {
-                    run([this](std::stop_token)
+                    run([this](const std::stop_token&)
                         {
                             connect();
                         });
@@ -298,11 +296,11 @@ private:
 
                 break;
             case Stage::signedOut:
-                if (coloredButton("Sign in with Discord", discordBlurple))
+                if (coloredButton("Sign in with Discord", kDiscordBlurple))
                 {
                     run([this](std::stop_token stop)
                         {
-                            signIn(stop);
+                            signIn(std::move(stop));
                         });
                 }
 
@@ -322,7 +320,7 @@ private:
                     break;
                 }
 
-                if (coloredButton("Play", discordBlurple))
+                if (coloredButton("Play", kDiscordBlurple))
                 {
                     startPlay(false);
                 }
@@ -330,7 +328,7 @@ private:
                 ImGui::SameLine();
                 if (ImGui::Button("Switch account"))
                 {
-                    run([this](std::stop_token)
+                    run([this](const std::stop_token&)
                         {
                             logout();
                         });
@@ -338,7 +336,7 @@ private:
 
                 break;
             case Stage::conflict:
-                if (coloredButton("Disconnect other session", discordBlurple))
+                if (coloredButton("Disconnect other session", kDiscordBlurple))
                 {
                     startPlay(true);
                 }
@@ -346,7 +344,7 @@ private:
                 ImGui::SameLine();
                 if (ImGui::Button("Switch account"))
                 {
-                    run([this](std::stop_token)
+                    run([this](const std::stop_token&)
                         {
                             logout();
                         });
@@ -379,7 +377,7 @@ private:
             autoPlayAt_.reset();
         }
 
-        run([this, disconnectOther](std::stop_token)
+        run([this, disconnectOther](const std::stop_token&)
             {
                 play(disconnectOther);
             });
@@ -409,7 +407,7 @@ private:
     {
         worker_ = std::jthread([task = std::move(task)](std::stop_token stop)
                                {
-                                   task(stop);
+                                   task(std::move(stop));
                                });
     }
 
@@ -437,7 +435,7 @@ private:
         stage_   = Stage::signedIn;
         message_.clear();
         avatarBytes_ = std::move(avatar);
-        autoPlayAt_  = std::chrono::steady_clock::now() + autoPlayDelay;
+        autoPlayAt_  = std::chrono::steady_clock::now() + kAutoPlayDelay;
     }
 
     template <typename Step>
@@ -534,7 +532,7 @@ private:
     const Config&                                        config_;
     HWND                                                 window_ = nullptr;
     IDirect3DDevice9*                                    device_ = nullptr;
-    std::array<Image, titleTiles.size()>                 title_;
+    std::array<Image, kTitleTiles.size()>                title_;
     Image                                                avatar_;
     std::atomic<bool>                                    raise_{ false };
     std::mutex                                           mutex_;

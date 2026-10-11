@@ -4,6 +4,7 @@
 #include "hosted/session.h"
 #include <algorithm>
 #include <condition_variable>
+#include <utility>
 
 namespace tmloader::hosted
 {
@@ -13,8 +14,8 @@ namespace
 using namespace std::chrono_literals;
 
 // Refresh an access token this long before it expires, and renew play this long before it lapses.
-constexpr auto accessMargin = 60s;
-constexpr auto renewMargin  = 300s;
+constexpr auto kAccessMargin = 60s;
+constexpr auto kRenewMargin  = 300s;
 
 void startWinsock()
 {
@@ -34,15 +35,28 @@ auto isInvalidToken(const ApiError& error) -> bool
     return error.status() == 401 && error.code() == "invalid_token";
 }
 
+// Returns false when a stop is requested before the deadline.
+auto sleepUntil(const std::stop_token& stop, std::chrono::steady_clock::time_point deadline) -> bool
+{
+    auto mutex = std::mutex{};
+    auto wake  = std::condition_variable_any{};
+    auto lock  = std::unique_lock(mutex);
+    wake.wait_until(lock, stop, deadline, []
+                    {
+                        return false;
+                    });
+    return !stop.stop_requested();
+}
+
 } // namespace
 
 HostedSession::HostedSession(const Config& config)
 : origin_(config.hostedServer)
 , http_(config.insecureLoopback)
 , auth_(http_, origin_)
+, store_(origin_, auth_.settings().supabaseUrl)
 {
     startWinsock();
-    store_.emplace(origin_, auth_.settings().supabaseUrl);
 }
 
 HostedSession::~HostedSession()
@@ -52,7 +66,7 @@ HostedSession::~HostedSession()
 
 auto HostedSession::resume() -> bool
 {
-    const auto remembered = store_->load();
+    const auto remembered = store_.load();
     if (!remembered)
     {
         return false;
@@ -66,14 +80,13 @@ auto HostedSession::resume() -> bool
     }
     catch (const ApiError& error)
     {
-        // The remembered login was revoked or expired; the user signs in again.
         logLine("Remembered sign-in rejected ({})", error.status());
-        store_->erase();
+        store_.erase();
         return false;
     }
 }
 
-auto HostedSession::signIn(const OpenBrowser& openBrowser, std::stop_token stop) -> bool
+auto HostedSession::signIn(const OpenBrowser& openBrowser, const std::stop_token& stop) -> bool
 {
     auto tokens = auth_.signIn(openBrowser, stop);
     if (!tokens)
@@ -95,7 +108,7 @@ auto HostedSession::signedIn() -> bool
 void HostedSession::logout() noexcept
 {
     endPlay();
-    store_->erase();
+    store_.erase();
     const std::lock_guard lock(tokenMutex_);
     tokens_.reset();
 }
@@ -142,7 +155,7 @@ void HostedSession::remember(Tokens tokens)
         logLine("Signed in as Supabase user {}", tokens.userId);
     }
 
-    store_->save(tokens.refresh);
+    store_.save(tokens.refresh);
     tokens_ = std::move(tokens);
 }
 
@@ -155,7 +168,7 @@ auto HostedSession::accessToken(bool forceRefresh) -> std::string
         throw ApiError(401, "invalid_token");
     }
 
-    if (forceRefresh || std::chrono::system_clock::now() + accessMargin >= tokens_->expiresAt)
+    if (forceRefresh || std::chrono::system_clock::now() + kAccessMargin >= tokens_->expiresAt)
     {
         try
         {
@@ -164,7 +177,7 @@ auto HostedSession::accessToken(bool forceRefresh) -> std::string
         catch (const ApiError&)
         {
             tokens_.reset();
-            store_->erase();
+            store_.erase();
             throw ApiError(401, "invalid_token");
         }
     }
@@ -198,7 +211,7 @@ void HostedSession::startPlay()
                });
     play_    = auth_.redeem(ticket);
     tunnel_  = std::make_unique<Tunnel>(http_, Tunnel::Streams{ play_->gameStream, play_->profileStream, play_->token, auth_.settings().subprotocol });
-    renewal_ = std::jthread([this](std::stop_token stop)
+    renewal_ = std::jthread([this](const std::stop_token& stop)
                             {
                                 renewLoop(stop);
                             });
@@ -248,19 +261,12 @@ auto HostedSession::gameConfig(Config config) const -> Config
     return config;
 }
 
-void HostedSession::renewLoop(std::stop_token stop)
+void HostedSession::renewLoop(const std::stop_token& stop)
 {
-    auto mutex  = std::mutex{};
-    auto wake   = std::condition_variable_any{};
-    auto lock   = std::unique_lock(mutex);
     auto expiry = std::chrono::steady_clock::now() + play_->expiresIn;
-    auto next   = expiry - renewMargin;
+    auto next   = expiry - kRenewMargin;
     auto retry  = std::chrono::seconds(15s);
-    while (!wake.wait_until(lock, stop, next, []
-                            {
-                                return false;
-                            }) &&
-           !stop.stop_requested())
+    while (sleepUntil(stop, next))
     {
         try
         {
@@ -269,7 +275,7 @@ void HostedSession::renewLoop(std::stop_token stop)
                            auth_.renew(access, play_->token);
                        });
             expiry = std::chrono::steady_clock::now() + play_->expiresIn;
-            next   = expiry - renewMargin;
+            next   = expiry - kRenewMargin;
             retry  = 15s;
             logLine("Hosted play session renewed");
             continue;

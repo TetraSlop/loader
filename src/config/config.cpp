@@ -8,10 +8,10 @@ namespace tmloader
 namespace
 {
 
-constexpr auto polIdAlphabet = "EFKAOYMJVNGTDSWBQLPCIRHZXU6328401795";
+constexpr auto kPolIdAlphabet = "EFKAOYMJVNGTDSWBQLPCIRHZXU6328401795";
 
 // The client always dials Game IRC on this port; the loader redirects it.
-constexpr unsigned short reservedGamePort = 51241;
+constexpr unsigned short kReservedGamePort = 51241;
 
 void defineOptions(CLI::App& app, Config& config)
 {
@@ -26,10 +26,16 @@ void defineOptions(CLI::App& app, Config& config)
     app.add_option("--profile-port", config.profilePort, "Profile port")->type_name("PORT")->capture_default_str()->check(CLI::Range(1, 65535).description(""));
     app.add_option("--pol-id", config.polId, "Account ID")->type_name("ID")->capture_default_str();
     app.add_option("--password", config.password, "Account password")->type_name("TEXT")->capture_default_str();
+#ifdef TMLOADER_HOSTED
     app.add_option("--hosted-server", config.hostedServer, "Sign in to this hosted server instead of --server")->type_name("URL");
     app.add_flag("--hosted-insecure-loopback", config.insecureLoopback, "Development only: allow http://127.0.0.1 hosted endpoints");
+#endif
+#ifdef TMLOADER_DISCORD_PRESENCE
     app.add_option("--discord-app-id", config.discordApplicationId, "Discord application ID for Rich Presence")->type_name("ID")->check(CLI::Number.description(""));
+#endif
+#ifdef TMLOADER_HD_TEXTURES
     app.add_option("--texture-pack", config.texturePack, "HD texture pack manifest")->type_name("FILE")->default_str("textures/pack.json");
+#endif
     app.add_flag("--diagnostics", config.diagnostics, "Extra logging and periodic screenshots");
     app.add_flag("--check", config.checkOnly, "Verify files, hashes and settings without launching")->configurable(false);
     app.add_flag("-h,--help", config.help, "Show this help")->configurable(false);
@@ -71,12 +77,12 @@ void validate(const Config& config)
         throw std::runtime_error("Game and profile ports must differ");
     }
 
-    if (config.profilePort == reservedGamePort)
+    if (config.profilePort == kReservedGamePort)
     {
         throw std::runtime_error("Profile port cannot use the client's reserved Game IRC port 51241");
     }
 
-    if (config.polId.size() != 8 || config.polId.find_first_not_of(polIdAlphabet) != std::string::npos)
+    if (config.polId.size() != 8 || config.polId.find_first_not_of(kPolIdAlphabet) != std::string::npos)
     {
         throw std::runtime_error("--pol-id must be an eight-character PlayOnline ID");
     }

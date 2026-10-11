@@ -10,6 +10,8 @@ using namespace tmloader::hosted;
 namespace
 {
 
+constexpr DWORD kReceiveTimeoutMs = 5000;
+
 // Stands in for the system browser: the fake Supabase answers the authorize
 // request with its redirect target in the body, which we then visit.
 class ScriptedBrowser
@@ -44,7 +46,7 @@ auto connectLocal(unsigned short port) -> wil::unique_socket
     auto address            = sockaddr_in{ AF_INET, htons(port) };
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     REQUIRE(connect(native.get(), reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0);
-    auto timeout = DWORD{ 5000 };
+    auto timeout = kReceiveTimeoutMs;
     setsockopt(native.get(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
     return native;
 }

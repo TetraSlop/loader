@@ -1,7 +1,7 @@
 function(loader_test target)
     add_executable(${target} ${ARGN})
     target_include_directories(${target} PRIVATE "${PROJECT_SOURCE_DIR}/src")
-    target_link_libraries(${target} PRIVATE Catch2::Catch2WithMain)
+    target_link_libraries(${target} PRIVATE loader_common Catch2::Catch2WithMain)
     catch_discover_tests(${target} ADD_TAGS_AS_LABELS)
 endfunction()
 
@@ -18,11 +18,6 @@ add_test(NAME cli_help COMMAND tmloader --help)
 
 loader_test(config_tests config/config_tests.cpp)
 target_link_libraries(config_tests PRIVATE loader_config)
-
-loader_test(graphics_tests
-    graphics/graphics_tests.cpp
-    ${loader_source_dir}/graphics/render_scale.cpp)
-target_link_libraries(graphics_tests PRIVATE nlohmann_json::nlohmann_json loader_config loader_textures user32 ole32)
 
 loader_test(render_scale_tests
     graphics/render_scale_tests.cpp
@@ -53,20 +48,6 @@ target_link_libraries(desktop_tests PRIVATE user32)
 loader_test(virtual_registry_tests platform/virtual_registry_tests.cpp)
 target_link_libraries(virtual_registry_tests PRIVATE loader_config advapi32)
 
-loader_test(texture_hooks_tests
-    textures/texture_hooks_tests.cpp
-    ${loader_source_dir}/textures/texture_hooks.cpp)
-
-loader_test(texture_pack_tests textures/texture_pack_tests.cpp)
-target_link_libraries(texture_pack_tests PRIVATE loader_textures nlohmann_json::nlohmann_json)
-
-loader_test(texture_replacements_tests
-    textures/texture_replacements_tests.cpp
-    ${loader_source_dir}/app/runtime.cpp
-    ${loader_source_dir}/app/log.cpp
-    ${loader_source_dir}/graphics/render_scale.cpp)
-target_link_libraries(texture_replacements_tests PRIVATE loader_textures user32 advapi32 ole32)
-
 loader_test(settings_ui_tests ui/settings_ui_tests.cpp ${loader_source_dir}/ui/imgui_window.cpp)
 target_link_libraries(settings_ui_tests PRIVATE nlohmann_json::nlohmann_json WIL::WIL loader_imgui user32 gdi32)
 
@@ -76,16 +57,39 @@ target_link_libraries(window_messages_tests PRIVATE nlohmann_json::nlohmann_json
 loader_test(window_settings_tests ui/window_settings_tests.cpp)
 target_link_libraries(window_settings_tests PRIVATE nlohmann_json::nlohmann_json user32)
 
-loader_test(hosted_tests hosted/auth_tests.cpp hosted/gateway_tests.cpp)
-target_link_libraries(hosted_tests PRIVATE loader_hosted nlohmann_json::nlohmann_json)
-
-loader_test(discord_presence_tests
-    platform/discord_presence_tests.cpp
-    ${loader_source_dir}/platform/discord_presence.cpp)
-target_link_libraries(discord_presence_tests PRIVATE nlohmann_json::nlohmann_json WIL::WIL)
-
-loader_test(game_messages_tests
-    platform/game_messages_tests.cpp
-    ${loader_source_dir}/platform/game_messages.cpp
+loader_test(patch_tests
+    platform/patch_tests.cpp
     ${loader_source_dir}/platform/patch.cpp)
-target_link_libraries(game_messages_tests PRIVATE loader_config)
+
+loader_test(graphics_tests
+    graphics/graphics_tests.cpp
+    ${loader_source_dir}/graphics/render_scale.cpp)
+target_link_libraries(graphics_tests PRIVATE nlohmann_json::nlohmann_json loader_config user32 ole32)
+
+if(TMLOADER_HD_TEXTURES)
+    target_link_libraries(graphics_tests PRIVATE loader_textures)
+
+    loader_test(texture_pack_tests textures/texture_pack_tests.cpp ${loader_source_dir}/platform/patch.cpp)
+    target_link_libraries(texture_pack_tests PRIVATE loader_textures nlohmann_json::nlohmann_json)
+
+    loader_test(texture_replacements_tests
+        textures/texture_replacements_tests.cpp
+        ${loader_source_dir}/app/runtime.cpp
+        ${loader_source_dir}/app/log.cpp
+        ${loader_source_dir}/graphics/render_scale.cpp
+        ${loader_source_dir}/platform/patch.cpp)
+    target_link_libraries(texture_replacements_tests PRIVATE loader_textures user32 advapi32 ole32)
+endif()
+
+if(TMLOADER_DISCORD_PRESENCE)
+    loader_test(presence_tests
+        presence/discord_presence_tests.cpp
+        presence/game_phase_tests.cpp
+        ${loader_source_dir}/platform/patch.cpp)
+    target_link_libraries(presence_tests PRIVATE loader_presence nlohmann_json::nlohmann_json WIL::WIL)
+endif()
+
+if(TMLOADER_HOSTED)
+    loader_test(hosted_tests hosted/auth_tests.cpp hosted/gateway_tests.cpp)
+    target_link_libraries(hosted_tests PRIVATE loader_hosted nlohmann_json::nlohmann_json)
+endif()

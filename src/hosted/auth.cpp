@@ -15,7 +15,14 @@ namespace tmloader::hosted
 namespace
 {
 
-constexpr auto signInTimeout = std::chrono::minutes(5);
+constexpr auto kSignInTimeout = std::chrono::minutes(5);
+constexpr auto kBase64Flags   = CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF;
+
+// Shared by the pages the loopback listener serves after sign-in.
+constexpr auto kPageStyle = "body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0c0e14;color:#e8e6e3;"
+                            "font:17px 'Segoe UI',system-ui,sans-serif}main{text-align:center;padding:2rem 3rem;border-radius:12px;"
+                            "background:#171a23;box-shadow:0 8px 32px #0008}h1{margin:0 0 .5rem;font-size:1.6rem;letter-spacing:.08em}"
+                            "p{margin:.25rem 0;color:#a8a6a3}";
 
 auto randomBytes(size_t count) -> std::vector<std::uint8_t>
 {
@@ -94,32 +101,24 @@ auto queryValue(std::string_view query, std::string_view name) -> std::optional<
 // Streams must stay on the configured server; its token is never sent elsewhere.
 void requireSameOrigin(const std::string& stream, const std::string& origin)
 {
-    const auto prefix = [&]() -> std::string
+    auto prefix = "ws://" + origin.substr(7) + "/";
+    if (origin.starts_with("https://"))
     {
-        if (origin.starts_with("https://"))
-        {
-            return "wss://" + origin.substr(8) + "/";
-        }
+        prefix = "wss://" + origin.substr(8) + "/";
+    }
 
-        return "ws://" + origin.substr(7) + "/";
-    }();
     if (!stream.starts_with(prefix))
     {
         throw std::runtime_error("Server returned a stream on another origin");
     }
 }
 
-constexpr auto pageStyle = "body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0c0e14;color:#e8e6e3;"
-                           "font:17px 'Segoe UI',system-ui,sans-serif}main{text-align:center;padding:2rem 3rem;border-radius:12px;"
-                           "background:#171a23;box-shadow:0 8px 32px #0008}h1{margin:0 0 .5rem;font-size:1.6rem;letter-spacing:.08em}"
-                           "p{margin:.25rem 0;color:#a8a6a3}";
-
 auto page(const char* status, const char* heading, const char* message) -> std::string
 {
     // Tabs the page opened itself can close; otherwise the message stays.
     const auto body = std::format("<!doctype html><meta charset=utf-8><title>Tetra Master</title><style>{}</style>"
                                   "<main><h1>{}</h1><p>{}</p></main><script>setTimeout(()=>window.close(),1500)</script>",
-                                  pageStyle,
+                                  kPageStyle,
                                   heading,
                                   message);
     return std::format("HTTP/1.1 {}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n{}", status, body.size(), body);
@@ -173,11 +172,10 @@ auto ApiError::code() const noexcept -> const std::string&
 
 auto base64Url(std::span<const std::uint8_t> bytes) -> std::string
 {
-    constexpr auto flags  = CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF;
-    auto           length = DWORD{};
-    CryptBinaryToStringA(bytes.data(), static_cast<DWORD>(bytes.size()), flags, nullptr, &length);
+    auto length = DWORD{};
+    CryptBinaryToStringA(bytes.data(), static_cast<DWORD>(bytes.size()), kBase64Flags, nullptr, &length);
     auto text = std::string(length, '\0');
-    if (!CryptBinaryToStringA(bytes.data(), static_cast<DWORD>(bytes.size()), flags, text.data(), &length))
+    if (!CryptBinaryToStringA(bytes.data(), static_cast<DWORD>(bytes.size()), kBase64Flags, text.data(), &length))
     {
         throw std::runtime_error("Base64 encoding failed");
     }
@@ -317,7 +315,7 @@ auto AuthClient::settings() -> const AuthSettings&
     return *settings_;
 }
 
-auto AuthClient::signIn(const OpenBrowser& openBrowser, std::stop_token stop) -> std::optional<Tokens>
+auto AuthClient::signIn(const OpenBrowser& openBrowser, const std::stop_token& stop) -> std::optional<Tokens>
 {
     const auto& auth        = settings();
     const auto  listener    = wil::unique_socket(socket(AF_INET, SOCK_STREAM, IPPROTO_TCP));
@@ -338,7 +336,7 @@ auto AuthClient::signIn(const OpenBrowser& openBrowser, std::stop_token stop) ->
                             percentEncode(redirect),
                             percentEncode(challengeFor(verifier))));
 
-    const auto deadline = std::chrono::steady_clock::now() + signInTimeout;
+    const auto deadline = std::chrono::steady_clock::now() + kSignInTimeout;
     while (!stop.stop_requested())
     {
         if (std::chrono::steady_clock::now() >= deadline)
@@ -447,13 +445,17 @@ auto CredentialStore::load() const -> std::optional<std::string>
 
 void CredentialStore::save(const std::string& refreshToken) const
 {
+    // CREDENTIALW takes mutable pointers.
+    auto target                   = target_;
+    auto blob                     = refreshToken;
+    auto user                     = std::wstring{ L"tmloader" };
     auto credential               = CREDENTIALW{};
     credential.Type               = CRED_TYPE_GENERIC;
-    credential.TargetName         = const_cast<wchar_t*>(target_.c_str());
-    credential.CredentialBlobSize = static_cast<DWORD>(refreshToken.size());
-    credential.CredentialBlob     = reinterpret_cast<BYTE*>(const_cast<char*>(refreshToken.data()));
+    credential.TargetName         = target.data();
+    credential.CredentialBlobSize = static_cast<DWORD>(blob.size());
+    credential.CredentialBlob     = reinterpret_cast<BYTE*>(blob.data());
     credential.Persist            = CRED_PERSIST_LOCAL_MACHINE;
-    credential.UserName           = const_cast<wchar_t*>(L"tmloader");
+    credential.UserName           = user.data();
     if (!CredWriteW(&credential, 0))
     {
         logLine("Could not remember sign-in (error {})", GetLastError());

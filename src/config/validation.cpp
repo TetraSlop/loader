@@ -15,8 +15,8 @@ namespace tmloader
 namespace
 {
 
-constexpr auto gameHash = "29C965A835FAD561A94860262F780BC087B7BCC89BE9E3E89DA8F08D57F52003";
-constexpr auto coreHash = "73B1864BF522D3AA6EC28E9F4BB226FCEE956F7F4848A238C9C2D756DC703B06";
+constexpr auto kGameHash = "29C965A835FAD561A94860262F780BC087B7BCC89BE9E3E89DA8F08D57F52003";
+constexpr auto kCoreHash = "73B1864BF522D3AA6EC28E9F4BB226FCEE956F7F4848A238C9C2D756DC703B06";
 
 } // namespace
 
@@ -28,6 +28,7 @@ auto sha256(const void* data, size_t bytes) -> std::array<std::uint8_t, 32>
     }
 
     auto digest = std::array<std::uint8_t, 32>{};
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
     if (BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, static_cast<PUCHAR>(const_cast<void*>(data)), static_cast<ULONG>(bytes), digest.data(), static_cast<ULONG>(digest.size())) < 0)
     {
         throw std::runtime_error("SHA256 failed");
@@ -73,8 +74,8 @@ void validateRuntime(const Config& config)
     }
 
     const std::pair<fs::path, const char*> binaries[] = {
-        { config.game, gameHash },
-        { config.core, coreHash },
+        { config.game, kGameHash },
+        { config.core, kCoreHash },
     };
     for (const auto& entry : binaries)
     {

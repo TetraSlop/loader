@@ -10,8 +10,8 @@ namespace tmloader::hosted
 namespace
 {
 
-constexpr size_t maxResponseBytes = 1024 * 1024;
-constexpr size_t maxMessageBytes  = 65536;
+constexpr size_t kMaxResponseBytes = 1024 * 1024;
+constexpr size_t kMaxMessageBytes  = 65536;
 
 auto widen(std::string_view text) -> std::wstring
 {
@@ -66,6 +66,7 @@ WebSocket::WebSocket(wil::unique_winhttp_hinternet socket)
 
 void WebSocket::send(std::span<const char> data)
 {
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
     const auto result = WinHttpWebSocketSend(socket_.get(), WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE, const_cast<char*>(data.data()), static_cast<DWORD>(data.size()));
     if (result != ERROR_SUCCESS)
     {
@@ -75,7 +76,7 @@ void WebSocket::send(std::span<const char> data)
 
 auto WebSocket::receive() -> std::optional<std::vector<char>>
 {
-    auto message = std::vector<char>(maxMessageBytes + 1);
+    auto message = std::vector<char>(kMaxMessageBytes + 1);
     auto length  = size_t{};
     while (true)
     {
@@ -104,7 +105,7 @@ auto WebSocket::receive() -> std::optional<std::vector<char>>
             throw TransportError("WebSocket sent a text message");
         }
 
-        if (length > maxMessageBytes)
+        if (length > kMaxMessageBytes)
         {
             throw TransportError("WebSocket message exceeds 64 KiB");
         }
@@ -190,7 +191,7 @@ auto HttpClient::open(const char* method, const std::string& url, const Headers&
     WinHttpSetOption(request.get(), WINHTTP_OPTION_DISABLE_FEATURE, &disabled, sizeof(disabled));
     for (const auto& [name, value] : headers)
     {
-        const auto line = widen(name + ": " + value);
+        const auto line = widen(std::format("{}: {}", name, value));
         if (!WinHttpAddRequestHeaders(request.get(), line.c_str(), static_cast<DWORD>(line.size()), WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE))
         {
             fail("Adding request header");
@@ -203,7 +204,8 @@ auto HttpClient::open(const char* method, const std::string& url, const Headers&
 auto HttpClient::send(const char* method, const std::string& url, const Headers& headers, const std::string& body) -> Response
 {
     const auto [connection, request] = open(method, url, headers);
-    auto* const data                 = const_cast<char*>(body.data());
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
+    auto* const data = const_cast<char*>(body.data());
     if (!WinHttpSendRequest(request.get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0, data, static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0) ||
         !WinHttpReceiveResponse(request.get(), nullptr))
     {
@@ -217,7 +219,7 @@ auto HttpClient::send(const char* method, const std::string& url, const Headers&
     auto read            = DWORD{};
     while (WinHttpReadData(request.get(), chunk.data(), static_cast<DWORD>(chunk.size()), &read) && read)
     {
-        if (response.body.size() + read > maxResponseBytes)
+        if (response.body.size() + read > kMaxResponseBytes)
         {
             throw TransportError("HTTP response too large");
         }

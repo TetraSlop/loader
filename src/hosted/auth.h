@@ -87,7 +87,7 @@ public:
 
     auto settings() -> const AuthSettings&;
     // Runs the browser PKCE flow; returns nothing when cancelled.
-    auto signIn(const OpenBrowser& openBrowser, std::stop_token stop) -> std::optional<Tokens>;
+    auto signIn(const OpenBrowser& openBrowser, const std::stop_token& stop) -> std::optional<Tokens>;
     auto refresh(const std::string& refreshToken) -> Tokens;
 
     auto issueTicket(const std::string& access) -> std::string;

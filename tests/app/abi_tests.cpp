@@ -3,7 +3,15 @@
 #include <catch2/catch_test_macros.hpp>
 #include <iostream>
 
+namespace
+{
+
+constexpr DWORD   kLaunchFlags     = 0x200;
+constexpr HRESULT kGameStartResult = 123;
+
 // Compiler-built vtable in IPOLCoreCom declaration order, independent of the loader's slot indices.
+// A virtual destructor would shift the COM vtable.
+// NOLINTNEXTLINE(cppcoreguidelines-virtual-class-destructor)
 class MockCore : public IUnknown
 {
 public:
@@ -171,36 +179,78 @@ private:
     }
 };
 
-static auto __stdcall mockGameStart(IUnknown* game, IUnknown* core, tmloader::abi::LaunchDescriptor* launch) -> HRESULT
+auto __stdcall mockGameStart(IUnknown* game, IUnknown* core, tmloader::abi::LaunchDescriptor* launch) -> HRESULT
 {
-    REQUIRE((game && core));
-    REQUIRE((launch->size == 28 && launch->flags == 0x200));
-    REQUIRE((launch->core == tmloader::abi::coreInterface && !launch->message));
-    return 123;
+    REQUIRE(game);
+    REQUIRE(core);
+    REQUIRE(launch->size == 28);
+    REQUIRE(launch->flags == kLaunchFlags);
+    REQUIRE(launch->core == tmloader::abi::kCoreInterface);
+    REQUIRE_FALSE(launch->message);
+    return kGameStartResult;
 }
 
-TEST_CASE("COM dispatch preserves native signatures and slots", "[abi]")
+} // namespace
+
+using namespace tmloader;
+
+TEST_CASE("SetAreaCode reaches its own slot with a signed argument", "[abi]")
 {
-    using namespace tmloader;
+    MockCore        core;
+    IUnknown* const object = &core;
+
+    REQUIRE(callMethod(object, abi::SetAreaCode, 1L) == S_OK);
+    REQUIRE(core.areaCalls == 1);
+    REQUIRE(core.area == 1);
+
+    REQUIRE(callMethod(object, abi::SetAreaCode, -7L) == S_OK);
+    REQUIRE(core.area == -7);
+    REQUIRE(core.wrongCalls == 0);
+}
+
+TEST_CASE("SetParamInit forwards the instance and command line", "[abi]")
+{
     MockCore        core;
     IUnknown* const object    = &core;
     char            command[] = " /game DdcMLbB";
     const auto      instance  = reinterpret_cast<HINSTANCE>(0x12345678);
-    REQUIRE(callMethod(object, abi::SetAreaCode, 1L) == S_OK);
-    REQUIRE((core.areaCalls == 1 && core.area == 1 && core.wrongCalls == 0));
-    // Signed long matches the declared ABI as well as the usual value1.
-    REQUIRE((callMethod(object, abi::SetAreaCode, -7L) == S_OK && core.area == -7));
+
     REQUIRE(callMethod(object, abi::SetParamInit, instance, command) == S_OK);
-    REQUIRE((core.paramCalls == 1 && core.instance == instance && core.command == command));
-    Command* table = nullptr;
-    REQUIRE(callMethod(object, abi::GetCommonTable, reinterpret_cast<unsigned long**>(&table)) == S_OK);
-    REQUIRE((core.tableCalls == 1 && reinterpret_cast<unsigned long*>(table) == core.table.data()));
+    REQUIRE(core.paramCalls == 1);
+    REQUIRE(core.instance == instance);
+    REQUIRE(core.command == command);
     REQUIRE(core.wrongCalls == 0);
-    // Neighbouring slot 25 (GetSquareEnixRegKeyNameW) must not reach SetAreaCode.
+}
+
+TEST_CASE("GetCommonTable returns the core's function table", "[abi]")
+{
+    MockCore        core;
+    IUnknown* const object = &core;
+    Command*        table  = nullptr;
+
+    REQUIRE(callMethod(object, abi::GetCommonTable, reinterpret_cast<unsigned long**>(&table)) == S_OK);
+    REQUIRE(core.tableCalls == 1);
+    REQUIRE(reinterpret_cast<unsigned long*>(table) == core.table.data());
+    REQUIRE(core.wrongCalls == 0);
+}
+
+TEST_CASE("The slot next to SetAreaCode does not reach it", "[abi]")
+{
+    MockCore        core;
+    IUnknown* const object = &core;
+
+    // Slot 25 is GetSquareEnixRegKeyNameW.
     REQUIRE(callMethod(object, 25, static_cast<LPWSTR*>(nullptr)) == E_UNEXPECTED);
-    REQUIRE((core.wrongCalls == 1 && core.areaCalls == 2));
-    auto       descriptor = abi::LaunchDescriptor{ sizeof(abi::LaunchDescriptor), 0x200, abi::coreInterface, nullptr };
-    const auto start      = abi::GameStart{ mockGameStart };
-    REQUIRE(start(object, object, &descriptor) == 123);
-    std::cout << "COM slot/signature and launch descriptor regression checks passed.\n";
+    REQUIRE(core.wrongCalls == 1);
+    REQUIRE(core.areaCalls == 0);
+}
+
+TEST_CASE("GameStart receives the launch descriptor", "[abi]")
+{
+    MockCore        core;
+    IUnknown* const object     = &core;
+    auto            descriptor = abi::LaunchDescriptor{ sizeof(abi::LaunchDescriptor), kLaunchFlags, abi::kCoreInterface, nullptr };
+    const auto      start      = abi::GameStart{ mockGameStart };
+
+    REQUIRE(start(object, object, &descriptor) == kGameStartResult);
 }

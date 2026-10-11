@@ -1,14 +1,15 @@
 # Texture load path
 
-This page describes how the game DLL uploads PNG textures and how the loader
-substitutes HD textures without changing native texture objects. Offsets are
-RVAs in the game DLL, image base `0x10000000`. They come from static analysis
-of the native code.
+The game DLL uploads PNG textures through one creator function, called from
+seven sites. The loader hooks those calls to substitute HD textures without
+changing the native texture objects. Offsets are RVAs in the game DLL, image
+base `0x10000000`, and come from static analysis of the native code.
 
 ## Approach
 
-`installTextureCallHooks` redirects the seven guarded CALLs below to a
+`initializeTextureReplacements` redirects the seven CALLs below to a
 `WINAPI` `HRESULT` wrapper and keeps `+1B9AA4` as the original creator.
+`redirectCall` patches a site only if it is a relative CALL to that creator.
 
 1. Create the native texture unchanged.
 2. Hash the original PNG through `IEND` (archive payloads can include up to 15
@@ -47,9 +48,9 @@ arguments. All seven callers pass:
 | filter, mipFilter | `0x80001` (NONE \| DITHER), `0xFFFFFFFF` |
 | colorKey, srcInfo, palette | 0, `nullptr`, `nullptr` |
 
-## Call-site guards
+## Call sites
 
-| RVA | Expected bytes | Matching GetLevelDesc |
+| RVA | Bytes | Matching GetLevelDesc |
 |---|---|---|
 | `+17BA39` | `E8 66 E0 03 00` | `+17BA8B` |
 | `+17C061` | `E8 3E DA 03 00` | `+17C0B7` |

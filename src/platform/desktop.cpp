@@ -10,16 +10,18 @@ namespace tmloader
 namespace
 {
 
-constexpr DWORD setWindowsHookImport      = 0x2041e4;
-constexpr DWORD systemParametersImport    = 0x2041e8;
-constexpr DWORD setCursorPosImport        = 0x2041f0;
-constexpr DWORD attachThreadInputImport   = 0x204240;
-constexpr DWORD setForegroundWindowImport = 0x204244;
-constexpr DWORD showCursorImport          = 0x204248;
-constexpr DWORD setActiveWindowImport     = 0x204258;
-constexpr DWORD cursorSyncBegin           = 0x185753;
-constexpr DWORD cursorSyncEnd             = 0x185830;
-constexpr DWORD windowedFlag              = 0x2ff248;
+constexpr DWORD kSetWindowsHookImport      = 0x2041e4;
+constexpr DWORD kSystemParametersImport    = 0x2041e8;
+constexpr DWORD kSetCursorPosImport        = 0x2041f0;
+constexpr DWORD kAttachThreadInputImport   = 0x204240;
+constexpr DWORD kSetForegroundWindowImport = 0x204244;
+constexpr DWORD kShowCursorImport          = 0x204248;
+constexpr DWORD kSetActiveWindowImport     = 0x204258;
+constexpr DWORD kCursorSyncBegin           = 0x185753;
+constexpr DWORD kCursorSyncEnd             = 0x185830;
+// A near jump over the legacy cursor synchronization.
+constexpr BYTE  kCursorSyncJump[] = { 0xe9, kCursorSyncEnd - kCursorSyncBegin - 5, 0, 0, 0 };
+constexpr DWORD kWindowedFlag     = 0x2ff248;
 
 auto WINAPI hookedSetWindowsHookExA(int kind, HOOKPROC callback, HINSTANCE instance, DWORD thread) -> HHOOK
 {
@@ -89,10 +91,10 @@ void skipLegacyCursorSync(HMODULE module)
 {
     // Each frame the game warps the OS pointer to its 640x480 cursor; jump over that block.
     auto* const base    = reinterpret_cast<BYTE*>(module);
-    BYTE* const site    = base + cursorSyncBegin;
+    BYTE* const site    = base + kCursorSyncBegin;
     auto        operand = DWORD{};
     std::memcpy(&operand, site + 1, sizeof(operand));
-    if (site[0] != 0xa1 || operand != reinterpret_cast<DWORD>(base + windowedFlag))
+    if (site[0] != 0xa1 || operand != reinterpret_cast<DWORD>(base + kWindowedFlag))
     {
         throw std::runtime_error("Unsupported live cursor synchronization layout");
     }
@@ -103,8 +105,7 @@ void skipLegacyCursorSync(HMODULE module)
         throw std::runtime_error("Cannot disable legacy cursor synchronization");
     }
 
-    constexpr BYTE jump[] = { 0xe9, cursorSyncEnd - cursorSyncBegin - 5, 0, 0, 0 };
-    std::memcpy(site, jump, sizeof(jump));
+    std::memcpy(site, kCursorSyncJump, sizeof(kCursorSyncJump));
     VirtualProtect(site, 5, protection, &protection);
     FlushInstructionCache(GetCurrentProcess(), site, 5);
 }
@@ -114,13 +115,13 @@ void skipLegacyCursorSync(HMODULE module)
 void installDesktopHooks(HMODULE game)
 {
     skipLegacyCursorSync(game);
-    setImport(game, setWindowsHookImport, reinterpret_cast<void*>(hookedSetWindowsHookExA));
-    setImport(game, systemParametersImport, reinterpret_cast<void*>(hookedSystemParametersInfoA));
-    setImport(game, setCursorPosImport, reinterpret_cast<void*>(hookedSetCursorPos));
-    setImport(game, attachThreadInputImport, reinterpret_cast<void*>(hookedAttachThreadInput));
-    setImport(game, setForegroundWindowImport, reinterpret_cast<void*>(hookedSetForegroundWindow));
-    setImport(game, showCursorImport, reinterpret_cast<void*>(hookedShowCursor));
-    setImport(game, setActiveWindowImport, reinterpret_cast<void*>(hookedSetActiveWindow));
+    setImport(game, kSetWindowsHookImport, reinterpret_cast<void*>(hookedSetWindowsHookExA));
+    setImport(game, kSystemParametersImport, reinterpret_cast<void*>(hookedSystemParametersInfoA));
+    setImport(game, kSetCursorPosImport, reinterpret_cast<void*>(hookedSetCursorPos));
+    setImport(game, kAttachThreadInputImport, reinterpret_cast<void*>(hookedAttachThreadInput));
+    setImport(game, kSetForegroundWindowImport, reinterpret_cast<void*>(hookedSetForegroundWindow));
+    setImport(game, kShowCursorImport, reinterpret_cast<void*>(hookedShowCursor));
+    setImport(game, kSetActiveWindowImport, reinterpret_cast<void*>(hookedSetActiveWindow));
     logLine("Desktop input policy installed: no global key interception, cursor warping or focus reclaim");
 }
 

@@ -3,12 +3,14 @@
 #include "graphics/render_scale.h"
 #include "graphics/screenshot.h"
 #include "imgui.h"
-#include "textures/texture_replacements.h"
 #include "ui/imgui_window.h"
 #include "ui/window.h"
 #include <algorithm>
 #include <atomic>
 #include <thread>
+#ifdef TMLOADER_HD_TEXTURES
+#include "textures/texture_replacements.h"
+#endif
 
 namespace tmloader
 {
@@ -62,7 +64,7 @@ void displaySettings(WindowSettings value)
             return 0;
         }
 
-        return 1 + static_cast<int>(std::ranges::find(renderScales, value.renderScale) - renderScales.begin());
+        return 1 + static_cast<int>(std::ranges::find(kRenderScales, value.renderScale) - kRenderScales.begin());
     }();
     ImGui::SetNextItemWidth(-1);
     if (ImGui::Combo("##resolution", &resolution, "Automatic - match display\0"
@@ -90,6 +92,7 @@ void displaySettings(WindowSettings value)
     ImGui::TextWrapped("Applies after relaunch. Automatic chooses the resolution for your monitor, up to 4K height.");
 }
 
+#ifdef TMLOADER_HD_TEXTURES
 void artworkSettings(WindowSettings value)
 {
     ImGui::Spacing();
@@ -117,6 +120,8 @@ void artworkSettings(WindowSettings value)
     ImGui::TextWrapped("Switches immediately. Images missing from the pack use their originals.");
     ImGui::TextWrapped("Font selection affects in-game text. Lettering painted into menus or card images follows the artwork setting.");
 }
+
+#endif
 
 void screenshotSettings()
 {
@@ -165,7 +170,7 @@ void settingsContents()
     const auto* const viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
-    ImGui::Begin("Wrapper settings", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
     ImGui::TextUnformatted("TETRA MASTER");
     ImGui::TextDisabled("Game settings");
     ImGui::Separator();
@@ -178,11 +183,13 @@ void settingsContents()
             ImGui::EndTabItem();
         }
 
+#ifdef TMLOADER_HD_TEXTURES
         if (ImGui::BeginTabItem("Artwork & text"))
         {
             artworkSettings(value);
             ImGui::EndTabItem();
         }
+#endif
 
         if (ImGui::BeginTabItem("Screenshots"))
         {

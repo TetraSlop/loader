@@ -11,7 +11,9 @@
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <string_view>
+#include <system_error>
 #include <unknwn.h>
+#include <utility>
 
 using namespace tmloader;
 namespace fs = std::filesystem;
@@ -27,6 +29,13 @@ void writeLog(std::string_view)
 
 namespace
 {
+
+// D3DX_DEFAULT: the game lets D3DX pick the size and mip filter of its originals.
+constexpr UINT  kD3dxDefault  = 0xffffffff;
+constexpr DWORD kUploadFilter = 0x80001;
+// The 72x96 card is padded to a power of two on the GPU.
+constexpr unsigned kOriginalExtent = 128;
+constexpr unsigned kHdExtent       = 512;
 
 // Structural PNG fixtures: decoding is deliberately left to the upload callback.
 // This checks bounded matching independently of any PNG codec.
@@ -51,17 +60,49 @@ void write(const fs::path& path, const std::vector<uint8_t>& bytes)
     out.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
 }
 
-template <class F>
-void rejects(F fn)
+// A pack directory holding one 4x card and the manifest that describes it.
+struct PackFixture
 {
-    REQUIRE_THROWS_AS(fn(), std::exception);
-}
+    explicit PackFixture(const fs::path& name)
+    : root(fs::current_path() / name)
+    {
+        REQUIRE_FALSE(fs::exists(root));
+        fs::create_directory(root);
+        write(root / "card.png", hd);
+        save(record);
+    }
+
+    ~PackFixture()
+    {
+        std::error_code ignored;
+        fs::remove_all(root, ignored);
+    }
+
+    PackFixture(const PackFixture&)                    = delete;
+    auto operator=(const PackFixture&) -> PackFixture& = delete;
+    PackFixture(PackFixture&&)                         = delete;
+    auto operator=(PackFixture&&) -> PackFixture&      = delete;
+
+    void save(const nlohmann::json& texture) const
+    {
+        std::ofstream out(manifest);
+        out << nlohmann::json{ { "version", 1 }, { "textures", nlohmann::json::array({ texture }) } };
+    }
+
+    const fs::path             root;
+    const std::vector<uint8_t> source = png(72, 96);
+    const std::vector<uint8_t> hd     = png(288, 384);
+    const nlohmann::json       record = nlohmann::json{
+        { "id", "test/card" }, { "file", "card.png" }, { "source_sha256", sha256Bytes(source.data(), source.size()) }, { "sha256", sha256Bytes(hd.data(), hd.size()) }, { "logical_size", { 72, 96 } }, { "physical_size", { 288, 384 } }
+    };
+    const fs::path manifest = root / "pack.json";
+};
 
 struct FakeTexture
 {
-    void**    table;
-    unsigned  width;
-    unsigned  height;
+    void**    table{};
+    unsigned  width{};
+    unsigned  height{};
     unsigned  references = 1;
     IUnknown* attachment = nullptr;
 };
@@ -81,7 +122,7 @@ auto WINAPI release(FakeTexture* self) -> ULONG
 auto WINAPI description(FakeTexture* self, UINT level, d3d8::SurfaceDesc* desc) -> HRESULT
 {
     REQUIRE(level == 0);
-    desc->format = d3d8::formatA8R8G8B8;
+    desc->format = d3d8::kFormatA8R8G8B8;
     desc->width  = self->width;
     desc->height = self->height;
     return S_OK;
@@ -89,7 +130,8 @@ auto WINAPI description(FakeTexture* self, UINT level, d3d8::SurfaceDesc* desc) 
 
 auto WINAPI privateData(FakeTexture* self, REFGUID, const void* object, DWORD size, DWORD flags) -> HRESULT
 {
-    REQUIRE((size == sizeof(void*) && flags == d3d8::privateDataObject));
+    REQUIRE(size == sizeof(void*));
+    REQUIRE(flags == d3d8::kPrivateDataObject);
     if (failAttachment)
     {
         return E_FAIL;
@@ -100,6 +142,7 @@ auto WINAPI privateData(FakeTexture* self, REFGUID, const void* object, DWORD si
         self->attachment->Release();
     }
 
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
     self->attachment = const_cast<IUnknown*>(static_cast<const IUnknown*>(object));
     self->attachment->AddRef();
     return S_OK;
@@ -130,7 +173,7 @@ void clearAttachment(FakeTexture& texture)
 
 struct FakeDevice
 {
-    void**       table;
+    void**       table{};
     FakeTexture* bound = nullptr;
 };
 
@@ -164,8 +207,8 @@ auto WINAPI setTexture(FakeDevice* self, UINT stage, FakeTexture* texture) -> HR
 }
 
 auto        vtable = std::array<void*, d3d8::GetLevelDesc + 1>{};
-FakeTexture original{ vtable.data(), 128, 128 };
-FakeTexture replacement{ vtable.data(), 512, 512 };
+FakeTexture original{ vtable.data(), kOriginalExtent, kOriginalExtent };
+FakeTexture replacement{ vtable.data(), kHdExtent, kHdExtent };
 unsigned    uploads      = 0;
 bool        failOriginal = false;
 bool        failHd       = false;
@@ -173,11 +216,18 @@ bool        failHd       = false;
 auto WINAPI upload(void*, const void*, UINT, UINT width, UINT height, UINT levels, DWORD usage, DWORD format, DWORD pool, DWORD filter, DWORD mipFilter, DWORD color, void* info, void* palette, void** output) -> HRESULT
 {
     ++uploads;
-    REQUIRE((levels == 1 && usage == 0 && format == d3d8::formatA8R8G8B8 && filter == 0x80001 && mipFilter == 0xffffffff));
-    REQUIRE((!color && !info && !palette));
-    if (width == 0xffffffff)
+    REQUIRE(levels == 1);
+    REQUIRE(usage == 0);
+    REQUIRE(format == d3d8::kFormatA8R8G8B8);
+    REQUIRE(filter == kUploadFilter);
+    REQUIRE(mipFilter == kD3dxDefault);
+    REQUIRE(color == 0);
+    REQUIRE(info == nullptr);
+    REQUIRE(palette == nullptr);
+    if (width == kD3dxDefault)
     {
-        REQUIRE((height == 0xffffffff && pool == 0));
+        REQUIRE(height == kD3dxDefault);
+        REQUIRE(pool == 0);
         if (failOriginal)
         {
             *output = nullptr;
@@ -188,7 +238,10 @@ auto WINAPI upload(void*, const void*, UINT, UINT width, UINT height, UINT level
         return S_OK;
     }
 
-    REQUIRE((width == 512 && height == 512 && pool == d3d8::poolManaged)); // Not 288x384: padding must also scale.
+    // Not 288x384: padding must also scale.
+    REQUIRE(width == kHdExtent);
+    REQUIRE(height == kHdExtent);
+    REQUIRE(pool == d3d8::kPoolManaged);
     if (failHd)
     {
         *output = nullptr;
@@ -199,9 +252,26 @@ auto WINAPI upload(void*, const void*, UINT, UINT width, UINT height, UINT level
     return S_OK;
 }
 
+// The fakes are file-level, so every case starts them from a known state.
+void resetFakes()
+{
+    vtable[1]                    = reinterpret_cast<void*>(addRef);  // IUnknown::AddRef
+    vtable[2]                    = reinterpret_cast<void*>(release); // IUnknown::Release
+    vtable[d3d8::SetPrivateData] = reinterpret_cast<void*>(privateData);
+    vtable[d3d8::GetPrivateData] = reinterpret_cast<void*>(getPrivateData);
+    vtable[d3d8::GetLevelDesc]   = reinterpret_cast<void*>(description);
+    clearAttachment(original);
+    original.references    = 1;
+    replacement.references = 1;
+    uploads                = 0;
+    failAttachment         = false;
+    failOriginal           = false;
+    failHd                 = false;
+}
+
 auto invoke(const std::vector<uint8_t>& bytes, void** output) -> HRESULT
 {
-    return uploadTextureWithReplacement(nullptr, bytes.data(), static_cast<UINT>(bytes.size()), 0xffffffff, 0xffffffff, 1, 0, d3d8::formatA8R8G8B8, 0, 0x80001, 0xffffffff, 0, nullptr, nullptr, output);
+    return uploadTextureWithReplacement(nullptr, bytes.data(), static_cast<UINT>(bytes.size()), kD3dxDefault, kD3dxDefault, 1, 0, d3d8::kFormatA8R8G8B8, 0, kUploadFilter, kD3dxDefault, 0, nullptr, nullptr, output);
 }
 
 auto selected(const bool enabled) -> FakeTexture*
@@ -254,163 +324,224 @@ void checkSelection(const TextureCategory category)
     }
 
     setTexture(&device, 0, nullptr);
-    REQUIRE((original.references == 1 && replacement.references == 1));
+    REQUIRE(original.references == 1);
+    REQUIRE(replacement.references == 1);
 }
 
 } // namespace
 
-TEST_CASE("Texture packs validate sources and retain replacement ownership", "[texture_pack]")
+TEST_CASE("Texture pack matches an original PNG by its hash", "[texture_pack]")
 {
-    const auto root = fs::current_path() / "texture-pack-fixture";
-    REQUIRE(!fs::exists(root));
-    fs::create_directory(root);
-    const auto source = png(72, 96);
-    const auto hd     = png(288, 384);
-    const auto record = nlohmann::json{
-        { "id", "test/card" }, { "file", "card.png" }, { "source_sha256", sha256Bytes(source.data(), source.size()) }, { "sha256", sha256Bytes(hd.data(), hd.size()) }, { "logical_size", { 72, 96 } }, { "physical_size", { 288, 384 } }
-    };
-    const auto manifest = root / "pack.json";
-    auto       save     = [&](const nlohmann::json& value)
-    {
-        std::ofstream out(manifest);
-        out << nlohmann::json{ { "version", 1 }, { "textures", nlohmann::json::array({ value }) } };
-    };
-    write(root / "card.png", hd);
-    save(record);
-    TexturePack pack;
-    pack.load(manifest);
+    const PackFixture fixture("texture-pack-match-fixture");
+    const auto&       source = fixture.source;
+    TexturePack       pack;
+    pack.load(fixture.manifest);
     REQUIRE(pack.size() == 1);
-    auto* const match = pack.match(source.data(), source.size());
-    REQUIRE((match && match->scale == 4 && match->category == TextureCategory::artwork && pack.read(*match) == hd));
-    for (unsigned pad = 0; pad <= 15; ++pad)
+    const auto* const match = pack.match(source.data(), source.size());
+    REQUIRE(match != nullptr);
+
+    SECTION("the asset describes the HD file")
     {
-        auto aligned = source;
-        aligned.insert(aligned.end(), pad, 0xcd);
-        REQUIRE(pack.match(aligned.data(), aligned.size()) == match);
+        REQUIRE(match->scale == 4);
+        REQUIRE(match->category == TextureCategory::artwork);
+        REQUIRE(pack.read(*match) == fixture.hd);
     }
+
+    SECTION("archive alignment padding after IEND is ignored")
+    {
+        for (unsigned pad = 0; pad <= 15; ++pad)
+        {
+            auto aligned = source;
+            aligned.insert(aligned.end(), pad, 0xcd);
+            REQUIRE(pack.match(aligned.data(), aligned.size()) == match);
+        }
+    }
+
+    SECTION("a PNG with different content does not match")
+    {
+        auto wrong = source;
+        wrong[25] ^= 1;
+        REQUIRE(pack.match(wrong.data(), wrong.size()) == nullptr);
+    }
+}
+
+TEST_CASE("PNG parsing rejects truncated and malformed headers", "[texture_pack]")
+{
+    const auto source = png(72, 96);
+    REQUIRE(pngInfo(source.data(), 20).bytes == 0);
 
     auto wrong = source;
-    wrong[25] ^= 1;
-    REQUIRE(!pack.match(wrong.data(), wrong.size()));
-    REQUIRE(!pngInfo(source.data(), 20).bytes);
-    wrong    = source;
-    wrong[8] = 255;
-    REQUIRE(!pngInfo(wrong.data(), wrong.size()).bytes);
-    for (const auto* path : { "../card.png", "C:/card.png", "card.png:stream", "/card.png" })
+    wrong[8]   = 255; // IHDR chunk length
+    REQUIRE(pngInfo(wrong.data(), wrong.size()).bytes == 0);
+}
+
+TEST_CASE("Texture pack rejects invalid manifests", "[texture_pack]")
+{
+    const PackFixture fixture("texture-pack-manifest-fixture");
+    TexturePack       pack;
+    pack.load(fixture.manifest);
+
+    SECTION("file paths that leave the pack directory")
     {
-        auto bad    = record;
-        bad["file"] = path;
-        save(bad);
-        rejects([&]
-                {
-                    pack.load(manifest);
-                });
-        REQUIRE(pack.size() == 1); // A failed reload leaves the original index usable.
+        for (const auto* path : { "../card.png", "C:/card.png", "card.png:stream", "/card.png" })
+        {
+            auto bad    = fixture.record;
+            bad["file"] = path;
+            fixture.save(bad);
+            REQUIRE_THROWS_AS(pack.load(fixture.manifest), std::exception);
+            REQUIRE(pack.size() == 1); // A failed reload leaves the original index usable.
+        }
     }
 
-    for (const auto& sizes : { nlohmann::json{ 288, 383 }, nlohmann::json{ 0, 384 }, nlohmann::json{ 8193, 8193 }, nlohmann::json{ 288 } })
+    SECTION("physical sizes that are not a uniform scale of the logical size")
     {
-        auto bad             = record;
-        bad["physical_size"] = sizes;
-        save(bad);
-        rejects([&]
-                {
-                    pack.load(manifest);
-                });
+        for (const auto& sizes : { nlohmann::json{ 288, 383 }, nlohmann::json{ 0, 384 }, nlohmann::json{ 8193, 8193 }, nlohmann::json{ 288 } })
+        {
+            auto bad             = fixture.record;
+            bad["physical_size"] = sizes;
+            fixture.save(bad);
+            REQUIRE_THROWS_AS(pack.load(fixture.manifest), std::exception);
+        }
     }
 
-    // Classify every verified atlas, without treating arbitrary embedded text
-    // or similar-looking asset names as font data.
-    for (unsigned index = 0; index < 42; ++index)
+    SECTION("source-hash aliases that disagree about category")
     {
-        auto font  = record;
-        font["id"] = std::format("gW000/0090/font_{:02}", index);
-        save(font);
-        pack.load(manifest);
-        REQUIRE(pack.match(source.data(), source.size())->category == TextureCategory::font);
-    }
-
-    for (const auto* id : { "gW000/0090/font_42", "gW000/0090/font_0", "gW000/0090/font_000", "gW000/0090/font_01.png", "gW000/0090/font_1a", "gW000/0090/font_-1", "gW000/0092/font_00", "other/font_00", "gW000/0090/window", "gW201/1000/ttl_menu" })
-    {
-        auto artwork        = record;
-        artwork["id"]       = id;
-        artwork["category"] = "font";
-        save(artwork);
-        pack.load(manifest);
-        REQUIRE(pack.match(source.data(), source.size())->category == TextureCategory::artwork);
-    }
-
-    {
-        auto alias  = record;
+        auto alias  = fixture.record;
         alias["id"] = "gW000/0090/font_00";
-        std::ofstream out(manifest);
-        out << nlohmann::json{ { "version", 1 }, { "textures", { record, alias } } };
-        out.close();
-        rejects([&]
-                {
-                    pack.load(manifest);
-                }); // Source-hash aliases cannot disagree about category.
+        {
+            std::ofstream out(fixture.manifest);
+            out << nlohmann::json{ { "version", 1 }, { "textures", { fixture.record, alias } } };
+        }
+
+        REQUIRE_THROWS_AS(pack.load(fixture.manifest), std::exception);
+    }
+}
+
+TEST_CASE("Only the bitmap font atlases are categorised as fonts", "[texture_pack]")
+{
+    const PackFixture fixture("texture-pack-category-fixture");
+    const auto&       source = fixture.source;
+    TexturePack       pack;
+
+    SECTION("all 42 atlases")
+    {
+        for (unsigned index = 0; index < 42; ++index)
+        {
+            auto font  = fixture.record;
+            font["id"] = std::format("gW000/0090/font_{:02}", index);
+            fixture.save(font);
+            pack.load(fixture.manifest);
+            REQUIRE(pack.match(source.data(), source.size())->category == TextureCategory::font);
+        }
     }
 
-    save(record);
-    vtable[1]                    = reinterpret_cast<void*>(addRef);  // IUnknown::AddRef
-    vtable[2]                    = reinterpret_cast<void*>(release); // IUnknown::Release
-    vtable[d3d8::SetPrivateData] = reinterpret_cast<void*>(privateData);
-    vtable[d3d8::GetPrivateData] = reinterpret_cast<void*>(getPrivateData);
-    vtable[d3d8::GetLevelDesc]   = reinterpret_cast<void*>(description);
-    configureTextureReplacements(manifest, upload);
-    void* out = nullptr;
-    REQUIRE((invoke(source, &out) == S_OK && out == &original && original.attachment));
-    REQUIRE((uploads == 2 && replacement.references == 1)); // Attachment owns the one remaining HD ref.
-    REQUIRE((original.width == 128 && original.height == 128));
-    checkSelection(TextureCategory::artwork);
-    clearAttachment(original);
-    REQUIRE(replacement.references == 0);
-    for (const auto* id : { "gW000/0090/font_00", "gW201/1000/ttl_menu" })
+    // Similar-looking ids stay artwork, and the manifest cannot opt an asset in.
+    SECTION("lookalike ids and a manifest category field")
     {
-        auto selected  = record;
-        selected["id"] = id;
-        save(selected);
-        configureTextureReplacements(manifest, upload);
-        replacement.references = 1;
-        REQUIRE((invoke(source, &out) == S_OK && original.attachment));
-        checkSelection([&]() -> TextureCategory
-                       {
-                           if (id == std::string_view{ "gW000/0090/font_00" })
-                           {
-                               return TextureCategory::font;
-                           }
+        for (const auto* id : { "gW000/0090/font_42", "gW000/0090/font_0", "gW000/0090/font_000", "gW000/0090/font_01.png", "gW000/0090/font_1a", "gW000/0090/font_-1", "gW000/0092/font_00", "other/font_00", "gW000/0090/window", "gW201/1000/ttl_menu" })
+        {
+            auto artwork        = fixture.record;
+            artwork["id"]       = id;
+            artwork["category"] = "font";
+            fixture.save(artwork);
+            pack.load(fixture.manifest);
+            REQUIRE(pack.match(source.data(), source.size())->category == TextureCategory::artwork);
+        }
+    }
+}
 
-                           return TextureCategory::artwork;
-                       }());
+TEST_CASE("Texture upload attaches the HD replacement to the original", "[texture_pack]")
+{
+    const PackFixture fixture("texture-upload-attach-fixture");
+    resetFakes();
+    void* out = nullptr;
+
+    SECTION("the game receives its original texture unchanged")
+    {
+        configureTextureReplacements(fixture.manifest, upload);
+        REQUIRE(invoke(fixture.source, &out) == S_OK);
+        REQUIRE(out == &original);
+        REQUIRE(original.attachment != nullptr);
+        REQUIRE(uploads == 2);
+        REQUIRE(replacement.references == 1); // Attachment owns the one remaining HD ref.
+        REQUIRE(original.width == kOriginalExtent);
+        REQUIRE(original.height == kOriginalExtent);
+        checkSelection(TextureCategory::artwork);
         clearAttachment(original);
         REQUIRE(replacement.references == 0);
     }
 
-    save(record);
-    configureTextureReplacements(manifest, upload);
-    replacement.references = 1;
-    failAttachment         = true;
-    REQUIRE((invoke(source, &out) == S_OK && out == &original && !original.attachment));
-    REQUIRE(replacement.references == 0); // Failed private-data attachment releases its companion.
-    failAttachment = false;
-    uploads        = 0;
-    failHd         = true;
-    REQUIRE((invoke(source, &out) == S_OK && out == &original && !original.attachment && uploads == 2));
-    failHd       = false;
+    SECTION("the draw binding follows the asset's category")
+    {
+        for (const auto& [id, category] : { std::pair<const char*, TextureCategory>{ "gW000/0090/font_00", TextureCategory::font }, { "gW201/1000/ttl_menu", TextureCategory::artwork } })
+        {
+            auto asset  = fixture.record;
+            asset["id"] = id;
+            fixture.save(asset);
+            configureTextureReplacements(fixture.manifest, upload);
+            replacement.references = 1;
+            REQUIRE(invoke(fixture.source, &out) == S_OK);
+            REQUIRE(original.attachment != nullptr);
+            checkSelection(category);
+            clearAttachment(original);
+            REQUIRE(replacement.references == 0);
+        }
+    }
+}
+
+TEST_CASE("Texture upload falls back to the original alone", "[texture_pack]")
+{
+    const PackFixture fixture("texture-upload-fallback-fixture");
+    resetFakes();
+    configureTextureReplacements(fixture.manifest, upload);
+    void* out = nullptr;
+
+    SECTION("when the replacement cannot be attached")
+    {
+        failAttachment = true;
+        REQUIRE(invoke(fixture.source, &out) == S_OK);
+        REQUIRE(out == &original);
+        REQUIRE(original.attachment == nullptr);
+        REQUIRE(replacement.references == 0); // Failed private-data attachment releases its companion.
+    }
+
+    SECTION("when the HD upload fails")
+    {
+        failHd = true;
+        REQUIRE(invoke(fixture.source, &out) == S_OK);
+        REQUIRE(out == &original);
+        REQUIRE(original.attachment == nullptr);
+        REQUIRE(uploads == 2);
+    }
+
+    SECTION("when the HD file no longer matches the manifest")
+    {
+        write(fixture.root / "card.png", png(284, 384));
+        REQUIRE(invoke(fixture.source, &out) == S_OK);
+        REQUIRE(out == &original);
+        REQUIRE(original.attachment == nullptr);
+        REQUIRE(uploads == 1);
+    }
+
+    SECTION("when the HD file is missing")
+    {
+        fs::remove(fixture.root / "card.png");
+        REQUIRE(invoke(fixture.source, &out) == S_OK);
+        REQUIRE(out == &original);
+        REQUIRE(uploads == 1);
+    }
+}
+
+TEST_CASE("Texture upload passes a failed original upload through", "[texture_pack]")
+{
+    const PackFixture fixture("texture-upload-failure-fixture");
+    resetFakes();
+    configureTextureReplacements(fixture.manifest, upload);
+    void* out    = &original;
     failOriginal = true;
-    uploads      = 0;
-    REQUIRE((FAILED(invoke(source, &out)) && !out && uploads == 1));
-    failOriginal = false;
-    write(root / "card.png", png(284, 384));
-    uploads = 0;
-    REQUIRE((invoke(source, &out) == S_OK && out == &original && !original.attachment && uploads == 1));
-    fs::remove(root / "card.png");
-    uploads = 0;
-    REQUIRE((invoke(source, &out) == S_OK && out == &original && uploads == 1));
-    fs::remove(manifest);
-    fs::remove(root);
-    std::cout << "PASS: source alignment, category classification, independent font/artwork selection, padded upload and original fallback\n";
+    REQUIRE(FAILED(invoke(fixture.source, &out)));
+    REQUIRE(out == nullptr);
+    REQUIRE(uploads == 1);
 }
 
 TEST_CASE("Texture manifests retain UTF-8 filenames", "[texture_pack]")

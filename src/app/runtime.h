@@ -23,9 +23,4 @@ auto lowerIntegrity() -> bool;
 void        allowLowIntegrityWrites(const std::filesystem::path& runtimeDir);
 auto WINAPI logUnhandledException(EXCEPTION_POINTERS* exception) -> LONG;
 
-inline auto gameValue(DWORD rva) -> DWORD&
-{
-    return *reinterpret_cast<DWORD*>(gameBase + rva);
-}
-
 } // namespace tmloader

@@ -18,7 +18,8 @@ auto decode(std::span<const std::byte> encoded, UINT& width, UINT& height) -> st
     ComPtr<IWICBitmapDecoder>     decoder;
     ComPtr<IWICBitmapFrameDecode> frame;
     ComPtr<IWICFormatConverter>   converter;
-    auto* const                   bytes = reinterpret_cast<BYTE*>(const_cast<std::byte*>(encoded.data()));
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
+    auto* const bytes = reinterpret_cast<BYTE*>(const_cast<std::byte*>(encoded.data()));
     if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory))) ||
         FAILED(factory->CreateStream(&stream)) || FAILED(stream->InitializeFromMemory(bytes, static_cast<DWORD>(encoded.size()))) ||
         FAILED(factory->CreateDecoderFromStream(stream.Get(), nullptr, WICDecodeMetadataCacheOnDemand, &decoder)) ||
@@ -39,6 +40,11 @@ auto decode(std::span<const std::byte> encoded, UINT& width, UINT& height) -> st
 }
 
 } // namespace
+
+Image::operator bool() const noexcept
+{
+    return texture != nullptr;
+}
 
 auto loadImage(IDirect3DDevice9* device, std::span<const std::byte> encoded) -> Image
 {

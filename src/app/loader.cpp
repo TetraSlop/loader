@@ -3,17 +3,22 @@
 #include "app/log.h"
 #include "imgui.h"
 #include "imgui_impl_win32.h"
-#include "textures/texture_replacements.h"
 #include "ui/window.h"
 #include <stdexcept>
+#ifdef TMLOADER_DISCORD_PRESENCE
+#include "presence/presence.h"
+#endif
+#ifdef TMLOADER_HD_TEXTURES
+#include "textures/texture_replacements.h"
+#endif
 
 namespace tmloader
 {
 namespace
 {
 
-constexpr DWORD gameStartRva   = 0x8210;
-constexpr DWORD commonTableRva = 0x6fbe8;
+constexpr DWORD kGameStartRva   = 0x8210;
+constexpr DWORD kCommonTableRva = 0x6fbe8;
 
 auto createObject(HMODULE module, REFCLSID clsid, REFIID iid) -> IUnknown*
 {
@@ -26,7 +31,7 @@ auto createObject(HMODULE module, REFCLSID clsid, REFIID iid) -> IUnknown*
     IClassFactory* factory = nullptr;
     if (FAILED(getClass(clsid, IID_IClassFactory, reinterpret_cast<void**>(&factory))) || !factory)
     {
-        throw std::runtime_error("Could not obtain DLL class factory");
+        throw std::runtime_error("Cannot obtain DLL class factory");
     }
 
     IUnknown*  object = nullptr;
@@ -34,7 +39,7 @@ auto createObject(HMODULE module, REFCLSID clsid, REFIID iid) -> IUnknown*
     factory->Release();
     if (FAILED(hr) || !object)
     {
-        throw std::runtime_error("Could not create DLL COM object");
+        throw std::runtime_error("Cannot create DLL COM object");
     }
 
     return object;
@@ -72,11 +77,11 @@ void initializeProcess(const Config& config)
     logLine("tmloader " TMLOADER_VERSION " x86; pid={}; runtime={}", GetCurrentProcessId(), runtimeRoot);
     // The game DLL executes generated code from data pages.
     const auto dep = SetProcessDEPPolicy(0);
-    logLine("Legacy process DEP={} error={}", dep, GetLastError());
+    logLine("DEP disabled={} error={}", dep, GetLastError());
     allowLowIntegrityWrites(config.runtimeDir);
     if (!lowerIntegrity())
     {
-        throw std::runtime_error("Cannot initialize low-integrity runtime");
+        throw std::runtime_error("Cannot lower process integrity");
     }
 
     checked(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED), "COM initialization");
@@ -87,10 +92,10 @@ auto loadGame(const Config& config) -> IUnknown*
 {
     const auto game    = loadModule(config.game, "Cannot load game DLL");
     gameBase           = reinterpret_cast<BYTE*>(game);
-    auto* const object = createObject(game, abi::gameClass, abi::gameInterface);
-    if ((*reinterpret_cast<void***>(object))[abi::gameStartSlot] != gameBase + gameStartRva)
+    auto* const object = createObject(game, abi::kGameClass, abi::kGameInterface);
+    if ((*reinterpret_cast<void***>(object))[abi::kGameStartSlot] != gameBase + kGameStartRva)
     {
-        throw std::runtime_error("Unsupported live GameStart layout");
+        throw std::runtime_error("Unsupported GameStart layout");
     }
 
     installSystemHooks(game, true);
@@ -99,8 +104,12 @@ auto loadGame(const Config& config) -> IUnknown*
     installGraphicsHooks(game);
     installInputHooks(game);
     installAudioHooks(game);
-    installMessageHooks(game);
-    initializeTextureReplacements(gameBase, config.texturePack);
+#ifdef TMLOADER_DISCORD_PRESENCE
+    installPresenceHooks(game);
+#endif
+#ifdef TMLOADER_HD_TEXTURES
+    initializeTextureReplacements(game, config.texturePack);
+#endif
     return object;
 }
 
@@ -109,23 +118,23 @@ auto loadViewer(const Config& config) -> IUnknown*
     const auto module = loadModule(config.core, "Cannot load Viewer DLL");
     installSystemHooks(module, false);
     installNetworkHooks(module);
-    auto* const core = createObject(module, abi::coreClass, abi::coreInterface);
+    auto* const core = createObject(module, abi::kCoreClass, abi::kCoreInterface);
     checked(callMethod(core, abi::SetAreaCode, 1L), "Viewer area");
     static char commandLine[] = " /game DdcMLbB";
     checked(callMethod(core, abi::SetParamInit, GetModuleHandleW(nullptr), commandLine), "Viewer parameters");
 
     Command* table = nullptr;
     checked(callMethod(core, abi::GetCommonTable, reinterpret_cast<unsigned long**>(&table)), "Viewer command table");
-    if (reinterpret_cast<BYTE*>(table) != reinterpret_cast<BYTE*>(module) + commonTableRva)
+    if (reinterpret_cast<BYTE*>(table) != reinterpret_cast<BYTE*>(module) + kCommonTableRva)
     {
-        throw std::runtime_error("Unsupported live Viewer command-table layout");
+        throw std::runtime_error("Unsupported Viewer command table");
     }
 
-    table[abi::viewer::setRegistryLanguage](1);
-    table[abi::viewer::setUiLanguage](1);
-    table[abi::viewer::setRegistryRoot]("SOFTWARE\\PlayOnlineUS");
-    table[abi::viewer::setInstallDirectory](runtimeRoot);
-    logLine("Viewer file layer={:08X}", hex(table[abi::viewer::fileLayerStatus]()));
+    table[abi::viewer::kSetRegistryLanguage](1);
+    table[abi::viewer::kSetUiLanguage](1);
+    table[abi::viewer::kSetRegistryRoot]("SOFTWARE\\PlayOnlineUS");
+    table[abi::viewer::kSetInstallDirectory](runtimeRoot);
+    logLine("Viewer file layer={:08X}", hex(table[abi::viewer::kFileLayerStatus]()));
     initializeViewerSession(module, table);
     return core;
 }
@@ -139,9 +148,9 @@ auto launch(const Config& config) -> int
     auto* const game = loadGame(config);
     auto* const core = loadViewer(config);
 
-    auto descriptor = abi::LaunchDescriptor{ sizeof(abi::LaunchDescriptor), 0x200, abi::coreInterface, nullptr };
-    logLine("Entering original online GameStart");
-    const auto gameStart = reinterpret_cast<abi::GameStart>((*reinterpret_cast<void***>(game))[abi::gameStartSlot]);
+    auto descriptor = abi::LaunchDescriptor{ sizeof(abi::LaunchDescriptor), 0x200, abi::kCoreInterface, nullptr };
+    logLine("Calling GameStart");
+    const auto gameStart = reinterpret_cast<abi::GameStart>((*reinterpret_cast<void***>(game))[abi::kGameStartSlot]);
     const auto result    = gameStart(game, core, &descriptor);
     logLine("GameStart returned {:08X}", hex(result));
     stopSettingsPanel();

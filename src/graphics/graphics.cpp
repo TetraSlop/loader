@@ -4,10 +4,12 @@
 #include "graphics/render_scale.h"
 #include "graphics/screenshot.h"
 #include "platform/patch.h"
-#include "textures/texture_replacements.h"
 #include "ui/window.h"
 #include <algorithm>
 #include <atomic>
+#ifdef TMLOADER_HD_TEXTURES
+#include "textures/texture_replacements.h"
+#endif
 
 // Runs the fullscreen D3D8 renderer in a window, optionally above its fixed 640x480.
 namespace tmloader
@@ -15,49 +17,43 @@ namespace tmloader
 namespace
 {
 
-constexpr DWORD direct3DCreateImport = 0x204260;
-constexpr DWORD graphicsGate         = 0x2ff22c;
-constexpr DWORD batchGate            = 0x2fe8ec;
-constexpr DWORD windowedFlag         = 0x2ff248;
-constexpr DWORD soundEngine          = 0x2ff164;
-constexpr DWORD gameState            = 0x2ff270;
-constexpr DWORD gameActive           = 0x2ff228;
-constexpr DWORD gameTask             = 0x306adc;
-constexpr DWORD gameManager          = 0x2ff1fc;
+constexpr DWORD kDirect3DCreateImport = 0x204260;
+constexpr DWORD kGraphicsGate         = 0x2ff22c;
+constexpr DWORD kBatchGate            = 0x2fe8ec;
+constexpr DWORD kWindowedFlag         = 0x2ff248;
+constexpr DWORD kSoundEngine          = 0x2ff164;
+constexpr DWORD kGameState            = 0x2ff270;
+constexpr DWORD kGameActive           = 0x2ff228;
+constexpr DWORD kGameTask             = 0x306adc;
+constexpr DWORD kGameManager          = 0x2ff1fc;
 
 // D3DCREATE_PUREDEVICE, HARDWARE_ and MIXED_VERTEXPROCESSING; the scale shader needs software.
-constexpr DWORD hardwareVertexFlags = 0x10 | 0x40 | 0x80;
+constexpr DWORD kHardwareVertexFlags = 0x10 | 0x40 | 0x80;
+
+// Frames whose native state is logged in diagnostics mode.
+constexpr DWORD kDiagnosticFrames[] = { 60, 300, 600, 900, 1200, 1440, 1500, 1800 };
 
 using CreateDeviceFn       = HRESULT(WINAPI*)(void*, UINT, DWORD, HWND, DWORD, d3d8::PresentParameters*, void**);
 using ResetFn              = HRESULT(WINAPI*)(void*, d3d8::PresentParameters*);
 using PresentFn            = HRESULT(WINAPI*)(void*, const RECT*, const RECT*, HWND, const RGNDATA*);
 using SetVertexShaderFn    = HRESULT(WINAPI*)(void*, DWORD);
 using CreateVertexBufferFn = HRESULT(WINAPI*)(void*, UINT, DWORD, DWORD, DWORD, void**);
-using DrawFn               = HRESULT(WINAPI*)(void*, DWORD, UINT, UINT);
-using DrawIndexedFn        = HRESULT(WINAPI*)(void*, DWORD, UINT, UINT, UINT, UINT);
-using DrawUPFn             = HRESULT(WINAPI*)(void*, DWORD, UINT, const void*, UINT);
-using DrawIndexedUPFn      = HRESULT(WINAPI*)(void*, DWORD, UINT, UINT, UINT, const void*, DWORD, const void*, UINT);
 
 CreateDeviceFn       originalCreateDevice;
 ResetFn              originalReset;
 PresentFn            originalPresent;
 SetVertexShaderFn    originalSetVertexShader;
 CreateVertexBufferFn originalCreateVertexBuffer;
-DrawFn               originalDraw;
-DrawIndexedFn        originalDrawIndexed;
-DrawUPFn             originalDrawUP;
-DrawIndexedUPFn      originalDrawIndexedUP;
 
 std::atomic<float> renderingFactor{ 1 };
-DWORD              desktopFormat = d3d8::formatX8R8G8B8;
+DWORD              desktopFormat = d3d8::kFormatX8R8G8B8;
 DWORD              scaleShader   = 0;
 DWORD              frames        = 0;
-DWORD              drawErrors    = 0;
 
 auto WINAPI hookedCreateVertexBuffer(void* device, UINT size, DWORD usage, DWORD format, DWORD pool, void** output) -> HRESULT
 {
     // D3D8 skips vertex shaders for XYZRHW-tagged buffers, so the scale shader needs untyped ones.
-    if (renderingFactor > 1 && format == gameVertexFormat)
+    if (renderingFactor > 1 && format == kGameVertexFormat)
     {
         format = 0;
     }
@@ -67,7 +63,7 @@ auto WINAPI hookedCreateVertexBuffer(void* device, UINT size, DWORD usage, DWORD
 
 auto WINAPI hookedSetVertexShader(void* device, DWORD shader) -> HRESULT
 {
-    if (shader != gameVertexFormat || renderingFactor <= 1)
+    if (shader != kGameVertexFormat || renderingFactor <= 1)
     {
         return originalSetVertexShader(device, shader);
     }
@@ -90,7 +86,7 @@ void windowedParameters(d3d8::PresentParameters& parameters)
     parameters.count       = 1;
     parameters.multisample = 0;
     // Copy swaps allow presenting into an explicit destination rectangle.
-    parameters.swap     = d3d8::swapEffectCopy;
+    parameters.swap     = d3d8::kSwapEffectCopy;
     parameters.refresh  = 0;
     parameters.interval = 0;
     parameters.window   = gameWindow;
@@ -121,61 +117,25 @@ void rememberOriginal(T& destination, void* entry, T hook)
     }
 }
 
-auto countDraw(HRESULT hr) -> HRESULT
+auto gameValue(DWORD rva) -> DWORD&
 {
-    if (FAILED(hr) && drawErrors++ < 6)
-    {
-        logLine("D3D8 draw failed {:08X}", hex(hr));
-    }
-
-    return hr;
-}
-
-auto bindReplacement(void* device) -> TextureDrawBinding
-{
-    const auto settings = currentWindowSettings();
-    return TextureDrawBinding(device, settings.hdTextures, settings.hdFonts);
-}
-
-auto WINAPI hookedDrawPrimitive(void* device, DWORD type, UINT start, UINT count) -> HRESULT
-{
-    const auto binding = bindReplacement(device);
-    return countDraw(originalDraw(device, type, start, count));
-}
-
-auto WINAPI hookedDrawIndexedPrimitive(void* device, DWORD type, UINT minIndex, UINT vertices, UINT start, UINT count) -> HRESULT
-{
-    const auto binding = bindReplacement(device);
-    return countDraw(originalDrawIndexed(device, type, minIndex, vertices, start, count));
-}
-
-auto WINAPI hookedDrawPrimitiveUP(void* device, DWORD type, UINT count, const void* data, UINT stride) -> HRESULT
-{
-    const auto binding = bindReplacement(device);
-    return countDraw(originalDrawUP(device, type, count, data, stride));
-}
-
-auto WINAPI hookedDrawIndexedPrimitiveUP(void* device, DWORD type, UINT minIndex, UINT vertices, UINT count, const void* indices, DWORD indexFormat, const void* data, UINT stride) -> HRESULT
-{
-    const auto binding = bindReplacement(device);
-    return countDraw(originalDrawIndexedUP(device, type, minIndex, vertices, count, indices, indexFormat, data, stride));
+    return *reinterpret_cast<DWORD*>(gameBase + rva);
 }
 
 auto diagnosticFrame(DWORD frame) -> bool
 {
-    constexpr DWORD captures[] = { 60, 300, 600, 900, 1200, 1440, 1500, 1800 };
-    return std::ranges::contains(captures, frame) || (frame > 1800 && frame % 600 == 0);
+    return std::ranges::contains(kDiagnosticFrames, frame) || (frame > 1800 && frame % 600 == 0);
 }
 
 void activateGameWindow()
 {
-    logLine("Initial graphics gate={} batch gate={}", gameValue(graphicsGate), gameValue(batchGate));
+    logLine("Initial graphics gate={} batch gate={}", gameValue(kGraphicsGate), gameValue(kBatchGate));
     ShowWindow(gameWindow, SW_SHOW);
     SetActiveWindow(gameWindow);
     SetFocus(gameWindow);
     const auto active = SetForegroundWindow(gameWindow);
     logLine("Activate game window={} result={} foreground={} active={}", address(gameWindow), active, address(GetForegroundWindow()), address(GetActiveWindow()));
-    if (const auto* const sound = reinterpret_cast<const DWORD*>(gameValue(soundEngine)))
+    if (const auto* const sound = reinterpret_cast<const DWORD*>(gameValue(kSoundEngine)))
     {
         logLine("Native sound engine initialized={}", sound[1]);
     }
@@ -191,7 +151,7 @@ auto WINAPI hookedPresent(void* device, const RECT* source, const RECT* destinat
 
     if (options.diagnostics && diagnosticFrame(frame))
     {
-        logLine("TM state={} active={} task={} manager={:08X}", gameValue(gameState), gameValue(gameActive), gameValue(gameTask), gameValue(gameManager));
+        logLine("TM state={} active={} task={} manager={:08X}", gameValue(kGameState), gameValue(kGameActive), gameValue(kGameTask), gameValue(kGameManager));
         requestScreenshot();
     }
 
@@ -254,10 +214,6 @@ void hookDevice(void* device)
     rememberOriginal(originalReset, vtable[d3d8::Reset], hookedReset);
     rememberOriginal(originalPresent, vtable[d3d8::Present], hookedPresent);
     rememberOriginal(originalCreateVertexBuffer, vtable[d3d8::CreateVertexBuffer], hookedCreateVertexBuffer);
-    rememberOriginal(originalDraw, vtable[d3d8::DrawPrimitive], hookedDrawPrimitive);
-    rememberOriginal(originalDrawIndexed, vtable[d3d8::DrawIndexedPrimitive], hookedDrawIndexedPrimitive);
-    rememberOriginal(originalDrawUP, vtable[d3d8::DrawPrimitiveUP], hookedDrawPrimitiveUP);
-    rememberOriginal(originalDrawIndexedUP, vtable[d3d8::DrawIndexedPrimitiveUP], hookedDrawIndexedPrimitiveUP);
     rememberOriginal(originalSetVertexShader, vtable[d3d8::SetVertexShader], hookedSetVertexShader);
 
     auto protection = DWORD{};
@@ -266,14 +222,9 @@ void hookDevice(void* device)
     vtable[d3d8::Present]            = reinterpret_cast<void*>(hookedPresent);
     vtable[d3d8::CreateVertexBuffer] = reinterpret_cast<void*>(hookedCreateVertexBuffer);
     vtable[d3d8::SetVertexShader]    = reinterpret_cast<void*>(hookedSetVertexShader);
-    if (options.diagnostics || texturePackCount())
-    {
-        vtable[d3d8::DrawPrimitive]          = reinterpret_cast<void*>(hookedDrawPrimitive);
-        vtable[d3d8::DrawIndexedPrimitive]   = reinterpret_cast<void*>(hookedDrawIndexedPrimitive);
-        vtable[d3d8::DrawPrimitiveUP]        = reinterpret_cast<void*>(hookedDrawPrimitiveUP);
-        vtable[d3d8::DrawIndexedPrimitiveUP] = reinterpret_cast<void*>(hookedDrawIndexedPrimitiveUP);
-    }
-
+#ifdef TMLOADER_HD_TEXTURES
+    hookTextureDraws(vtable);
+#endif
     VirtualProtect(vtable, d3d8::DeviceMethodCount * sizeof(void*), protection, &protection);
 }
 
@@ -281,7 +232,7 @@ auto WINAPI hookedCreateDevice(void* d3d, UINT adapter, DWORD type, HWND window,
 {
     logLine("D3D8 CreateDevice adapter={} type={} behavior={:X} window={} {}x{} format={} windowed={}", adapter, type, behavior, address(window), parameters->width, parameters->height, parameters->format, parameters->windowed);
     initializeGameWindow(window);
-    gameValue(windowedFlag) = 1;
+    gameValue(kWindowedFlag) = 1;
 
     auto       mode   = d3d8::DisplayMode{};
     const auto modeHr = callMethod(d3d, d3d8::GetAdapterDisplayMode, adapter, &mode);
@@ -304,7 +255,7 @@ auto WINAPI hookedCreateDevice(void* d3d, UINT adapter, DWORD type, HWND window,
     const auto create = [&]() -> HRESULT
     {
         windowedParameters(*parameters);
-        return originalCreateDevice(d3d, adapter, type, window, (behavior & ~hardwareVertexFlags) | d3d8::softwareVertexProcessing, parameters, device);
+        return originalCreateDevice(d3d, adapter, type, window, (behavior & ~kHardwareVertexFlags) | d3d8::kSoftwareVertexProcessing, parameters, device);
     };
     auto hr = create();
     if (SUCCEEDED(hr) && renderingFactor > 1)
@@ -364,7 +315,7 @@ auto activeRenderScale() -> float
 
 void installGraphicsHooks(HMODULE game)
 {
-    setImport(game, direct3DCreateImport, reinterpret_cast<void*>(hookedDirect3DCreate8));
+    setImport(game, kDirect3DCreateImport, reinterpret_cast<void*>(hookedDirect3DCreate8));
 }
 
 } // namespace tmloader

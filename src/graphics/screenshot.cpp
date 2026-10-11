@@ -68,7 +68,7 @@ auto readBackbuffer(void* device) -> Image
 
     auto desc = d3d8::SurfaceDesc{};
     check(callMethod(surface.Get(), d3d8::SurfaceGetDesc, &desc), "Read game backbuffer dimensions");
-    if (desc.format != d3d8::formatA8R8G8B8 && desc.format != d3d8::formatX8R8G8B8)
+    if (desc.format != d3d8::kFormatA8R8G8B8 && desc.format != d3d8::kFormatX8R8G8B8)
     {
         throw std::runtime_error("Screenshot requires a 32-bit game backbuffer");
     }
@@ -79,7 +79,7 @@ auto readBackbuffer(void* device) -> Image
     }
 
     auto locked = d3d8::LockedRect{};
-    check(callMethod(surface.Get(), d3d8::SurfaceLockRect, &locked, static_cast<const RECT*>(nullptr), d3d8::lockReadOnly), "Read game backbuffer");
+    check(callMethod(surface.Get(), d3d8::SurfaceLockRect, &locked, static_cast<const RECT*>(nullptr), d3d8::kLockReadOnly), "Read game backbuffer");
     const auto unlock   = wil::scope_exit([&]
                                           {
                                             callMethod(surface.Get(), d3d8::SurfaceUnlock);
@@ -126,6 +126,7 @@ auto encodePng(const Image& image) -> std::vector<BYTE>
         throw std::runtime_error("PNG encoder cannot preserve backbuffer colors");
     }
 
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
     auto* const pixels = const_cast<BYTE*>(image.bgr.data());
     check(frame->WritePixels(image.height, image.width * 3, static_cast<UINT>(image.bgr.size()), pixels), "Encode game screenshot");
     check(frame->Commit(), "Finish PNG frame");

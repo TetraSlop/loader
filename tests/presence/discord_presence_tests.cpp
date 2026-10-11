@@ -1,4 +1,4 @@
-#include "platform/discord_presence.h"
+#include "presence/discord_presence.h"
 #include <catch2/catch_test_macros.hpp>
 #include <format>
 #include <nlohmann/json.hpp>

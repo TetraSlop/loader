@@ -11,7 +11,7 @@ namespace
 {
 
 // Posted by the game's WM_ACTIVATEAPP handler to force itself back to the foreground.
-constexpr UINT reclaimFocusMessage = 0x64;
+constexpr UINT kReclaimFocusMessage = 0x64;
 
 WNDPROC         originalWindowProc;
 volatile LONG   pendingMousePresses;
@@ -113,7 +113,7 @@ void closeGame()
 {
     rememberSettings();
     stopSettingsPanel();
-    logLine("Closing standalone game window through the native message loop");
+    logLine("Quit requested");
     // GameStart's message loop exits on WM_QUIT (+18778E/+18798C).
     PostQuitMessage(0);
 }
@@ -182,11 +182,11 @@ void action(HWND hwnd, WindowAction command, LPARAM value)
             break;
         case WindowAction::renderScale:
             // Resolution applies on the next launch, never as a mid-match device reset.
-            if (value >= 0 && static_cast<size_t>(value) < renderScales.size())
+            if (value >= 0 && static_cast<size_t>(value) < kRenderScales.size())
             {
                 updateSettings([&](WindowSettings& current)
                                {
-                                   current.renderScale    = renderScales[value];
+                                   current.renderScale    = kRenderScales[value];
                                    current.autoResolution = false;
                                });
             }
@@ -203,7 +203,7 @@ void action(HWND hwnd, WindowAction command, LPARAM value)
 
 auto CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) -> LRESULT
 {
-    if (message == reclaimFocusMessage)
+    if (message == kReclaimFocusMessage)
     {
         return 0;
     }
@@ -232,7 +232,7 @@ auto CALLBACK wrapperWindow(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
         return DefWindowProcA(hwnd, message, wparam, lparam);
     }
 
-    if (message == settingsMessage)
+    if (message == kSettingsMessage)
     {
         action(hwnd, static_cast<WindowAction>(wparam), lparam);
         return 0;
@@ -382,7 +382,7 @@ auto takeMousePresses() -> BYTE
 
 void postWindowAction(WindowAction command, LPARAM value)
 {
-    PostMessageW(gameWindow, settingsMessage, static_cast<WPARAM>(command), value);
+    PostMessageW(gameWindow, kSettingsMessage, static_cast<WPARAM>(command), value);
 }
 
 void initializeGameWindow(HWND hwnd)

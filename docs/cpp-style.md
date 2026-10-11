@@ -27,13 +27,16 @@ The same commands are available as the CMake targets `format` and
 - **Layout.** Files live in their owning `src/` subsystem, and tests mirror
   that folder under `tests/`. Includes use the source-root path, such as
   `"ui/window.h"`, even within the same folder.
-- **Headers.** Class declarations go in self-contained headers and method
-  bodies in `.cpp` files. Templates and small inline helpers may stay in
-  headers. Private helper types use `tmloader::detail`, never an anonymous
-  namespace in a header.
-- **Internal linkage.** Implementation constants, helpers and module state go
-  in an anonymous namespace in their `.cpp`. Native offsets are named
-  constants next to the hook that uses them.
+- **Headers.** Headers declare; every function body lives in a `.cpp` file.
+  Only templates stay in headers. Private helper types use `tmloader::detail`,
+  never an anonymous namespace in a header.
+- **Constants.** Named constants are `kCamelCase`. Constants used by one file
+  go in an anonymous namespace at the top of that `.cpp`, before any function,
+  never inside a function body. Native offsets are named constants in the file
+  whose hook uses them. Constants shared across files go in a header as
+  `constexpr` in the `tmloader` namespace.
+- **Internal linkage.** Implementation helpers and module state go in an
+  anonymous namespace in their `.cpp`.
 - **Hooks.** Replacement functions are named `hooked<ApiName>`, such as
   `hookedCreateFileA` or `hookedPresent`. Each subsystem exposes one install
   function, declared in `app/hooks.h`.
@@ -61,6 +64,20 @@ separated by blank lines so include sorting preserves the order.
 
 ## Static analysis
 
-`.clang-tidy` enforces trailing return types and const local bindings, and
-rejects C-style casts, `NULL` and `typedef`. Its pointer fixes only make
-bindings const; they do not change pointee types.
+`.clang-tidy` is LandSandBoat's check set plus the conventions above: trailing
+return types, const local bindings, `kCamelCase` constants, braces, named
+casts, `nullptr`, `using` over `typedef` and ranges algorithms. Every finding
+is an error. Its pointer fixes only make bindings const; they do not change
+pointee types.
+
+clang-tidy needs a compilation database, which the Ninja generator writes.
+From an x86 developer prompt:
+
+```powershell
+cmake -S . -B cmake-build-tidy -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake --build cmake-build-tidy
+py "C:\Program Files\LLVM\bin\run-clang-tidy" -p cmake-build-tidy -quiet "tmloader.(src|tests)"
+```
+
+Add `-fix` to apply the automatic fixes, then run the formatter. Do not accept
+a fix that adds a virtual destructor to a COM class: it shifts the vtable.

@@ -19,6 +19,8 @@ using namespace tmloader::hosted;
 namespace
 {
 
+constexpr std::string_view kCallbackPath = "/callback/nonce";
+
 auto jsonResponse(DWORD status, std::string body) -> Response
 {
     return { status, "application/json", std::move(body) };
@@ -63,31 +65,39 @@ TEST_CASE("Percent encoding round-trips callback URLs", "[hosted]")
     REQUIRE(percentDecode("a+b%2") == "a b%2");
 }
 
-TEST_CASE("Only the pending callback path yields a code", "[hosted]")
+TEST_CASE("The pending callback path yields its decoded code", "[hosted]")
 {
-    const auto path = std::string_view{ "/callback/nonce" };
-    const auto code = parseCallback("GET /callback/nonce?code=abc%2Fdef&state=x HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", path);
+    const auto code = parseCallback("GET /callback/nonce?code=abc%2Fdef&state=x HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", kCallbackPath);
     REQUIRE(code.kind == Callback::Kind::code);
     REQUIRE(code.value == "abc/def");
+}
 
-    const auto denied = parseCallback("GET /callback/nonce?error=access_denied&error_description=User+cancelled HTTP/1.1\r\n\r\n", path);
+TEST_CASE("A denied sign-in yields the provider's description", "[hosted]")
+{
+    const auto denied = parseCallback("GET /callback/nonce?error=access_denied&error_description=User+cancelled HTTP/1.1\r\n\r\n", kCallbackPath);
     REQUIRE(denied.kind == Callback::Kind::error);
     REQUIRE(denied.value == "User cancelled");
+}
 
+TEST_CASE("Requests that are not the pending callback are ignored", "[hosted]")
+{
     for (const auto* const request : { "GET /callback/other?code=abc HTTP/1.1\r\n\r\n", "GET /callback/nonce HTTP/1.1\r\n\r\n", "POST /callback/nonce?code=abc HTTP/1.1\r\n\r\n", "GET /callback/nonce?code=abc", "GET /favicon.ico HTTP/1.1\r\n\r\n" })
     {
         CAPTURE(request);
-        REQUIRE(parseCallback(request, path).kind == Callback::Kind::other);
+        REQUIRE(parseCallback(request, kCallbackPath).kind == Callback::Kind::other);
     }
 }
 
-TEST_CASE("Server configuration accepts only the Discord protocol", "[hosted]")
+TEST_CASE("Server configuration is read from the gateway", "[hosted]")
 {
     const auto valid    = jsonResponse(200, R"({"protocol":1,"provider":"discord","supabase_url":"https://project.supabase.co","publishable_key":"sb_publishable_x","ticket_ttl_seconds":60,"session_ttl_seconds":3600,"stream_subprotocol":"tm-stream-v1","max_chunk_bytes":65536})");
     const auto settings = parseAuthSettings(valid);
     REQUIRE(settings.supabaseUrl == "https://project.supabase.co");
     REQUIRE(settings.subprotocol == "tm-stream-v1");
+}
 
+TEST_CASE("Server configuration accepts only the Discord protocol", "[hosted]")
+{
     for (const auto* const body : { R"({"protocol":2,"provider":"discord","supabase_url":"https://p.supabase.co","publishable_key":"k","stream_subprotocol":"tm-stream-v1"})",
                                     R"({"protocol":1,"provider":"email","supabase_url":"https://p.supabase.co","publishable_key":"k","stream_subprotocol":"tm-stream-v1"})",
                                     R"({"protocol":1,"provider":"discord","supabase_url":"http://p.supabase.co","publishable_key":"k","stream_subprotocol":"tm-stream-v1"})",
@@ -96,8 +106,10 @@ TEST_CASE("Server configuration accepts only the Discord protocol", "[hosted]")
         CAPTURE(body);
         REQUIRE_THROWS(parseAuthSettings(jsonResponse(200, body)));
     }
+}
 
-    // Proxy failures may not be JSON; they surface as the status alone.
+TEST_CASE("A non-JSON gateway failure surfaces as its status alone", "[hosted]")
+{
     const auto proxy = apiError([]
                                 {
                                     parseAuthSettings({ 502, "text/html", "<html>Bad gateway</html>" });
@@ -106,7 +118,7 @@ TEST_CASE("Server configuration accepts only the Discord protocol", "[hosted]")
     REQUIRE(proxy.code().empty());
 }
 
-TEST_CASE("Play-session responses and errors are parsed", "[hosted]")
+TEST_CASE("Play-session responses are parsed", "[hosted]")
 {
     const auto session = parsePlaySession(jsonResponse(201, R"({"protocol":1,"session_token":"token","expires_in":3600,"account_key":"UGITW5T4U","legacy":{"pol_id":"EEEEEEEF","password":"tm-local-test"},"streams":{"game":"wss://tm.example.com/v1/streams/game","profile":"wss://tm.example.com/v1/streams/profile"}})"));
     REQUIRE(session.token == "token");
@@ -114,14 +126,20 @@ TEST_CASE("Play-session responses and errors are parsed", "[hosted]")
     REQUIRE(session.polId == "EEEEEEEF");
     REQUIRE(session.password == "tm-local-test");
     REQUIRE(session.gameStream == "wss://tm.example.com/v1/streams/game");
+}
 
+TEST_CASE("Gateway errors carry their status and code", "[hosted]")
+{
     const auto conflict = apiError([]
                                    {
                                        parsePlaySession(jsonResponse(409, R"({"error":"session_conflict"})"));
                                    });
     REQUIRE(conflict.status() == 409);
     REQUIRE(conflict.code() == "session_conflict");
+}
 
+TEST_CASE("Supabase errors carry their error code", "[hosted]")
+{
     const auto supabase = apiError([]
                                    {
                                        parseTokens(jsonResponse(400, R"({"code":400,"error_code":"refresh_token_not_found","msg":"Invalid Refresh Token"})"));
@@ -135,20 +153,28 @@ TEST_CASE("Token responses require both tokens", "[hosted]")
     REQUIRE(tokens.access == "a");
     REQUIRE(tokens.refresh == "r");
     REQUIRE(tokens.expiresAt > std::chrono::system_clock::now());
-    REQUIRE_THROWS(parseTokens(jsonResponse(200, R"({"access_token":"a","refresh_token":"","expires_in":3600})")));
     REQUIRE(tokens.userId.empty());
+    REQUIRE_THROWS(parseTokens(jsonResponse(200, R"({"access_token":"a","refresh_token":"","expires_in":3600})")));
+}
+
+TEST_CASE("Token responses carry the user id when present", "[hosted]")
+{
     const auto withUser = parseTokens(jsonResponse(200, R"({"access_token":"a","refresh_token":"r","expires_in":3600,"user":{"id":"11111111-1111-4111-8111-111111111111","email":"x@example.com"}})"));
     REQUIRE(withUser.userId == "11111111-1111-4111-8111-111111111111");
+}
 
+TEST_CASE("The Discord display name falls back to the account name", "[hosted]")
+{
     const auto discord = parseTokens(jsonResponse(200, R"({"access_token":"a","refresh_token":"r","expires_in":3600,"user":{"id":"u","user_metadata":{"full_name":"account_name","avatar_url":"https://cdn.discordapp.com/avatars/1/a.png","custom_claims":{"global_name":"Display Name"}}}})"));
     REQUIRE(discord.displayName == "Display Name");
     REQUIRE(discord.avatarUrl == "https://cdn.discordapp.com/avatars/1/a.png");
+
     const auto fallback = parseTokens(jsonResponse(200, R"({"access_token":"a","refresh_token":"r","expires_in":3600,"user":{"id":"u","user_metadata":{"full_name":"account_name"}}})"));
     REQUIRE(fallback.displayName == "account_name");
     REQUIRE(fallback.avatarUrl.empty());
 }
 
-TEST_CASE("Hosted origins require HTTPS except explicit loopback development", "[hosted]")
+TEST_CASE("Hosted origins must be bare HTTPS origins", "[hosted]")
 {
     REQUIRE(isAllowedOrigin("https://tm.example.com", false));
     REQUIRE(isAllowedOrigin("https://tm.example.com:8443", false));
@@ -157,7 +183,10 @@ TEST_CASE("Hosted origins require HTTPS except explicit loopback development", "
         CAPTURE(origin);
         REQUIRE_FALSE(isAllowedOrigin(origin, false));
     }
+}
 
+TEST_CASE("Plain HTTP is allowed only for explicit loopback development", "[hosted]")
+{
     REQUIRE_FALSE(isAllowedOrigin("http://127.0.0.1:8081", false));
     REQUIRE(isAllowedOrigin("http://127.0.0.1:8081", true));
     REQUIRE_FALSE(isAllowedOrigin("http://localhost:8081", true));

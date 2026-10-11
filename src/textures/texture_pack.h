@@ -43,10 +43,7 @@ public:
     auto read(const TextureAsset& asset) const -> std::vector<uint8_t>;
     void validateFiles() const;
 
-    auto size() const -> size_t
-    {
-        return assets_.size();
-    }
+    auto size() const -> size_t;
 
 private:
     std::filesystem::path                         root_;

@@ -8,12 +8,19 @@
 
 namespace tmloader
 {
+namespace
+{
+
+const auto kProfileAlias   = std::regex(R"(pp\d{3}\.pol\.com)", std::regex::icase);
+const auto kSecureOrigin   = std::regex(R"(https://[A-Za-z0-9.-]+(:\d{1,5})?)");
+const auto kLoopbackOrigin = std::regex(R"(http://127\.0\.0\.1:\d{1,5})");
+
+} // namespace
 
 // The client resolves its profile servers as pp000.pol.com through pp999.pol.com.
 auto isProfileAlias(const char* host) -> bool
 {
-    static const auto alias = std::regex(R"(pp\d{3}\.pol\.com)", std::regex::icase);
-    return host && std::regex_match(host, alias);
+    return host && std::regex_match(host, kProfileAlias);
 }
 
 auto isIpv4Address(const std::string& host) -> bool
@@ -24,9 +31,7 @@ auto isIpv4Address(const std::string& host) -> bool
 
 auto isAllowedOrigin(const std::string& origin, bool insecureLoopback) -> bool
 {
-    static const auto secure   = std::regex(R"(https://[A-Za-z0-9.-]+(:\d{1,5})?)");
-    static const auto loopback = std::regex(R"(http://127\.0\.0\.1:\d{1,5})");
-    return std::regex_match(origin, secure) || (insecureLoopback && std::regex_match(origin, loopback));
+    return std::regex_match(origin, kSecureOrigin) || (insecureLoopback && std::regex_match(origin, kLoopbackOrigin));
 }
 
 auto pathIsWithin(const std::filesystem::path& path, const std::filesystem::path& root) -> bool
@@ -48,7 +53,7 @@ auto pathIsWithin(const std::filesystem::path& path, const std::filesystem::path
     {
         return _wcsicmp(a.c_str(), b.c_str()) == 0;
     };
-    const auto [rootEnd, rest] = std::mismatch(canonicalRoot.begin(), canonicalRoot.end(), canonical.begin(), canonical.end(), sameName);
+    const auto [rootEnd, rest] = std::ranges::mismatch(canonicalRoot, canonical, sameName);
     return rootEnd == canonicalRoot.end() && rest != canonical.end();
 }
 

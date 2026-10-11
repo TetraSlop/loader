@@ -3,13 +3,14 @@
 #include "app/log.h"
 #include "hosted/tunnel.h"
 #include <array>
+#include <utility>
 
 namespace tmloader::hosted
 {
 namespace
 {
 
-constexpr int chunkBytes = 65536;
+constexpr int kChunkBytes = 65536;
 
 auto listenLoopback(unsigned short& port) -> wil::unique_socket
 {
@@ -64,7 +65,7 @@ Tunnel::Tunnel(HttpClient& http, Streams streams)
 , streams_(std::move(streams))
 , gameListener_(listenLoopback(gamePort_))
 , profileListener_(listenProfile(profilePort_))
-, acceptor_([this](std::stop_token stop)
+, acceptor_([this](const std::stop_token& stop)
             {
                 acceptLoop(stop);
             })
@@ -98,7 +99,7 @@ void Tunnel::closeConnections() noexcept
     }
 }
 
-void Tunnel::acceptLoop(std::stop_token stop)
+void Tunnel::acceptLoop(const std::stop_token& stop)
 {
     while (!stop.stop_requested())
     {
@@ -169,12 +170,12 @@ void Tunnel::forward(SOCKET native, const std::string& url)
                                            // Remote closure becomes EOF for the game.
                                            shutdown(native, SD_BOTH);
                                        });
-        auto buffer     = std::array<char, chunkBytes>{};
+        auto buffer     = std::array<char, kChunkBytes>{};
         try
         {
             while (true)
             {
-                const auto read = recv(native, buffer.data(), chunkBytes, 0);
+                const auto read = recv(native, buffer.data(), kChunkBytes, 0);
                 if (read <= 0)
                 {
                     break;

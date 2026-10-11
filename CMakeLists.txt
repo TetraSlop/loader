@@ -23,6 +23,15 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX DIRECTINPUT_VERSION=0x0800
     TMLOADER_VERSION="${PROJECT_VERSION}")
 add_compile_options(/W4 /EHsc /utf-8)
 
+option(TMLOADER_HD_TEXTURES "HD texture packs (src/textures)" ON)
+option(TMLOADER_DISCORD_PRESENCE "Discord Rich Presence (src/presence)" ON)
+option(TMLOADER_HOSTED "Hosted play with Discord sign-in (src/hosted)" ON)
+foreach(feature IN ITEMS TMLOADER_HD_TEXTURES TMLOADER_DISCORD_PRESENCE TMLOADER_HOSTED)
+    if(${feature})
+        add_compile_definitions(${feature})
+    endif()
+endforeach()
+
 find_package(Python3 3.10 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
     add_custom_target(format

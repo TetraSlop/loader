@@ -7,12 +7,12 @@ namespace
 {
 
 // Stream 0: float4 position, packed diffuse and specular colors, float2 UV.
-constexpr DWORD declaration[] = {
+constexpr DWORD kDeclaration[] = {
     0x20000000, 0x40030000, 0x40040001, 0x40040002, 0x40010003, 0xffffffff
 };
 // Hand-assembled vs.1.1: converts screen coordinates to clip space and keeps
 // reciprocal W for perspective-correct interpolation. Other inputs pass through.
-constexpr DWORD program[] = {
+constexpr DWORD kProgram[] = {
     0xfffe0101,
     0x00000005,
     0x80030000,
@@ -51,7 +51,7 @@ constexpr DWORD program[] = {
 
 auto createScaleShader(void* device, DWORD* shader) -> HRESULT
 {
-    return callMethod(device, d3d8::CreateVertexShader, declaration, program, shader, DWORD{ 0 });
+    return callMethod(device, d3d8::CreateVertexShader, kDeclaration, kProgram, shader, DWORD{ 0 });
 }
 
 auto setScaleConstants(void* device, float factor) -> HRESULT

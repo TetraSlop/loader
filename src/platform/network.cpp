@@ -10,28 +10,28 @@ namespace
 {
 
 // The client hardcodes this Game IRC port; it is redirected to the configured one.
-constexpr u_short legacyGamePort = 51241;
+constexpr u_short kLegacyGamePort = 51241;
 
 // polcore_native.dll internals. Unnamed functions are only known by call order.
-constexpr DWORD gameIrcSlots        = 0x3e58a0;
-constexpr DWORD gameIrcSlotSize     = 0x3a00;
-constexpr DWORD gameIrcCipherKeys   = 0x2b8;
-constexpr DWORD gameIrcCipher       = 0x2c0;
-constexpr DWORD cipherMatrixPointer = 0x48;
-constexpr DWORD profileInitialized  = 0xafbd8;
-constexpr DWORD profileEndpoint     = 0x404ab8;
-constexpr DWORD initializeInet      = 0xfe20;
-constexpr DWORD resolveAddress      = 0x127a0;
-constexpr DWORD seedProfileCipher   = 0x1a170;
-constexpr DWORD initializeProfile   = 0x1eb00;
-constexpr DWORD setProfileLogin     = 0x1ea60;
-constexpr DWORD setProfileEndpoint  = 0x1e930;
-constexpr DWORD sub1E980            = 0x1e980;
-constexpr DWORD sub19BA0            = 0x19ba0;
+constexpr DWORD kGameIrcSlots        = 0x3e58a0;
+constexpr DWORD kGameIrcSlotSize     = 0x3a00;
+constexpr DWORD kGameIrcCipherKeys   = 0x2b8;
+constexpr DWORD kGameIrcCipher       = 0x2c0;
+constexpr DWORD kCipherMatrixPointer = 0x48;
+constexpr DWORD kProfileInitialized  = 0xafbd8;
+constexpr DWORD kProfileEndpoint     = 0x404ab8;
+constexpr DWORD kInitializeInet      = 0xfe20;
+constexpr DWORD kResolveAddress      = 0x127a0;
+constexpr DWORD kSeedProfileCipher   = 0x1a170;
+constexpr DWORD kInitializeProfile   = 0x1eb00;
+constexpr DWORD kSetProfileLogin     = 0x1ea60;
+constexpr DWORD kSetProfileEndpoint  = 0x1e930;
+constexpr DWORD kSub1E980            = 0x1e980;
+constexpr DWORD kSub19BA0            = 0x19ba0;
 
-constexpr DWORD profileRequestTimeoutMs = 5000;
+constexpr DWORD kProfileRequestTimeoutMs = 5000;
 
-Command original[abi::viewer::tableSize]{};
+Command original[abi::viewer::kTableSize]{};
 BYTE*   coreBase      = nullptr;
 bool    profileLoaded = false;
 // Game IRC slots are reused after a match; the profile cipher and its matrix must outlive them.
@@ -53,7 +53,7 @@ auto WSAAPI hookedConnect(SOCKET socket, const sockaddr* address, int length) ->
 
     auto target = *reinterpret_cast<const sockaddr_in*>(address);
     auto port   = ntohs(target.sin_port);
-    if (port == legacyGamePort)
+    if (port == kLegacyGamePort)
     {
         port = options.gamePort;
     }
@@ -85,31 +85,31 @@ auto WSAAPI hookedGetHostByName(const char* host) -> hostent*
 auto __cdecl hookedGameIrcOpen(const char*, const char*, const char*, const char* version, int mode, void* callbacks, void* cipher, void* queue, int count) -> int
 {
     logLine("GameIRC open to configured server; version={} mode={}", version, mode);
-    return original[abi::viewer::gameIrcOpen](options.server.c_str(), options.polId.c_str(), options.password.c_str(), version, mode, callbacks, cipher, queue, count);
+    return original[abi::viewer::kGameIrcOpen](options.server.c_str(), options.polId.c_str(), options.password.c_str(), version, mode, callbacks, cipher, queue, count);
 }
 
 void seedProfile(int slot)
 {
-    BYTE* const irc = coreBase + gameIrcSlots + slot * gameIrcSlotSize;
-    std::memcpy(profileCipher, irc + gameIrcCipher, sizeof(profileCipher));
-    auto*& matrix = *reinterpret_cast<void**>(profileCipher + cipherMatrixPointer);
+    BYTE* const irc = coreBase + kGameIrcSlots + slot * kGameIrcSlotSize;
+    std::memcpy(profileCipher, irc + kGameIrcCipher, sizeof(profileCipher));
+    auto*& matrix = *reinterpret_cast<void**>(profileCipher + kCipherMatrixPointer);
     std::memcpy(profileMatrix, matrix, sizeof(profileMatrix));
     matrix = profileMatrix;
 
-    const auto* const keys = reinterpret_cast<const DWORD*>(irc + gameIrcCipherKeys);
-    core(seedProfileCipher)(profileCipher, keys[0], keys[1]);
-    core(sub1E980)();
+    const auto* const keys = reinterpret_cast<const DWORD*>(irc + kGameIrcCipherKeys);
+    core(kSeedProfileCipher)(profileCipher, keys[0], keys[1]);
+    core(kSub1E980)();
 }
 
 void loadProfile()
 {
     // Each request returns a ticket polled by the next table entry.
-    for (const auto request : { abi::viewer::loadHandle, abi::viewer::loadCharacter, abi::viewer::loadStatus })
+    for (const auto request : { abi::viewer::kLoadHandle, abi::viewer::kLoadCharacter, abi::viewer::kLoadStatus })
     {
         const int  ticket  = original[request]();
         int        status  = 0;
         const auto started = GetTickCount();
-        while (ticket >= 0 && !status && GetTickCount() - started < profileRequestTimeoutMs)
+        while (ticket >= 0 && !status && GetTickCount() - started < kProfileRequestTimeoutMs)
         {
             status = original[request + 1](ticket);
             Sleep(10);
@@ -121,7 +121,7 @@ void loadProfile()
 
 auto __cdecl hookedGameIrcOpenCheck(int slot) -> int
 {
-    const int result = original[abi::viewer::gameIrcOpenCheck](slot);
+    const int result = original[abi::viewer::kGameIrcOpenCheck](slot);
     if (result == 1 && !profileLoaded)
     {
         profileLoaded = true;
@@ -134,7 +134,7 @@ auto __cdecl hookedGameIrcOpenCheck(int slot) -> int
 
 auto __cdecl hookedProfileReadCheck(int ticket) -> int
 {
-    const int result = original[abi::viewer::profileReadCheck](ticket);
+    const int result = original[abi::viewer::kProfileReadCheck](ticket);
     if (options.diagnostics)
     {
         logLine("Profile read ticket={} result={}", ticket, result);
@@ -158,30 +158,30 @@ void initializeViewerSession(HMODULE module, Command* table)
 
     // The game caches the account identity, so the Viewer must know it first.
     BYTE encodedAccount[8]{};
-    original[abi::viewer::encodeAccount](encodedAccount, options.polId.c_str());
-    original[abi::viewer::setAccount](encodedAccount);
+    original[abi::viewer::kEncodeAccount](encodedAccount, options.polId.c_str());
+    original[abi::viewer::kSetAccount](encodedAccount);
     logLine("Viewer account context initialized before game caches its identity");
-    logLine("Native INET initialization={}", core(initializeInet)());
+    logLine("Native INET initialization={}", core(kInitializeInet)());
 
     BYTE endpoint[20]{};
-    core(resolveAddress)(options.server.c_str(), endpoint);
+    core(kResolveAddress)(options.server.c_str(), endpoint);
     *reinterpret_cast<WORD*>(endpoint + 2) = options.profilePort;
-    if (!*reinterpret_cast<DWORD*>(coreBase + profileInitialized))
+    if (!*reinterpret_cast<DWORD*>(coreBase + kProfileInitialized))
     {
-        logLine("Profile initialization={}", core(initializeProfile)(endpoint, options.polId.c_str(), options.password.c_str()));
+        logLine("Profile initialization={}", core(kInitializeProfile)(endpoint, options.polId.c_str(), options.password.c_str()));
     }
     else
     {
-        core(setProfileLogin)(options.polId.c_str(), options.password.c_str());
+        core(kSetProfileLogin)(options.polId.c_str(), options.password.c_str());
     }
 
-    core(setProfileEndpoint)(endpoint);
-    std::memcpy(coreBase + profileEndpoint, endpoint, sizeof(endpoint));
-    core(sub19BA0)();
+    core(kSetProfileEndpoint)(endpoint);
+    std::memcpy(coreBase + kProfileEndpoint, endpoint, sizeof(endpoint));
+    core(kSub19BA0)();
 
-    replacePointer(module, reinterpret_cast<void*>(table[abi::viewer::gameIrcOpen]), reinterpret_cast<void*>(hookedGameIrcOpen));
-    replacePointer(module, reinterpret_cast<void*>(table[abi::viewer::gameIrcOpenCheck]), reinterpret_cast<void*>(hookedGameIrcOpenCheck));
-    replacePointer(module, reinterpret_cast<void*>(table[abi::viewer::profileReadCheck]), reinterpret_cast<void*>(hookedProfileReadCheck));
+    replacePointer(module, reinterpret_cast<void*>(table[abi::viewer::kGameIrcOpen]), reinterpret_cast<void*>(hookedGameIrcOpen));
+    replacePointer(module, reinterpret_cast<void*>(table[abi::viewer::kGameIrcOpenCheck]), reinterpret_cast<void*>(hookedGameIrcOpenCheck));
+    replacePointer(module, reinterpret_cast<void*>(table[abi::viewer::kProfileReadCheck]), reinterpret_cast<void*>(hookedProfileReadCheck));
 }
 
 } // namespace tmloader

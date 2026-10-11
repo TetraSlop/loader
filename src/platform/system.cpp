@@ -11,13 +11,15 @@ namespace
 {
 
 // Handle returned for every registry key the game opens; values are served below.
-const auto virtualRegistryKey = reinterpret_cast<HKEY>(0x5a5a0001);
+const auto kVirtualRegistryKey = reinterpret_cast<HKEY>(0x5a5a0001);
 
-constexpr DWORD messageBoxImport    = 0x2041fc;
-constexpr DWORD regOpenKeyImport    = 0x204000;
-constexpr DWORD regQueryValueImport = 0x204004;
-constexpr DWORD regCloseKeyImport   = 0x204008;
-constexpr DWORD regCreateKeyImport  = 0x20400c;
+constexpr DWORD kMessageBoxImport    = 0x2041fc;
+constexpr DWORD kRegOpenKeyImport    = 0x204000;
+constexpr DWORD kRegQueryValueImport = 0x204004;
+constexpr DWORD kRegCloseKeyImport   = 0x204008;
+constexpr DWORD kRegCreateKeyImport  = 0x20400c;
+
+constexpr DWORD kWriteAccess = GENERIC_WRITE | DELETE | WRITE_DAC | WRITE_OWNER | FILE_WRITE_DATA | FILE_APPEND_DATA;
 
 auto registryValue(DWORD valueType, const void* value, DWORD size, LPDWORD type, LPBYTE data, LPDWORD length) -> LSTATUS
 {
@@ -49,8 +51,7 @@ auto registryValue(DWORD valueType, const void* value, DWORD size, LPDWORD type,
 
 auto writesFile(DWORD access, DWORD disposition) -> bool
 {
-    constexpr auto writeAccess = GENERIC_WRITE | DELETE | WRITE_DAC | WRITE_OWNER | FILE_WRITE_DATA | FILE_APPEND_DATA;
-    return (access & writeAccess) || disposition == CREATE_ALWAYS || disposition == CREATE_NEW ||
+    return (access & kWriteAccess) || disposition == CREATE_ALWAYS || disposition == CREATE_NEW ||
            disposition == TRUNCATE_EXISTING || disposition == OPEN_ALWAYS;
 }
 
@@ -80,7 +81,7 @@ auto WINAPI hookedCreateFileA(const char* path, DWORD access, DWORD sharing, LPS
 
 auto WINAPI hookedRegQueryValueExA(HKEY key, const char* name, LPDWORD reserved, LPDWORD type, LPBYTE data, LPDWORD length) -> LSTATUS
 {
-    if (key != virtualRegistryKey)
+    if (key != kVirtualRegistryKey)
     {
         const auto result = RegQueryValueExA(key, name, reserved, type, data, length);
         logLine("RegQuery {} -> {}", printable(name), result);
@@ -122,7 +123,7 @@ auto WINAPI hookedRegCreateKeyExA(HKEY, const char* subkey, DWORD, LPSTR, DWORD,
     logLine("Virtual registry create: {}", printable(subkey));
     if (result)
     {
-        *result = virtualRegistryKey;
+        *result = kVirtualRegistryKey;
     }
 
     if (disposition)
@@ -138,7 +139,7 @@ auto WINAPI hookedRegOpenKeyA(HKEY, const char* subkey, PHKEY result) -> LSTATUS
     logLine("Virtual registry open: {}", printable(subkey));
     if (result)
     {
-        *result = virtualRegistryKey;
+        *result = kVirtualRegistryKey;
     }
 
     return ERROR_SUCCESS;
@@ -146,7 +147,7 @@ auto WINAPI hookedRegOpenKeyA(HKEY, const char* subkey, PHKEY result) -> LSTATUS
 
 auto WINAPI hookedRegCloseKey(HKEY key) -> LSTATUS
 {
-    if (key == virtualRegistryKey)
+    if (key == kVirtualRegistryKey)
     {
         return ERROR_SUCCESS;
     }
@@ -179,11 +180,11 @@ void installSystemHooks(HMODULE module, bool game)
         return;
     }
 
-    setImport(module, messageBoxImport, reinterpret_cast<void*>(hookedMessageBoxA));
-    setImport(module, regOpenKeyImport, reinterpret_cast<void*>(hookedRegOpenKeyA));
-    setImport(module, regQueryValueImport, reinterpret_cast<void*>(hookedRegQueryValueExA));
-    setImport(module, regCloseKeyImport, reinterpret_cast<void*>(hookedRegCloseKey));
-    setImport(module, regCreateKeyImport, reinterpret_cast<void*>(hookedRegCreateKeyExA));
+    setImport(module, kMessageBoxImport, reinterpret_cast<void*>(hookedMessageBoxA));
+    setImport(module, kRegOpenKeyImport, reinterpret_cast<void*>(hookedRegOpenKeyA));
+    setImport(module, kRegQueryValueImport, reinterpret_cast<void*>(hookedRegQueryValueExA));
+    setImport(module, kRegCloseKeyImport, reinterpret_cast<void*>(hookedRegCloseKey));
+    setImport(module, kRegCreateKeyImport, reinterpret_cast<void*>(hookedRegCreateKeyExA));
 }
 
 } // namespace tmloader

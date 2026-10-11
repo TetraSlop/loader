@@ -38,7 +38,7 @@ public:
 private:
     auto send(std::uint32_t opcode, const std::string& payload) -> bool;
     auto receive() -> bool;
-    void publish(std::stop_token stop);
+    void publish(const std::stop_token& stop);
 
     wil::unique_hfile           pipe_;
     std::atomic<bool>           connected_{ false };

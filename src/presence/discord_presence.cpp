@@ -1,4 +1,4 @@
-#include "platform/discord_presence.h"
+#include "presence/discord_presence.h"
 #include "app/log.h"
 #include <array>
 #include <chrono>
@@ -6,15 +6,16 @@
 #include <format>
 #include <nlohmann/json.hpp>
 #include <thread>
+#include <utility>
 
 namespace tmloader
 {
 namespace
 {
 
-constexpr std::uint32_t handshakeOpcode = 0;
-constexpr std::uint32_t frameOpcode     = 1;
-constexpr auto          replyTimeout    = std::chrono::seconds(2);
+constexpr std::uint32_t kHandshakeOpcode = 0;
+constexpr std::uint32_t kFrameOpcode     = 1;
+constexpr auto          kReplyTimeout    = std::chrono::seconds(2);
 
 } // namespace
 
@@ -68,14 +69,14 @@ DiscordPresence::DiscordPresence(std::string_view applicationId, std::wstring_vi
     }
 
     const auto handshake = nlohmann::json{ { "v", 1 }, { "client_id", applicationId } }.dump();
-    if (!pipe_ || !send(handshakeOpcode, handshake) || !receive())
+    if (!pipe_ || !send(kHandshakeOpcode, handshake) || !receive())
     {
         pipe_.reset();
         return;
     }
 
     connected_ = true;
-    worker_    = std::jthread([this](std::stop_token stop)
+    worker_    = std::jthread([this](const std::stop_token& stop)
                               {
                                publish(stop);
                               });
@@ -97,7 +98,7 @@ void DiscordPresence::set(const Activity& activity)
     wake_.notify_one();
 }
 
-void DiscordPresence::publish(std::stop_token stop)
+void DiscordPresence::publish(const std::stop_token& stop)
 {
     auto nonce = 0;
     auto lock  = std::unique_lock(mutex_);
@@ -108,7 +109,7 @@ void DiscordPresence::publish(std::stop_token stop)
     {
         const auto activity = *std::exchange(pending_, std::nullopt);
         lock.unlock();
-        const auto sent = send(frameOpcode, activityCommand(activity, GetCurrentProcessId(), ++nonce)) && receive();
+        const auto sent = send(kFrameOpcode, activityCommand(activity, GetCurrentProcessId(), ++nonce)) && receive();
         lock.lock();
         if (!sent)
         {
@@ -129,7 +130,7 @@ auto DiscordPresence::send(std::uint32_t opcode, const std::string& payload) -> 
 // Consumes one reply so the pipe never fills; gives up if Discord doesn't answer.
 auto DiscordPresence::receive() -> bool
 {
-    const auto deadline  = std::chrono::steady_clock::now() + replyTimeout;
+    const auto deadline  = std::chrono::steady_clock::now() + kReplyTimeout;
     auto       available = DWORD{};
     while (PeekNamedPipe(pipe_.get(), nullptr, 0, nullptr, &available, nullptr) && available < 8)
     {

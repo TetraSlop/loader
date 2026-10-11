@@ -25,7 +25,7 @@ public:
 
     // Signs in silently with a remembered login; false when a browser sign-in is needed.
     auto resume() -> bool;
-    auto signIn(const OpenBrowser& openBrowser, std::stop_token stop) -> bool;
+    auto signIn(const OpenBrowser& openBrowser, const std::stop_token& stop) -> bool;
     auto signedIn() -> bool;
 
     struct Profile
@@ -52,19 +52,19 @@ public:
 
 private:
     auto accessToken(bool forceRefresh = false) -> std::string;
-    auto withAccess(const std::function<void(const std::string&)>& call) -> void;
+    void withAccess(const std::function<void(const std::string&)>& call);
     void remember(Tokens tokens);
-    void renewLoop(std::stop_token stop);
+    void renewLoop(const std::stop_token& stop);
 
-    std::string                    origin_;
-    HttpClient                     http_;
-    AuthClient                     auth_;
-    std::optional<CredentialStore> store_;
-    std::mutex                     tokenMutex_;
-    std::optional<Tokens>          tokens_;
-    std::optional<PlaySession>     play_;
-    std::unique_ptr<Tunnel>        tunnel_;
-    std::jthread                   renewal_;
+    std::string                origin_;
+    HttpClient                 http_;
+    AuthClient                 auth_;
+    CredentialStore            store_;
+    std::mutex                 tokenMutex_;
+    std::optional<Tokens>      tokens_;
+    std::optional<PlaySession> play_;
+    std::unique_ptr<Tunnel>    tunnel_;
+    std::jthread               renewal_;
 };
 
 } // namespace tmloader::hosted

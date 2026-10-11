@@ -1,7 +1,8 @@
-#include "platform/game_messages.h"
-#include "app/hooks.h"
+#include "presence/game_phase.h"
 #include "app/log.h"
+#include "app/runtime.h"
 #include "platform/patch.h"
+#include "presence/presence.h"
 #include <charconv>
 #include <cstring>
 #include <optional>
@@ -13,12 +14,12 @@ namespace
 
 // The message pump's call to the game's GTM0 ingress check, which receives one
 // queued message record; the message text starts at +0x1D of a 0x220-byte record.
-constexpr DWORD ingressCall   = 0x19e57f;
-constexpr DWORD ingressTarget = 0x1a2b90;
-constexpr DWORD messageText   = 0x1d;
-constexpr DWORD recordSize    = 0x220;
+constexpr DWORD kIngressCall   = 0x19e57f;
+constexpr DWORD kIngressTarget = 0x1a2b90;
+constexpr DWORD kMessageText   = 0x1d;
+constexpr DWORD kRecordSize    = 0x220;
 
-constexpr unsigned matchFamily = 0x43;
+constexpr unsigned kMatchFamily = 0x43;
 
 using IngressFn = int(__cdecl*)(const BYTE* record);
 
@@ -47,8 +48,8 @@ auto __cdecl hookedIngress(const BYTE* record) -> int
         return accepted;
     }
 
-    const auto* const text    = reinterpret_cast<const char*>(record + messageText);
-    const auto        message = std::string_view(text, strnlen(text, recordSize - messageText));
+    const auto* const text    = reinterpret_cast<const char*>(record + kMessageText);
+    const auto        message = std::string_view(text, strnlen(text, kRecordSize - kMessageText));
     if (options.diagnostics)
     {
         // Header only; bodies can contain player data.
@@ -93,7 +94,7 @@ auto nextPhase(GamePhase current, std::string_view message) -> GamePhase
     const auto family   = hexByte(message, 5);
     const auto subtype  = hexByte(message, 9);
     const auto argument = hexByte(message, 11);
-    if (message[4] != 'G' || family != matchFamily || !subtype)
+    if (message[4] != 'G' || family != kMatchFamily || !subtype)
     {
         return current;
     }
@@ -150,16 +151,15 @@ void setGamePhaseListener(std::function<void(GamePhase)> value)
     listener = std::move(value);
 }
 
-void installMessageHooks(HMODULE game)
+void installPresenceHooks(HMODULE game)
 {
     try
     {
-        originalIngress = reinterpret_cast<IngressFn>(redirectCall(game, ingressCall, ingressTarget, reinterpret_cast<void*>(hookedIngress)));
+        originalIngress = reinterpret_cast<IngressFn>(redirectCall(game, kIngressCall, kIngressTarget, reinterpret_cast<void*>(hookedIngress)));
     }
     catch (const std::exception& error)
     {
-        // Presence then stays at its launch state; play is unaffected.
-        logLine("Game message tracking disabled: {}", error.what());
+        logLine("Rich Presence will not follow the game: {}", error.what());
     }
 }
 
