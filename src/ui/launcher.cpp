@@ -159,13 +159,15 @@ public:
         drawBackground(viewport->WorkPos, viewport->WorkSize);
         drawPanel(stage, message, viewport->WorkPos, viewport->WorkSize);
         ImGui::End();
-        return stage != Stage::ready;
+        started_ = stage == Stage::ready;
+        return !started_;
     }
 
     auto finish() -> std::unique_ptr<hosted::HostedSession>
     {
         worker_ = {};
-        if (snapshot().first != Stage::ready)
+        // Closing the window while play is starting cancels it.
+        if (!started_)
         {
             return nullptr;
         }
@@ -535,6 +537,7 @@ private:
     std::array<Image, kTitleTiles.size()>                title_;
     Image                                                avatar_;
     std::atomic<bool>                                    raise_{ false };
+    bool                                                 started_ = false;
     std::mutex                                           mutex_;
     Stage                                                stage_ = Stage::connecting;
     std::string                                          message_;

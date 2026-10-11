@@ -217,8 +217,18 @@ auto HttpClient::send(const char* method, const std::string& url, const Headers&
     response.contentType = queryHeader(request.get(), WINHTTP_QUERY_CONTENT_TYPE).value_or("");
     auto chunk           = std::array<char, 16384>{};
     auto read            = DWORD{};
-    while (WinHttpReadData(request.get(), chunk.data(), static_cast<DWORD>(chunk.size()), &read) && read)
+    while (true)
     {
+        if (!WinHttpReadData(request.get(), chunk.data(), static_cast<DWORD>(chunk.size()), &read))
+        {
+            fail("Reading HTTP response");
+        }
+
+        if (!read)
+        {
+            break;
+        }
+
         if (response.body.size() + read > kMaxResponseBytes)
         {
             throw TransportError("HTTP response too large");

@@ -35,6 +35,13 @@ auto isInvalidToken(const ApiError& error) -> bool
     return error.status() == 401 && error.code() == "invalid_token";
 }
 
+// Supabase answers 400 or 401 once a refresh token is revoked or expired.
+// Other failures are temporary and must not cost the user their login.
+auto revoked(const ApiError& error) -> bool
+{
+    return error.status() == 400 || error.status() == 401;
+}
+
 // Returns false when a stop is requested before the deadline.
 auto sleepUntil(const std::stop_token& stop, std::chrono::steady_clock::time_point deadline) -> bool
 {
@@ -80,8 +87,12 @@ auto HostedSession::resume() -> bool
     }
     catch (const ApiError& error)
     {
-        logLine("Remembered sign-in rejected ({})", error.status());
-        store_.erase();
+        logLine("Remembered sign-in not accepted ({})", error.status());
+        if (revoked(error))
+        {
+            store_.erase();
+        }
+
         return false;
     }
 }
@@ -174,8 +185,13 @@ auto HostedSession::accessToken(bool forceRefresh) -> std::string
         {
             remember(auth_.refresh(tokens_->refresh));
         }
-        catch (const ApiError&)
+        catch (const ApiError& error)
         {
+            if (!revoked(error))
+            {
+                throw;
+            }
+
             tokens_.reset();
             store_.erase();
             throw ApiError(401, "invalid_token");
