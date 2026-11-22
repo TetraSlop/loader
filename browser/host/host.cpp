@@ -158,6 +158,58 @@ bool                            g_halted       = false;
 
 } // namespace
 
+// One --trace line: the stand-in, its caller, the thread, the first four stack arguments, and any argument that
+// reads as a short printable string (a file name, a registry value, a window class)
+auto traceLine(const tmweb::Call& call) -> std::string
+{
+    const auto& memory = call.memory();
+    const auto  esp    = call.context().r[tmweb::kEsp];
+    auto        line   = std::format("call {} from {:#x} thread {}", call.name(), memory.mapped(esp, 4) ? call.returnAddress() : 0, call.machine().scheduler().current().id);
+    if (!memory.mapped(esp + 4, 16))
+    {
+        return line;
+    }
+    if (call.name() == "user32.dll!RegisterClassExA" && memory.mapped(call.arg(0), 48))
+    {
+        // WNDCLASSEXA: the window procedure at +8, the class name at +40
+        const auto name      = memory.read<std::uint32_t>(call.arg(0) + 40);
+        auto       className = std::string{};
+        if (memory.mapped(name))
+        {
+            className = memory.readString(name, 128);
+        }
+        line += std::format(" wndproc {:#x} class \"{}\"", memory.read<std::uint32_t>(call.arg(0) + 8), className);
+    }
+    line += " args";
+    for (auto index = 0u; index < 4; ++index)
+    {
+        line += std::format(" {:#x}", call.arg(index));
+    }
+    for (auto index = 0u; index < 4; ++index)
+    {
+        const auto address = call.arg(index);
+        auto       text    = std::string{};
+        for (auto offset = 0u; offset < 128 && memory.mapped(address + offset); ++offset)
+        {
+            const auto c = memory.read<char>(address + offset);
+            if (c == '\0')
+            {
+                if (text.size() >= 2)
+                {
+                    line += std::format(" \"{}\"", text);
+                }
+                break;
+            }
+            if (c < 0x20 || c > 0x7E)
+            {
+                break;
+            }
+            text.push_back(c);
+        }
+    }
+    return line;
+}
+
 extern "C" auto tmweb_boot(const char* root, const int trace, const char* until) -> int
 {
     using tmweb::host::log;
@@ -179,7 +231,7 @@ extern "C" auto tmweb_boot(const char* root, const int trace, const char* until)
             {
                 if (trace != 0)
                 {
-                    log(std::format("call {} from {:#x}", call.name(), call.returnAddress()));
+                    log(traceLine(call));
                 }
                 if (call.name() == until)
                 {
