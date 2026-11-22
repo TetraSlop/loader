@@ -358,18 +358,36 @@ TEST_CASE("QueryInterface wraps what the host returns, by IID")
     texture->Release();
 }
 
-TEST_CASE("Staging buffers are kept per host object part and grow")
+TEST_CASE("Locking and releasing many textures keeps guest memory flat")
 {
-    auto       guest = Guest{};
-    auto       a     = 0;
-    auto       b     = 0;
-    const auto first = guest.proxies.staging(&a, 0, 64);
-    CHECK(guest.proxies.staging(&a, 0, 32) == first);
-    CHECK(guest.proxies.staging(&a, 1, 32) != first);
-    CHECK(guest.proxies.staging(&b, 0, 32) != first);
-    const auto grown = guest.proxies.staging(&a, 0, 128);
-    CHECK(grown != first);
-    guest.machine.memory().write<std::uint8_t>(grown + 127, 1);
+    auto  guest  = Guest{};
+    auto& memory = guest.machine.memory();
+    auto  bytes  = std::vector<std::uint8_t>(260 * 1024);
+    auto  probe  = [&]()
+    {
+        return memory.allocate(16);
+    };
+    const auto lockOnce = [&](const unsigned i)
+    {
+        auto* const texture = new Texture;
+        const auto  size    = static_cast<std::uint32_t>(150 * 1024 + (i * 7919) % (110 * 1024));
+        guest.proxies.lock(texture, 0, bytes.data(), size);
+        // Every other texture goes away while locked; its buffer must come back too
+        if (i % 2 == 0)
+        {
+            guest.proxies.unlock(texture, 0);
+        }
+        guest.proxies.forget(texture);
+        texture->Release();
+    };
+    lockOnce(0);
+    lockOnce(1);
+    const auto before = probe();
+    for (auto i = 2u; i < 3000; ++i)
+    {
+        lockOnce(i);
+    }
+    CHECK(probe() - before < 2 * 1024 * 1024);
 }
 
 TEST_CASE("A lock shows the guest the host's bytes and the unlock copies its writes back")

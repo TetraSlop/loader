@@ -1,5 +1,6 @@
 #include "com/proxies.h"
 
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 
@@ -109,24 +110,33 @@ void Proxies::forget(const void* const host)
                   {
                       return item.second.host == host;
                   });
+    std::erase_if(locked_, [this, host](const auto& item)
+                  {
+                      if (item.first.first != host)
+                      {
+                          return false;
+                      }
+                      giveBack(item.second.guest);
+                      return true;
+                  });
 }
 
-auto Proxies::staging(const void* const host, const std::uint32_t sub, const std::uint32_t size) -> std::uint32_t
+auto Proxies::borrow(const std::uint32_t size) -> std::uint32_t
 {
-    auto& buffer = staging_[{ host, sub }];
-    if (buffer.size < size)
-    {
-        // ponytail: guest memory is never freed, so a buffer that grows leaks the old one; fine for TM's few
-        // resources, a free list in Memory if it ever matters
-        buffer = Staging{ machine_.memory().allocate(size), size };
-    }
-    return buffer.address;
+    return machine_.memory().allocate(std::max<std::uint32_t>(size, 1));
+}
+
+void Proxies::giveBack(const std::uint32_t address)
+{
+    machine_.memory().free(address);
 }
 
 auto Proxies::lock(const void* const host, const std::uint32_t sub, std::uint8_t* const bytes, const std::uint32_t size)
     -> std::uint32_t
 {
-    const auto guest = staging(host, sub, size);
+    // A lock the guest never unlocked gives its buffer back first
+    unlock(host, sub);
+    const auto guest = borrow(size);
     std::memcpy(machine_.memory().host(guest), bytes, size);
     locked_[{ host, sub }] = Locked{ bytes, guest, size };
     return guest;
@@ -142,6 +152,7 @@ auto Proxies::unlock(const void* const host, const std::uint32_t sub) -> std::ui
     const auto [bytes, guest, size] = found->second;
     locked_.erase(found);
     std::memcpy(bytes, machine_.memory().host(guest), size);
+    giveBack(guest);
     return bytes;
 }
 

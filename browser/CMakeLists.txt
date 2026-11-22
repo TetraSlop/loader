@@ -114,17 +114,18 @@ if(EMSCRIPTEN)
         -Wno-unknown-pragmas)
     # INITGUID defines each GUID where a header declares it, as a selectany constant the linker folds
     target_compile_definitions(tmweb_compat PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN INITGUID)
-    target_link_options(tmweb_compat PUBLIC -lGL -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2
-        --js-library=${CMAKE_CURRENT_SOURCE_DIR}/compat/gl/gl.js)
 
-    # d3d8.dll, dinput8.dll and dsound.dll for the guest, on compat's objects
+    # d3d8.dll, dinput8.dll and dsound.dll for the guest, on compat's objects. compat's Windows headers and flags
+    # stay behind it.
     add_library(tmweb_directx STATIC com/d3dx.cpp com/directx.cpp)
-    target_link_libraries(tmweb_directx PUBLIC tmweb_core tmweb_compat)
+    target_link_libraries(tmweb_directx PUBLIC tmweb_core PRIVATE tmweb_compat)
+    target_link_options(tmweb_directx INTERFACE -lGL -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2
+        --js-library=${CMAKE_CURRENT_SOURCE_DIR}/compat/gl/gl.js)
 endif()
 target_link_libraries(tmweb_host PUBLIC tmweb_hle)
 if(EMSCRIPTEN)
-    # host.cpp hands input to compat's DirectInput
-    target_link_libraries(tmweb_host PUBLIC tmweb_compat)
+    # app/boot.cpp adds com/directx.cpp; host.cpp hands input to compat's DirectInput, which comes with it
+    target_link_libraries(tmweb_host PUBLIC tmweb_directx)
 endif()
 
 add_executable(tmweb app/main.cpp)
@@ -228,7 +229,7 @@ if(BUILD_TESTING AND EMSCRIPTEN)
     # What only builds for Wasm, under Node: node build/browser-wasm/tmweb_wasm_tests.js. One guest arena per
     # process, so the tests share one machine.
     add_executable(tmweb_wasm_tests tests/directx_test.cpp)
-    target_link_libraries(tmweb_wasm_tests PRIVATE tmweb_directx Catch2::Catch2WithMain)
+    target_link_libraries(tmweb_wasm_tests PRIVATE tmweb_directx tmweb_compat Catch2::Catch2WithMain)
     target_link_options(tmweb_wasm_tests PRIVATE -sENVIRONMENT=node -sALLOW_MEMORY_GROWTH=1
         -sINITIAL_MEMORY=448MB -sMAXIMUM_MEMORY=2GB -sSTACK_SIZE=4MB -sEXIT_RUNTIME=1)
     add_test(NAME tmweb_wasm_tests COMMAND node $<TARGET_FILE:tmweb_wasm_tests>)

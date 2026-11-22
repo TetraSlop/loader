@@ -18,6 +18,10 @@
 #include <array>
 #include <bit>
 #include <cstring>
+#include <optional>
+#include <vector>
+
+extern "C" auto kr_dsound_mix(float* out, uint32_t frames, uint32_t rate, float music, float effects) -> void;
 
 template <>
 struct tmweb::Handle<HWND__> : std::true_type
@@ -38,6 +42,12 @@ namespace tmweb
 {
 namespace
 {
+
+// TM's software cursor block (MediaHost::gameCursor)
+constexpr std::uint32_t kCursorAnimateX = 0x14;
+constexpr std::uint32_t kCursorAnimateY = 0x18;
+constexpr std::uint32_t kCursorX        = 0x2C; // int16
+constexpr std::uint32_t kCursorY        = 0x2E; // int16
 
 auto iid(const GUID& guid) -> Iid
 {
@@ -228,7 +238,7 @@ auto textureUnlockRect(Proxies& proxies) -> Method
                   });
 }
 
-// A cube texture's parts for staging: 32 levels per face
+// A cube texture's parts for locks: 32 levels per face
 auto cubePart(const std::uint32_t face, const std::uint32_t level) -> std::uint32_t
 {
     return face * 32 + level;
@@ -314,20 +324,27 @@ auto getContainer(Proxies& proxies) -> Method
 template <class Item>
 struct GuestCallback
 {
-    // Apart from the parts locks use
-    static constexpr std::uint32_t kItemPart = 0x10000;
-
     Proxies*      proxies  = nullptr;
     std::uint32_t function = 0;
     std::uint32_t context  = 0;
     std::uint32_t item     = 0;
 
-    GuestCallback(Proxies& owner, const void* const host, const std::uint32_t guestFunction, const std::uint32_t guestContext)
+    GuestCallback(Proxies& owner, const std::uint32_t guestFunction, const std::uint32_t guestContext)
     : proxies(&owner)
     , function(guestFunction)
     , context(guestContext)
-    , item(owner.staging(host, kItemPart, sizeof(Item)))
+    , item(owner.borrow(sizeof(Item)))
     {
+    }
+
+    GuestCallback(const GuestCallback&)                    = delete;
+    GuestCallback(GuestCallback&&)                         = delete;
+    auto operator=(const GuestCallback&) -> GuestCallback& = delete;
+    auto operator=(GuestCallback&&) -> GuestCallback&      = delete;
+
+    ~GuestCallback()
+    {
+        proxies->giveBack(item);
     }
 
     static BOOL CALLBACK call(const Item* const host, LPVOID const self)
@@ -348,7 +365,7 @@ auto enumDevices(Proxies& proxies) -> Method
                       {
                           return code(DIERR_INVALIDPARAM);
                       }
-                      auto callback = GuestCallback<DIDEVICEINSTANCEA>{ proxies, self, call.arg(2), call.arg(3) };
+                      auto callback = GuestCallback<DIDEVICEINSTANCEA>{ proxies, call.arg(2), call.arg(3) };
                       return code(self->EnumDevices(call.arg(1), &GuestCallback<DIDEVICEINSTANCEA>::call, &callback, call.arg(4)));
                   });
 }
@@ -362,7 +379,7 @@ auto enumObjects(Proxies& proxies) -> Method
                       {
                           return code(DIERR_INVALIDPARAM);
                       }
-                      auto callback = GuestCallback<DIDEVICEOBJECTINSTANCEA>{ proxies, self, call.arg(1), call.arg(2) };
+                      auto callback = GuestCallback<DIDEVICEOBJECTINSTANCEA>{ proxies, call.arg(1), call.arg(2) };
                       return code(self->EnumObjects(&GuestCallback<DIDEVICEOBJECTINSTANCEA>::call, &callback, call.arg(3)));
                   });
 }
@@ -376,7 +393,7 @@ auto enumEffects(Proxies& proxies) -> Method
                       {
                           return code(DIERR_INVALIDPARAM);
                       }
-                      auto callback = GuestCallback<DIEFFECTINFOA>{ proxies, self, call.arg(1), call.arg(2) };
+                      auto callback = GuestCallback<DIEFFECTINFOA>{ proxies, call.arg(1), call.arg(2) };
                       return code(self->EnumEffects(&GuestCallback<DIEFFECTINFOA>::call, &callback, call.arg(3)));
                   });
 }
@@ -436,8 +453,132 @@ auto soundUnlock(Proxies& proxies) -> Method
                   });
 }
 
+// The host's side of the stand-ins, and what they keep between calls
+struct Media
+{
+    MediaHost              host;
+    std::uint64_t          mixed   = 0; // frames mixed since the clock's start
+    bool                   started = false;
+    std::vector<float>     frames;
+    std::optional<Pointer> pointer;
+    std::array<BYTE, 4>    buttons{};
+
+    // Mix the DirectSound buffers up to the machine's clock, so play cursors move with time. At most 200 ms at once:
+    // after a stall the buffers skip ahead rather than play a burst.
+    void pump(Machine& machine)
+    {
+        const auto rate   = host.soundRate;
+        const auto target = machine.scheduler().now() * rate / 1000;
+        if (!started)
+        {
+            started = true;
+            mixed   = target;
+            return;
+        }
+        const auto count = static_cast<std::uint32_t>(std::min<std::uint64_t>(target - mixed, rate / 5));
+        mixed            = target;
+        if (count == 0)
+        {
+            return;
+        }
+        if (!host.sound)
+        {
+            kr_dsound_mix(nullptr, count, rate, 1.0f, 1.0f);
+            return;
+        }
+        frames.resize(2 * static_cast<std::size_t>(count));
+        kr_dsound_mix(frames.data(), count, rate, 1.0f, 1.0f);
+        host.sound(frames);
+    }
+};
+
+// Run more after a slot's handler returns successfully
+template <class F>
+auto after(Method method, F then) -> Method
+{
+    method.handler = [inner = std::move(method.handler), then](Call& call) -> Outcome
+    {
+        auto        outcome = inner(call);
+        const auto* result  = std::get_if<Return>(&outcome);
+        if (result != nullptr && SUCCEEDED(static_cast<HRESULT>(result->eax)))
+        {
+            then(call);
+        }
+        return outcome;
+    };
+    return method;
+}
+
+// Present: the frame is on the canvas
+auto presented(const std::shared_ptr<Media>& media, Method method) -> Method
+{
+    return after(std::move(method), [media](Call& call)
+                 {
+                     media->pump(call.machine());
+                     if (media->host.presented)
+                     {
+                         media->host.presented();
+                     }
+                 });
+}
+
+// Every DirectSound buffer call first brings the mix up to time, as the play cursor moves on its own in DirectSound
+auto pumping(const std::shared_ptr<Media>& media, std::vector<Method> methods) -> std::vector<Method>
+{
+    for (auto& method : methods)
+    {
+        method.handler = [media, inner = std::move(method.handler)](Call& call) -> Outcome
+        {
+            media->pump(call.machine());
+            return inner(call);
+        };
+    }
+    return methods;
+}
+
+// TM moves its own software cursor by DirectInput deltas. When the host's pointer moved or a button went down, the
+// delta is the step from the game's cursor to the pointer, and the keyboard's cursor animation stops, as tmloader's
+// mapGameMouse does, so the two cursors agree.
+auto mouseState(Proxies& proxies, const std::shared_ptr<Media>& media, Method method) -> Method
+{
+    return after(std::move(method), [&proxies, media](Call& call)
+                 {
+                     const auto size   = call.arg(1);
+                     const auto state  = call.arg(2);
+                     const auto cursor = media->host.gameCursor;
+                     if (size < sizeof(DIMOUSESTATE) || size >= 256 || state == 0 || cursor == 0 || !media->host.pointer)
+                     {
+                         return;
+                     }
+                     const auto pointer = media->host.pointer();
+                     if (!pointer)
+                     {
+                         return;
+                     }
+                     auto& memory = proxies.memory();
+                     auto  mouse  = DIMOUSESTATE{};
+                     memory.read(state, std::span{ reinterpret_cast<std::uint8_t*>(&mouse), sizeof(mouse) });
+                     auto clicked = false;
+                     for (auto button = 0u; button < media->buttons.size(); ++button)
+                     {
+                         clicked                = clicked || ((mouse.rgbButtons[button] & 0x80) != 0 && (media->buttons[button] & 0x80) == 0);
+                         media->buttons[button] = mouse.rgbButtons[button];
+                     }
+                     const auto moved = !media->pointer || media->pointer->x != pointer->x || media->pointer->y != pointer->y;
+                     media->pointer   = pointer;
+                     if (!moved && !clicked)
+                     {
+                         return;
+                     }
+                     memory.write<std::int32_t>(cursor + kCursorAnimateX, 0);
+                     memory.write<std::int32_t>(cursor + kCursorAnimateY, 0);
+                     memory.write<std::int32_t>(state, pointer->x - memory.read<std::int16_t>(cursor + kCursorX));
+                     memory.write<std::int32_t>(state + 4, pointer->y - memory.read<std::int16_t>(cursor + kCursorY));
+                 });
+}
+
 // Every slot after IUnknown's, in vtable order, as mingw-w64's headers declare them
-void addInterfaces(Proxies& proxies)
+void addInterfaces(Proxies& proxies, const std::shared_ptr<Media>& media)
 {
     proxies.add<IDirect3D8>("IDirect3D8", iid(IID_IDirect3D8), {
                                                                    TMWEB_BIND(proxies, IDirect3D8, RegisterSoftwareDevice),
@@ -468,7 +609,7 @@ void addInterfaces(Proxies& proxies)
                                                                                      TMWEB_BIND(proxies, IDirect3DDevice8, ShowCursor),
                                                                                      TMWEB_BIND(proxies, IDirect3DDevice8, CreateAdditionalSwapChain),
                                                                                      TMWEB_BIND(proxies, IDirect3DDevice8, Reset),
-                                                                                     TMWEB_BIND(proxies, IDirect3DDevice8, Present),
+                                                                                     presented(media, TMWEB_BIND(proxies, IDirect3DDevice8, Present)),
                                                                                      TMWEB_BIND(proxies, IDirect3DDevice8, GetBackBuffer),
                                                                                      TMWEB_BIND(proxies, IDirect3DDevice8, GetRasterStatus),
                                                                                      TMWEB_BIND(proxies, IDirect3DDevice8, SetGammaRamp),
@@ -553,7 +694,7 @@ void addInterfaces(Proxies& proxies)
                                                                                  });
 
     proxies.add<IDirect3DSwapChain8>("IDirect3DSwapChain8", iid(IID_IDirect3DSwapChain8), {
-                                                                                              TMWEB_BIND(proxies, IDirect3DSwapChain8, Present),
+                                                                                              presented(media, TMWEB_BIND(proxies, IDirect3DSwapChain8, Present)),
                                                                                               TMWEB_BIND(proxies, IDirect3DSwapChain8, GetBackBuffer),
                                                                                           });
 
@@ -682,7 +823,7 @@ void addInterfaces(Proxies& proxies)
                                                                                                  TMWEB_BIND(proxies, IDirectInputDevice8A, SetProperty),
                                                                                                  TMWEB_BIND(proxies, IDirectInputDevice8A, Acquire),
                                                                                                  TMWEB_BIND(proxies, IDirectInputDevice8A, Unacquire),
-                                                                                                 TMWEB_BIND(proxies, IDirectInputDevice8A, GetDeviceState),
+                                                                                                 mouseState(proxies, media, TMWEB_BIND(proxies, IDirectInputDevice8A, GetDeviceState)),
                                                                                                  TMWEB_BIND(proxies, IDirectInputDevice8A, GetDeviceData),
                                                                                                  TMWEB_BIND(proxies, IDirectInputDevice8A, SetDataFormat),
                                                                                                  TMWEB_BIND(proxies, IDirectInputDevice8A, SetEventNotification),
@@ -719,57 +860,59 @@ void addInterfaces(Proxies& proxies)
                                                                             TMWEB_BIND(proxies, IDirectSound8, VerifyCertification),
                                                                         });
 
-    proxies.add<IDirectSoundBuffer>("IDirectSoundBuffer", iid(IID_IDirectSoundBuffer), {
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, GetCaps),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, GetCurrentPosition),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, GetFormat),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, GetVolume),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, GetPan),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, GetFrequency),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, GetStatus),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, Initialize),
-                                                                                           soundLock<IDirectSoundBuffer>(proxies),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, Play),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, SetCurrentPosition),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, SetFormat),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, SetVolume),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, SetPan),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, SetFrequency),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, Stop),
-                                                                                           soundUnlock<IDirectSoundBuffer>(proxies),
-                                                                                           TMWEB_BIND(proxies, IDirectSoundBuffer, Restore),
-                                                                                       });
+    proxies.add<IDirectSoundBuffer>("IDirectSoundBuffer", iid(IID_IDirectSoundBuffer), pumping(media, {
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, GetCaps),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, GetCurrentPosition),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, GetFormat),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, GetVolume),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, GetPan),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, GetFrequency),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, GetStatus),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, Initialize),
+                                                                                                          soundLock<IDirectSoundBuffer>(proxies),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, Play),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, SetCurrentPosition),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, SetFormat),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, SetVolume),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, SetPan),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, SetFrequency),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, Stop),
+                                                                                                          soundUnlock<IDirectSoundBuffer>(proxies),
+                                                                                                          TMWEB_BIND(proxies, IDirectSoundBuffer, Restore),
+                                                                                                      }));
 
-    proxies.add<IDirectSoundBuffer8>("IDirectSoundBuffer8", iid(IID_IDirectSoundBuffer8), {
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, GetCaps),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, GetCurrentPosition),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, GetFormat),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, GetVolume),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, GetPan),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, GetFrequency),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, GetStatus),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, Initialize),
-                                                                                              soundLock<IDirectSoundBuffer8>(proxies),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, Play),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, SetCurrentPosition),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, SetFormat),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, SetVolume),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, SetPan),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, SetFrequency),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, Stop),
-                                                                                              soundUnlock<IDirectSoundBuffer8>(proxies),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, Restore),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, SetFX),
-                                                                                              TMWEB_BIND(proxies, IDirectSoundBuffer8, AcquireResources),
-                                                                                              unsupported("GetObjectInPath", 5),
-                                                                                          });
+    proxies.add<IDirectSoundBuffer8>("IDirectSoundBuffer8", iid(IID_IDirectSoundBuffer8), pumping(media, {
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, GetCaps),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, GetCurrentPosition),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, GetFormat),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, GetVolume),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, GetPan),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, GetFrequency),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, GetStatus),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, Initialize),
+                                                                                                             soundLock<IDirectSoundBuffer8>(proxies),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, Play),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, SetCurrentPosition),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, SetFormat),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, SetVolume),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, SetPan),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, SetFrequency),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, Stop),
+                                                                                                             soundUnlock<IDirectSoundBuffer8>(proxies),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, Restore),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, SetFX),
+                                                                                                             TMWEB_BIND(proxies, IDirectSoundBuffer8, AcquireResources),
+                                                                                                             unsupported("GetObjectInPath", 5),
+                                                                                                         }));
 }
 
 } // namespace
 
-auto addDirectX(Proxies& proxies) -> std::vector<Function>
+auto addDirectX(Proxies& proxies, MediaHost host) -> std::vector<Function>
 {
-    addInterfaces(proxies);
+    const auto media = std::make_shared<Media>();
+    media->host      = std::move(host);
+    addInterfaces(proxies, media);
 
     auto functions = std::vector<Function>{};
     functions.push_back(Function{ "d3d8.dll", "Direct3DCreate8", Convention::Stdcall, 1, [&proxies](Call& call) -> Outcome

@@ -238,6 +238,10 @@ public:
         else
         {
             std::memcpy(state, &input.mouse, std::min<size_t>(size, sizeof(input.mouse)));
+            // Relative axes report the motion since the last read
+            input.mouse.lX = 0;
+            input.mouse.lY = 0;
+            input.mouse.lZ = 0;
         }
 
         return DI_OK;

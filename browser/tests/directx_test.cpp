@@ -11,17 +11,22 @@
 #include <dsound.h>
 
 #include "dx/d3d8_null.h"
+#include "tests/engine.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <initializer_list>
+#include <optional>
+#include <span>
 #include <string_view>
 
 using namespace tmweb;
 
 extern "C" auto kr_dinput_key(int key, bool down) -> void;
+extern "C" auto kr_dinput_mouse(int dx, int dy, int dz) -> void;
 
 namespace
 {
@@ -50,7 +55,13 @@ enum Slot : unsigned
 
     kBufferLock      = 11,
     kBufferUnlock    = 12,
+    kGetSurfaceLevel = 15,
     kTextureLockRect = 16,
+    kSurfaceLockRect = 9,
+    kSurfaceUnlock   = 10,
+    kUpdateTexture   = 29,
+    kSoundPosition   = 4,
+    kSoundPlay       = 12,
     kTextureUnlock   = 17,
 
     kInputCreateDevice   = 3,
@@ -75,12 +86,51 @@ auto publish(Machine& machine) -> bool
     return true;
 }
 
+// The machine's clock and what the stand-ins hand the host
+std::uint64_t      g_now = 0;
+std::vector<float> g_sound;
+unsigned           g_presented = 0;
+// The host's pointer for the mouse test, and where TM's cursor block would be
+std::optional<Pointer> g_pointer;
+std::uint32_t          g_cursor = 0;
+
+auto media() -> MediaHost
+{
+    auto host      = MediaHost{};
+    host.presented = []
+    {
+        ++g_presented;
+    };
+    host.sound = [](const std::span<const float> frames)
+    {
+        g_sound.insert(g_sound.end(), frames.begin(), frames.end());
+    };
+    host.soundRate = 48000;
+    host.pointer   = []
+    {
+        return g_pointer;
+    };
+    host.gameCursor = g_cursor;
+    return host;
+}
+
+auto clock(Machine& machine) -> bool
+{
+    machine.scheduler().setClock([]
+                                 {
+                                     return g_now;
+                                 });
+    return true;
+}
+
 struct World
 {
     Machine               machine;
     bool                  published = publish(machine); // COM slots come after the module images
+    bool                  clocked   = clock(machine);
+    std::uint32_t         cursor = g_cursor = machine.memory().allocate(0x30);
     Proxies               proxies{ machine };
-    std::vector<Function> exports = addDirectX(proxies);
+    std::vector<Function> exports = addDirectX(proxies, media());
     Context               context{};
     std::uint32_t         stack = machine.memory().allocate(0x10000);
 
@@ -377,4 +427,183 @@ TEST_CASE("A DirectSound buffer from ordinal 11 locks through staging")
     CHECK(buffer8 != 0);
     CHECK(buffer8 != buffer);
     CHECK(static_cast<void*>(w.proxies.unwrap<IDirectSoundBuffer8>(buffer8)) == static_cast<void*>(host));
+}
+
+TEST_CASE("Guest x86 code calls the proxies through their vtables")
+{
+    auto&      w      = world();
+    auto&      memory = w.memory();
+    const auto d3d    = w.exported("Direct3DCreate8", { D3D_SDK_VERSION });
+    REQUIRE(d3d != 0);
+
+    // A stand-in to stop at, called through a one-slot vtable
+    const auto stop = std::array{ Method{ "done", 1, [](Call&) -> Outcome
+                                          {
+                                              return Halt{ "done" };
+                                          } } };
+    const auto done = w.machine.boundary().addInterface("test", stop);
+
+    constexpr auto code   = std::uint32_t{ 0x10001000 };
+    constexpr auto data   = std::uint32_t{ 0x10002000 };
+    const auto     params = w.presentParameters();
+    memory.map(code, 0x2000);
+    memory.write<std::uint32_t>(data, d3d);
+    memory.write<std::uint32_t>(data + 4, data + 16); // an object whose vtable is done
+    memory.write<std::uint32_t>(data + 16, done);
+
+    auto       program = std::vector<std::uint8_t>{};
+    const auto emit    = [&](std::initializer_list<std::uint8_t> bytes)
+    {
+        program.insert(program.end(), bytes);
+    };
+    const auto emit32 = [&](const std::uint32_t value)
+    {
+        emit({ static_cast<std::uint8_t>(value), static_cast<std::uint8_t>(value >> 8), static_cast<std::uint8_t>(value >> 16), static_cast<std::uint8_t>(value >> 24) });
+    };
+    emit({ 0x8B, 0x35 }); // mov esi, [data]: the IDirect3D8
+    emit32(data);
+    emit({ 0x89, 0xE5 });        // mov ebp, esp
+    emit({ 0x56, 0x8B, 0x06 });  // push esi; mov eax, [esi]
+    emit({ 0xFF, 0x50, 4 * 4 }); // call [eax + GetAdapterCount]
+    emit({ 0x89, 0xC3 });        // mov ebx, eax
+    emit({ 0x68 });              // push out
+    emit32(data + 8);
+    emit({ 0x68 }); // push params
+    emit32(params);
+    emit({ 0x6A, D3DCREATE_SOFTWARE_VERTEXPROCESSING }); // push 0x20
+    emit({ 0x68 });                                      // push window
+    emit32(kWindow);
+    emit({ 0x6A, D3DDEVTYPE_HAL, 0x6A, 0 }); // push HAL; push adapter 0
+    emit({ 0x56, 0x8B, 0x06 });              // push esi; mov eax, [esi]
+    emit({ 0xFF, 0x50, 4 * kCreateDevice }); // call [eax + CreateDevice]
+    emit({ 0x89, 0xC7 });                    // mov edi, eax
+    emit({ 0xD9, 0x3D });                    // fnstcw [data + 12]
+    emit32(data + 12);
+    emit({ 0x89, 0xE9 }); // mov ecx, ebp: the calls popped their arguments
+    emit({ 0xA1 });       // mov eax, [data + 4]
+    emit32(data + 4);
+    emit({ 0x50, 0x8B, 0x00, 0xFF, 0x10 }); // push eax; mov eax, [eax]; call [eax]
+    memory.write(code, std::span<const std::uint8_t>{ program });
+
+    auto& thread               = w.machine.scheduler().createMain(0x10000);
+    thread.context.eip         = code;
+    thread.context.fpu.control = 0x027F;
+    const auto result          = test::Engine{ w.machine }.run(100000);
+    CHECK(result.reason == "done");
+    CHECK(thread.context.r[kEbx] == 1);
+    CHECK(thread.context.r[kEdi] == D3D_OK);
+    CHECK(thread.context.r[kEcx] == thread.context.r[kEbp]);
+    CHECK(memory.read<std::uint16_t>(data + 12) == 0x007F);
+    const auto device = memory.read<std::uint32_t>(data + 8);
+    CHECK(w.proxies.unwrap<IDirect3DDevice8>(device) != nullptr);
+}
+
+TEST_CASE("UpdateTexture copies what the game drew into system memory to the texture it draws with")
+{
+    auto&      w      = world();
+    const auto device = w.device();
+    const auto out    = w.scratch(4);
+    REQUIRE(w.method(device, kCreateTexture, { 0xAA, 0x20, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, out }) == D3D_OK);
+    const auto staging = w.out(out);
+    REQUIRE(w.method(device, kCreateTexture, { 0xAA, 0x20, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, out }) == D3D_OK);
+    const auto drawn = w.out(out);
+
+    REQUIRE(w.method(staging, kGetSurfaceLevel, { 0, out }) == D3D_OK);
+    const auto surface = w.out(out);
+    const auto locked  = w.scratch(sizeof(D3DLOCKED_RECT));
+    REQUIRE(w.method(surface, kSurfaceLockRect, { locked, 0, 0 }) == D3D_OK);
+    const auto pitch = w.memory().read<std::int32_t>(locked);
+    const auto bits  = w.memory().read<std::uint32_t>(locked + 4);
+    w.memory().write<std::uint32_t>(bits + 31 * pitch + 0xA9 * 4, 0x80FFFFFF);
+    REQUIRE(w.method(surface, kSurfaceUnlock) == D3D_OK);
+    w.method(surface, kRelease);
+
+    REQUIRE(w.method(device, kUpdateTexture, { staging, drawn }) == D3D_OK);
+    auto* const host = w.proxies.unwrap<IDirect3DTexture8>(drawn);
+    auto        mine = D3DLOCKED_RECT{};
+    REQUIRE(host->LockRect(0, &mine, nullptr, D3DLOCK_READONLY) == D3D_OK);
+    CHECK(*reinterpret_cast<const std::uint32_t*>(static_cast<const BYTE*>(mine.pBits) + 31 * pitch + 0xA9 * 4) == 0x80FFFFFF);
+    host->UnlockRect(0);
+    w.method(staging, kRelease);
+    w.method(drawn, kRelease);
+}
+
+TEST_CASE("A playing buffer is mixed for the host as the clock runs, and Present reports the frame")
+{
+    auto&      w   = world();
+    const auto out = w.scratch(4);
+    REQUIRE(w.exported("#11", { 0, out, 0 }) == DS_OK);
+    const auto sound = w.out(out);
+
+    const auto format           = w.scratch(sizeof(WAVEFORMATEX));
+    *w.at<WAVEFORMATEX>(format) = WAVEFORMATEX{ WAVE_FORMAT_PCM, 2, 48000, 48000 * 4, 4, 16, 0 };
+    const auto desc             = w.scratch(sizeof(DSBUFFERDESC));
+    auto&      bufferDesc       = *w.at<DSBUFFERDESC>(desc);
+    bufferDesc                  = DSBUFFERDESC{};
+    bufferDesc.dwSize           = sizeof(DSBUFFERDESC);
+    bufferDesc.dwBufferBytes    = 0xC000;
+    bufferDesc.lpwfxFormat      = w.at<WAVEFORMATEX>(format);
+    REQUIRE(w.method(sound, kCreateSoundBuffer, { desc, out, 0 }) == DS_OK);
+    const auto buffer = w.out(out);
+
+    const auto first = w.scratch(4);
+    const auto bytes = w.scratch(4);
+    REQUIRE(w.method(buffer, kSoundLock, { 0, 0xC000, first, bytes, 0, 0, 0 }) == DS_OK);
+    for (auto sample = 0u; sample < 0xC000 / 2; ++sample)
+    {
+        w.memory().write<std::int16_t>(w.out(first) + 2 * sample, 0x4000);
+    }
+    REQUIRE(w.method(buffer, kSoundUnlock, { w.out(first), 0xC000, 0, 0 }) == DS_OK);
+
+    g_sound.clear();
+    REQUIRE(w.method(buffer, kSoundPlay, { 0, 0, DSBPLAY_LOOPING }) == DS_OK);
+    g_now += 100;
+    const auto position = w.scratch(4);
+    REQUIRE(w.method(buffer, kSoundPosition, { position, 0 }) == DS_OK);
+    CHECK(g_sound.size() == 2 * 4800);
+    CHECK(std::ranges::any_of(g_sound, [](const float sample)
+                              {
+                                  return sample > 0.1f;
+                              }));
+    CHECK(w.out(position) == 4800 * 4);
+
+    const auto device    = w.device();
+    const auto presented = g_presented;
+    g_now += 10;
+    REQUIRE(w.method(device, kPresent, { 0, 0, 0, 0 }) == D3D_OK);
+    CHECK(g_presented == presented + 1);
+    CHECK(g_sound.size() == 2 * (4800 + 480));
+    w.method(buffer, kRelease);
+}
+
+TEST_CASE("The mouse steers TM's cursor onto the host's pointer")
+{
+    auto&      w      = world();
+    const auto cursor = w.cursor;
+    const auto out    = w.scratch(4);
+    REQUIRE(w.exported("DirectInput8Create", { 0x10000000, DIRECTINPUT_VERSION, w.guid(IID_IDirectInput8A), out, 0 }) == DI_OK);
+    const auto input = w.out(out);
+    REQUIRE(w.method(input, kInputCreateDevice, { w.guid(GUID_SysMouse), out, 0 }) == DI_OK);
+    const auto mouse = w.out(out);
+    REQUIRE(w.method(mouse, kAcquire) == DI_OK);
+
+    w.memory().write<std::int16_t>(cursor + 0x2C, 100);
+    w.memory().write<std::int16_t>(cursor + 0x2E, 50);
+    w.memory().write<std::int32_t>(cursor + 0x14, 3);
+    g_pointer        = Pointer{ 300, 200 };
+    const auto state = w.scratch(sizeof(DIMOUSESTATE));
+    REQUIRE(w.method(mouse, kGetDeviceState, { sizeof(DIMOUSESTATE), state }) == DI_OK);
+    CHECK(w.memory().read<std::int32_t>(state) == 200);
+    CHECK(w.memory().read<std::int32_t>(state + 4) == 150);
+    CHECK(w.memory().read<std::int32_t>(cursor + 0x14) == 0);
+
+    // Unmoved, the deltas are DirectInput's own, and reading clears them
+    kr_dinput_mouse(5, -2, 0);
+    REQUIRE(w.method(mouse, kGetDeviceState, { sizeof(DIMOUSESTATE), state }) == DI_OK);
+    CHECK(w.memory().read<std::int32_t>(state) == 5);
+    CHECK(w.memory().read<std::int32_t>(state + 4) == -2);
+    REQUIRE(w.method(mouse, kGetDeviceState, { sizeof(DIMOUSESTATE), state }) == DI_OK);
+    CHECK(w.memory().read<std::int32_t>(state) == 0);
+    CHECK(w.memory().read<std::int32_t>(state + 4) == 0);
+    g_pointer.reset();
 }

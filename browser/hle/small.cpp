@@ -1,6 +1,6 @@
-// The small modules TM.dll imports: imm32, ole32, oleaut32 and gdi32, and placeholders for the media factories
-// until the COM stand-ins land. Direct3DCreate8 and DirectInput8Create halt as unhandled imports; that halt is the
-// end of milestone 2. DirectSoundCreate8 fails, and the game carries on without sound.
+// The small modules TM.dll imports: imm32, ole32, oleaut32 and gdi32. Natively, where compat's DirectX does not
+// build, placeholders for the media factories: Direct3DCreate8 and DirectInput8Create halt as unhandled imports, the
+// end of milestone 2, and DirectSoundCreate8 fails, so the game carries on without sound.
 #include "hle/process.h"
 
 #include <format>
@@ -79,6 +79,8 @@ void installSmallModules(Process& p)
             return ret(0x00007000 + call.arg(0));
         });
 
+#ifndef __EMSCRIPTEN__
+    // The Wasm build has com/directx.cpp's, which app/boot.cpp registers
     add("d3d8.dll", "Direct3DCreate8", 1);
     add("dinput8.dll", "DirectInput8Create", 5);
     add("dsound.dll", "#11", 3, [&p](Call&)
@@ -86,6 +88,7 @@ void installSmallModules(Process& p)
             p.trace.push_back("DirectSoundCreate8");
             return ret(kFail);
         });
+#endif
 }
 
 } // namespace tmweb::hle

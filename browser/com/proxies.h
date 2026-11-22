@@ -100,12 +100,13 @@ public:
     // The host object went away: its proxies stop unwrapping
     void forget(const void* host);
 
-    // A guest buffer of at least size bytes for a host object (sub tells its parts apart), kept and reused; a bigger
-    // request replaces it.
-    auto staging(const void* host, std::uint32_t sub, std::uint32_t size) -> std::uint32_t;
+    // A guest buffer of at least size bytes until it is given back
+    auto borrow(std::uint32_t size) -> std::uint32_t;
+    void giveBack(std::uint32_t address);
 
-    // Lock: the guest cannot touch host memory, so it gets the locked bytes in a staging buffer, and unlock copies
-    // them back. unlock returns the host bytes, or null when nothing is locked.
+    // Lock: the guest cannot touch host memory, so it gets the locked bytes in a borrowed buffer, and unlock copies
+    // them back and returns the buffer. sub tells a host object's parts apart (a texture's levels). unlock returns
+    // the host bytes, or null when nothing is locked.
     auto lock(const void* host, std::uint32_t sub, std::uint8_t* bytes, std::uint32_t size) -> std::uint32_t;
     auto unlock(const void* host, std::uint32_t sub) -> std::uint8_t*;
 
@@ -156,12 +157,6 @@ private:
     std::map<std::pair<const void*, const Interface*>, std::uint32_t> hosts_;
     using Part = std::pair<const void*, std::uint32_t>;
 
-    struct Staging
-    {
-        std::uint32_t address = 0;
-        std::uint32_t size    = 0;
-    };
-
     struct Locked
     {
         std::uint8_t* bytes = nullptr;
@@ -169,8 +164,7 @@ private:
         std::uint32_t size  = 0;
     };
 
-    std::map<Part, Staging> staging_;
-    std::map<Part, Locked>  locked_;
+    std::map<Part, Locked> locked_;
 };
 
 namespace detail
