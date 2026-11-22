@@ -93,6 +93,9 @@ public:
     void suspend(Thread& thread);
     void resume(Thread& thread);
     void exit(Thread& thread, std::uint32_t code);
+    // Called by exit() before the thread's handle is signaled: kernel objects that track an owner (mutexes) release
+    // what the thread held, as Windows abandons them
+    void onExit(std::function<void(Thread&)> listener);
 
     // Park the current thread on a wait; the machine calls onWake when it is satisfied or times out
     void block(Wait wait, std::function<void(const WaitResult&)> onWake);
@@ -119,13 +122,14 @@ private:
         std::function<void(const WaitResult&)> onWake;
     };
 
-    Memory&                              memory_;
-    std::vector<std::unique_ptr<Thread>> threads_;
-    std::vector<Parked>                  parked_;
-    Thread*                              current_ = nullptr;
-    ThreadId                             nextId_  = 1;
-    std::uint32_t                        nextTeb_ = layout::kThreads;
-    std::function<std::uint64_t()>       clock_;
+    Memory&                                   memory_;
+    std::vector<std::unique_ptr<Thread>>      threads_;
+    std::vector<Parked>                       parked_;
+    Thread*                                   current_ = nullptr;
+    ThreadId                                  nextId_  = 1;
+    std::uint32_t                             nextTeb_ = layout::kThreads;
+    std::function<std::uint64_t()>            clock_;
+    std::vector<std::function<void(Thread&)>> exitListeners_;
 };
 
 } // namespace tmweb

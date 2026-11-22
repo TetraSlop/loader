@@ -166,3 +166,63 @@ TEST_CASE("A fault with no handler halts the machine and says where")
     CHECK(result.halted);
     CHECK(result.reason == "Unhandled access violation at 0x11000000 reading 0x0");
 }
+
+namespace
+{
+
+// A mutex as the stand-ins would build it on Waitable: an owner, a recursion count, released when the owner exits
+class Mutex final : public Waitable
+{
+public:
+    auto signaled(const ThreadId waiter) const -> bool override
+    {
+        return owner == 0 || owner == waiter;
+    }
+
+    void acquire(const ThreadId waiter) override
+    {
+        owner = waiter;
+        ++count;
+    }
+
+    ThreadId      owner = 0;
+    std::uint32_t count = 0;
+};
+
+} // namespace
+
+TEST_CASE("Mutex ownership: waits by others block, the owner re-enters, and exit releases it")
+{
+    auto  memory    = Memory{};
+    auto  scheduler = Scheduler{ memory };
+    auto& main      = scheduler.createMain(0x10000);
+    auto& other     = scheduler.create(0, 0, 0x10000, false, 0);
+    auto  mutex     = std::make_shared<Mutex>();
+    scheduler.onExit([mutex](Thread& thread)
+                     {
+                         if (mutex->owner == thread.id)
+                         {
+                             mutex->owner = 0;
+                             mutex->count = 0;
+                         }
+                     });
+    mutex->acquire(main.id);
+    mutex->acquire(main.id);
+    CHECK(mutex->signaled(main.id));
+    REQUIRE(scheduler.schedule());
+    REQUIRE(&scheduler.current() == &other);
+    auto woke = false;
+    scheduler.block(Wait{ { mutex }, false, kInfinite }, [&woke](const WaitResult&)
+                    {
+                        woke = true;
+                    });
+    REQUIRE(scheduler.schedule());
+    CHECK(&scheduler.current() == &main);
+    CHECK_FALSE(woke);
+    scheduler.exit(main, 0);
+    REQUIRE(scheduler.schedule());
+    CHECK(&scheduler.current() == &other);
+    CHECK(woke);
+    CHECK(mutex->owner == other.id);
+    CHECK(mutex->count == 1);
+}

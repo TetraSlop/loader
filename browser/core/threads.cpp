@@ -169,12 +169,21 @@ void Scheduler::resume(Thread& thread)
 
 void Scheduler::exit(Thread& thread, const std::uint32_t code)
 {
+    for (const auto& listener : exitListeners_)
+    {
+        listener(thread);
+    }
     thread.state    = ThreadState::Exited;
     thread.exitCode = code;
     std::erase_if(parked_, [&thread](const Parked& parked)
                   {
                       return parked.thread == &thread;
                   });
+}
+
+void Scheduler::onExit(std::function<void(Thread&)> listener)
+{
+    exitListeners_.push_back(std::move(listener));
 }
 
 void Scheduler::block(Wait wait, std::function<void(const WaitResult&)> onWake)
