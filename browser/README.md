@@ -199,7 +199,8 @@ against one: the share of pixels that differ after a slight blur, a match at 0.0
 the repository.
 
 ```sh
-python browser/tools/capture_reference.py --loader <tmloader.exe> --config <tmloader.ini> --runtime <runtime folder>     --out <folder outside the repo> [--tmserver <tmserver checkout>]
+python browser/tools/capture_reference.py --loader <tmloader.exe> --config <tmloader.ini> --runtime <runtime folder> \
+    --out <folder outside the repo> [--tmserver <tmserver checkout>]
 python browser/tools/compare_frame.py <browser frame.png> <folder>/frame1200.png
 ```
 
