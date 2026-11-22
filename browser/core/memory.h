@@ -8,6 +8,7 @@
 #include <cstring>
 #include <span>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace tmweb
@@ -89,6 +90,7 @@ public:
 
     // Checked access; throws GuestFault
     template <class T>
+        requires std::is_arithmetic_v<T> || std::is_enum_v<T>
     auto read(const std::uint32_t address) const -> T
     {
         check(address, sizeof(T), Access::Read);
@@ -98,6 +100,7 @@ public:
     }
 
     template <class T>
+        requires std::is_arithmetic_v<T> || std::is_enum_v<T>
     void write(const std::uint32_t address, const T value)
     {
         check(address, sizeof(T), Access::Write);

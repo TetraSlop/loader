@@ -29,6 +29,7 @@ add_library(tmweb_core STATIC
     core/machine.cpp
     core/memory.cpp
     core/threads.cpp
+    core/x87.cpp
     f80/f80.cpp
 )
 target_include_directories(tmweb_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -50,6 +51,7 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
     FetchContent_MakeAvailable(Catch2)
     add_executable(tmweb_tests
+        tests/cpu_test.cpp
         tests/memory_test.cpp
     )
     target_link_libraries(tmweb_tests PRIVATE tmweb_core Catch2::Catch2WithMain)
