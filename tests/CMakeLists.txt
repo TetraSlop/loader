@@ -20,6 +20,9 @@ loader_test(config_tests config/config_tests.cpp)
 target_link_libraries(config_tests PRIVATE loader_config)
 target_compile_definitions(config_tests PRIVATE TMLOADER_RETAIL_FILES="${PROJECT_SOURCE_DIR}/retail-files.txt")
 
+loader_test(login_tests login/wire_tests.cpp login/login_tests.cpp)
+target_link_libraries(login_tests PRIVATE loader_login)
+
 loader_test(render_scale_tests
     graphics/render_scale_tests.cpp
     ${loader_source_dir}/graphics/render_scale.cpp
