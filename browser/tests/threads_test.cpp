@@ -226,3 +226,23 @@ TEST_CASE("Mutex ownership: waits by others block, the owner re-enters, and exit
     CHECK(mutex->owner == other.id);
     CHECK(mutex->count == 1);
 }
+
+TEST_CASE("yield() ends run() at the next instruction boundary, neither halted nor idle")
+{
+    auto  machine = Machine{};
+    auto& main    = machine.scheduler().createMain(0x10000);
+    machine.memory().map(layout::kHeap, 0x1000);
+    machine.memory().write<std::uint8_t>(layout::kHeap, 0x40);     // inc eax
+    machine.memory().write<std::uint8_t>(layout::kHeap + 1, 0xEB); // jmp $-3
+    machine.memory().write<std::uint8_t>(layout::kHeap + 2, 0xFD);
+    main.context.eip = layout::kHeap;
+    machine.yield();
+    auto result = machine.run(1000000);
+    CHECK(result.yielded);
+    CHECK_FALSE(result.halted);
+    CHECK_FALSE(result.idle);
+    CHECK(result.instructions < 1000000);
+    result = machine.run(100);
+    CHECK_FALSE(result.yielded);
+    CHECK(result.instructions == 100);
+}

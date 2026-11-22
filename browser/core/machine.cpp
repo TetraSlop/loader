@@ -251,6 +251,12 @@ auto Machine::run(const std::uint64_t budget) -> RunResult
         {
             break;
         }
+        if (yield_)
+        {
+            yield_         = false;
+            result.yielded = true;
+            break;
+        }
     }
     result.halted     = halted_;
     result.reason     = reason_;
@@ -492,6 +498,11 @@ auto Machine::raise(const std::uint32_t code, const std::uint32_t address, const
     }
     enterHandler(memory_, context, frame, record, contextRecord, boundary_.resolve(kSehModule, kSehReturn) + TrapRange::kTrapOffset);
     return true;
+}
+
+void Machine::yield()
+{
+    yield_ = true;
 }
 
 void Machine::halt(std::string reason)

@@ -39,6 +39,8 @@ struct RunResult
     // event loop before running again. nextDeadlineMs is the earliest timeout, on the scheduler's clock.
     bool                         idle = false;
     std::optional<std::uint32_t> nextDeadlineMs;
+    // yield() was called: the machine stopped at an instruction boundary so the host can show a frame
+    bool yielded = false;
 };
 
 class Machine final
@@ -66,6 +68,10 @@ public:
     // Halt from inside a handler or the host; run() returns with the reason
     void halt(std::string reason);
 
+    // Make run() return at the next instruction boundary with RunResult::yielded, neither halted nor idle. A stand-in
+    // calls it after Present, so each host task shows one frame.
+    void yield();
+
     // Finish the stand-in call stopped at trap: EAX/EDX, the return address popped, and for stdcall and thiscall
     // the arguments too. The machine does this for a Return at once and for a Block when it wakes.
     void complete(Context& context, std::uint32_t trap, const Return& result);
@@ -83,6 +89,7 @@ private:
     bool          halted_ = false;
     std::string   reason_;
     unsigned      nested_     = 0; // callGuest depth
+    bool          yield_      = false;
     std::uint32_t exceptions_ = 0;
 };
 
