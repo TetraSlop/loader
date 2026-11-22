@@ -42,7 +42,7 @@ tmserver:
 
 ```powershell
 $env:TMLOADER_LOGIN_SERVER = '127.0.0.1:51241'
-$env:TMLOADER_LOGIN_POL_ID = 'ABCDEFGH'
+$env:TMLOADER_LOGIN_USERNAME = 'Player_1'
 $env:TMLOADER_LOGIN_PASSWORD = 'a password'
 .\build\tests\Release\login_tests.exe "[.live]"
 ```
@@ -59,9 +59,9 @@ placeholder DLLs.
 
 Run these against a real server after changes that affect the game at runtime.
 
-1. With no account in `tmloader.ini`, the account window opens. A new POL ID
-   reports "created", the same one again "signed in", and a wrong password,
-   a reserved POL ID or an unreachable server show their own messages. The
+1. With no account in `tmloader.ini`, the account window opens. A new username
+   reports "created", the same one again (in any case) "signed in", and a
+   wrong password or an unreachable server show their own messages. The
    account is saved to `tmloader.ini` only after the server accepts it.
 2. The title screen appears, login succeeds and a room loads, both with a
    `LOGIN` account and with `local-account=true` on a local server.

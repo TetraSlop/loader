@@ -31,8 +31,8 @@ From a source checkout, `py tools/prepare_runtime.py` does this (see the
 `runtime/`, checks the copy. `tmloader.exe --check` does the same, against the
 `retail-files.txt` beside it, and also verifies the settings.
 
-Run `tmloader.exe`. On first start it asks for your POL ID, password and
-server, signs in, and saves them to `tmloader.ini`; a new POL ID becomes a new
+Run `tmloader.exe`. On first start it asks for a username, password and
+server, signs in, and saves them to `tmloader.ini`; a new username becomes a new
 account (see [accounts](../README.md#accounts)). The shipped `tmloader.ini`
 holds no account. Change the ports there if the server operator gives others.
 

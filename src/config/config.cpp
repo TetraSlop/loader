@@ -18,6 +18,7 @@ constexpr auto   kLocalPassword     = "tm-local-test";
 constexpr size_t kMaxPasswordLength = 15;
 constexpr size_t kMaxHostNameLength = 253;
 
+const auto kUsername = std::regex(R"([A-Za-z0-9_.-]{1,15})");
 const auto kHostName = std::regex(R"(([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)");
 
 void defineOptions(CLI::App& app, Config& config)
@@ -31,7 +32,8 @@ void defineOptions(CLI::App& app, Config& config)
     app.add_option("--server", config.server, "Game server address or host name")->type_name("HOST")->capture_default_str();
     app.add_option("--game-port", config.gamePort, "Game IRC port")->type_name("PORT")->capture_default_str()->check(CLI::Range(1, 65535).description(""));
     app.add_option("--profile-port", config.profilePort, "Profile port")->type_name("PORT")->capture_default_str()->check(CLI::Range(1, 65535).description(""));
-    app.add_option("--pol-id", config.polId, "Account ID; asked for when unset")->type_name("ID");
+    app.add_option("--username", config.username, "Account username; asked for when unset")->type_name("NAME");
+    app.add_option("--pol-id", config.polId, "POL ID of a built-in test account, with --local-account")->type_name("ID");
     app.add_option("--password", config.password, "Account password, 1 to 15 characters; asked for when unset")->type_name("TEXT");
     app.add_flag("--local-account", config.localAccount, "Log in to a loopback server with a built-in test account, without LOGIN");
     app.add_flag("--diagnostics", config.diagnostics, "Extra logging, and screenshots at fixed startup frames");
@@ -65,9 +67,24 @@ void validate(const Config& config)
         throw std::runtime_error("Profile port cannot use the client's reserved Game IRC port 51241");
     }
 
+    if (!config.username.empty() && !isValidUsername(config.username))
+    {
+        throw std::runtime_error("--username must be 1 to 15 letters, digits, '_', '.' or '-'");
+    }
+
+    if (!config.polId.empty() && !config.localAccount)
+    {
+        throw std::runtime_error("--pol-id is only for --local-account; the server assigns your POL ID, so set --username");
+    }
+
     if (!config.polId.empty() && !isValidPolId(config.polId))
     {
         throw std::runtime_error("--pol-id must be an eight-character PlayOnline ID");
+    }
+
+    if (config.localAccount && (config.polId.empty() || config.password.empty()))
+    {
+        throw std::runtime_error("--local-account needs both --pol-id and --password, or neither");
     }
 
     if (!config.password.empty() && !isValidPassword(config.password))
@@ -146,6 +163,11 @@ auto parseConfig(const std::vector<std::string>& args) -> Config
 auto isValidPolId(const std::string& polId) -> bool
 {
     return polId.size() == 8 && polId.find_first_not_of(kPolIdAlphabet) == std::string::npos;
+}
+
+auto isValidUsername(const std::string& username) -> bool
+{
+    return std::regex_match(username, kUsername);
 }
 
 auto isValidPassword(const std::string& password) -> bool

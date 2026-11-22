@@ -191,6 +191,11 @@ auto splitReply(const std::string& message) -> std::pair<std::vector<std::string
     throw LoginError(code, trailing);
 }
 
+auto isPolId(const std::string& text) -> bool
+{
+    return text.size() == 8 && text.find_first_not_of("EFKAOYMJVNGTDSWBQLPCIRHZXU6328401795") == std::string::npos;
+}
+
 auto isHex(const std::string& text) -> bool
 {
     return text.find_first_not_of("0123456789abcdefABCDEF") == std::string::npos;
@@ -227,7 +232,7 @@ auto resolveIpv4(const std::string& host) -> std::string
     return text;
 }
 
-auto login(const std::string& server, unsigned short port, const std::string& polId, const std::string& password, std::chrono::milliseconds timeout) -> LoginResult
+auto login(const std::string& server, unsigned short port, const std::string& username, const std::string& password, std::chrono::milliseconds timeout) -> LoginResult
 {
     const auto winsock    = Winsock{};
     auto       connection = Connection(connectTo(server, port, timeout));
@@ -262,14 +267,14 @@ auto login(const std::string& server, unsigned short port, const std::string& po
     auto       iv     = std::uint64_t{};
     std::memcpy(&iv, key.modulus.data(), sizeof(iv));
 
-    connection.send(wire::frameLine("LOGIN " + polId + " :" + password, &cipher, iv));
+    connection.send(wire::frameLine("LOGIN " + username + " :" + password, &cipher, iv));
     const auto [words, trailing] = splitReply(wire::unframeLine(connection.readLine(), &cipher, iv));
     if (words.size() >= 2 && words[1] == "901")
     {
         refused(words, trailing);
     }
 
-    if (words.size() != 4 || words[1] != "900" || words[2] != polId || words[3].size() != kGamePasswordLength || !isHex(words[3]) ||
+    if (words.size() != 4 || words[1] != "900" || !isPolId(words[2]) || words[3].size() != kGamePasswordLength || !isHex(words[3]) ||
         (trailing != "created" && trailing != "signed_in"))
     {
         throw LoginError({}, "Unexpected reply from the server");
@@ -288,17 +293,12 @@ auto describeLoginError(const LoginError& error) -> std::string
 
     if (code == "invalid_request")
     {
-        return "The server rejected the login. Check that the POL ID and password are in the right format.";
+        return "The server rejected the login. Check that the username and password are in the right format.";
     }
 
     if (code == "invalid_credentials")
     {
-        return "Wrong password for this POL ID.";
-    }
-
-    if (code == "pol_id_unavailable")
-    {
-        return "This POL ID is reserved. Choose another one.";
+        return "Wrong password, or that username belongs to someone else.";
     }
 
     if (code == "account_locked")
