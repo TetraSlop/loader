@@ -134,6 +134,10 @@ public:
         return static_cast<T*>(objectHost(guestObject));
     }
 
+    // Watch every stand-in call: dispatch() calls the observer before each handler. It may halt the machine (the
+    // Node runner's --until) or log the call (--trace).
+    void observe(std::function<void(const Call&)> observer);
+
     // The slot whose trap returns from a host-to-guest call (Machine::callGuest)
     auto returnTrap() const -> std::uint32_t;
 
@@ -152,6 +156,7 @@ private:
     std::vector<std::shared_ptr<void>>   objects_; // by cookie
     std::uint32_t                        next_      = layout::kModules;
     bool                                 published_ = false;
+    std::function<void(const Call&)>     observer_;
 };
 
 } // namespace tmweb

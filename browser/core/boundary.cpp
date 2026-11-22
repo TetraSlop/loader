@@ -114,6 +114,11 @@ auto Boundary::newObject(std::uint32_t, std::shared_ptr<void>) -> std::uint32_t
     throw std::logic_error("Boundary::newObject is not implemented yet");
 }
 
+void Boundary::observe(std::function<void(const Call&)> observer)
+{
+    observer_ = std::move(observer);
+}
+
 auto Boundary::returnTrap() const -> std::uint32_t
 {
     return 0;

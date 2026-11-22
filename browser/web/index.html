@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tetra Master</title>
+    <style>
+      :root { color-scheme: light dark; --bg: #f4f4f2; --fg: #1d1d1b; --panel: #e6e6e2; }
+      @media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #e8e8e4; --panel: #24241f; } }
+      body { margin: 0 auto; padding: 16px; max-width: 980px; background: var(--bg); color: var(--fg); font: 15px system-ui, sans-serif; }
+      header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+      h1 { font-size: 18px; margin: 0 12px 0 0; }
+      #status { opacity: 0.8; }
+      canvas { display: block; width: 100%; max-width: 960px; aspect-ratio: 4 / 3; background: #000; outline: none; touch-action: none; }
+      canvas:focus-visible { outline: 2px solid #7aa7ff; }
+      pre { background: var(--panel); padding: 8px; height: 14em; overflow: auto; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Tetra Master</h1>
+      <button id="pick">Pick game folder</button>
+      <input id="folder" type="file" webkitdirectory hidden />
+      <button id="start" disabled>Start</button>
+      <button id="forget" disabled>Forget cached files</button>
+      <span id="status" role="status"></span>
+    </header>
+    <canvas id="screen" width="640" height="480" tabindex="0" aria-label="Game screen"></canvas>
+    <pre id="log" aria-label="Log"></pre>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

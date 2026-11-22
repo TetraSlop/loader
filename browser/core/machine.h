@@ -10,6 +10,7 @@
 #include "core/threads.h"
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 
@@ -34,6 +35,10 @@ struct RunResult
     std::string   reason;
     std::uint64_t instructions = 0;
     std::uint32_t exceptions   = 0; // structured exceptions dispatched
+    // Not halted, but every thread waits on a host event (socket data, input) or a timeout: the host goes back to its
+    // event loop before running again. nextDeadlineMs is the earliest timeout, on the scheduler's clock.
+    bool                         idle = false;
+    std::optional<std::uint32_t> nextDeadlineMs;
 };
 
 class Machine final
