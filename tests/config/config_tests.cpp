@@ -68,9 +68,82 @@ TEST_CASE("a runtime directory alone yields the local defaults", "[config]")
     REQUIRE(config.checkOnly);
     REQUIRE(config.game.filename() == "TM_native.dll");
     REQUIRE(config.viewer.filename() == "polcore_native.dll");
-    REQUIRE(config.polId == "EEEEEEEF");
+    REQUIRE(config.polId.empty());
+    REQUIRE(config.password.empty());
+    REQUIRE_FALSE(config.localAccount);
+    REQUIRE(config.configFile.empty());
     REQUIRE(config.gamePort == 51241);
     REQUIRE(config.profilePort == 51220);
+}
+
+TEST_CASE("a local account defaults to the built-in test account on loopback only", "[config]")
+{
+    const auto local = parseConfig({ "--runtime-dir", ".", "--local-account" });
+    REQUIRE(local.polId == "EEEEEEEF");
+    REQUIRE(local.password == "tm-local-test");
+    const auto chosen = parseConfig({ "--runtime-dir", ".", "--local-account", "--server", "localhost", "--pol-id", "EEEEEEEK", "--password", "other" });
+    REQUIRE(chosen.polId == "EEEEEEEK");
+    REQUIRE(chosen.password == "other");
+    REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--local-account", "--server", "192.0.2.1" }), std::exception);
+}
+
+TEST_CASE("passwords are 1 to 15 printable ASCII characters", "[config]")
+{
+    REQUIRE(isValidPassword("a"));
+    REQUIRE(isValidPassword("fifteen chars!~"));
+    REQUIRE(isValidPassword(" spaced = ok "));
+    REQUIRE_FALSE(isValidPassword(""));
+    REQUIRE_FALSE(isValidPassword("sixteen chars!~."));
+    REQUIRE_FALSE(isValidPassword("tab\there"));
+    REQUIRE_FALSE(isValidPassword("line\nbreak"));
+    REQUIRE_FALSE(isValidPassword("caf\xc3\xa9"));
+    REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--password", "sixteen chars!~." }), std::exception);
+}
+
+TEST_CASE("servers are IPv4 addresses or host names", "[config]")
+{
+    for (const auto* server : { "127.0.0.1", "192.0.2.1", "localhost", "tm.example.com", "a-b.example" })
+    {
+        CAPTURE(server);
+        REQUIRE(isValidServer(server));
+    }
+
+    for (const auto* server : { "", "0.0.0.0", "999.0.0.1", "bad host", "-x.example", "x..example", "http://tm.example.com", "tm.example.com:51241" })
+    {
+        CAPTURE(server);
+        REQUIRE_FALSE(isValidServer(server));
+    }
+
+    REQUIRE(isLoopbackServer("127.0.0.1"));
+    REQUIRE(isLoopbackServer("localhost"));
+    REQUIRE_FALSE(isLoopbackServer("192.0.2.1"));
+}
+
+TEST_CASE("saved account values read back unchanged and keep the other lines", "[config]")
+{
+    const auto fixture = fixturePath("config-save.ini");
+    for (const std::string password : { "plain", "two words", " lead", "trail ", "a=b", "#hash", ";semi", "\"quoted\"", "it's", "both'\"", "back\\slash", "[brackets]", "a,b", "12345", "true", "0x1F" })
+    {
+        CAPTURE(password);
+        {
+            std::ofstream f(fixture);
+            f << "# keep this comment\nruntime-dir=.\npassword = old\ngame-port=52000\n";
+        }
+
+        saveConfigValues(fixture, { { "pol-id", "ABCDEFGH" }, { "password", password }, { "server", "tm.example.com" } });
+        const auto config = parseConfig({ "--config", fixture.string() });
+        REQUIRE(config.password == password);
+        REQUIRE(config.polId == "ABCDEFGH");
+        REQUIRE(config.server == "tm.example.com");
+        REQUIRE(config.gamePort == 52000);
+        REQUIRE(config.configFile == std::filesystem::absolute(fixture));
+        std::ifstream f(fixture);
+        std::string   first;
+        std::getline(f, first);
+        REQUIRE(first == "# keep this comment");
+    }
+
+    std::filesystem::remove(fixture);
 }
 
 TEST_CASE("the game port must be a number from 1 to 65535", "[config]")
@@ -93,10 +166,13 @@ TEST_CASE("unknown options are rejected", "[config]")
     REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--unknown", "a" }), std::exception);
 }
 
-TEST_CASE("a malformed POL ID or an empty password is rejected", "[config]")
+TEST_CASE("a malformed POL ID is rejected", "[config]")
 {
     REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--pol-id", "invalid" }), std::exception);
-    REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--password", "" }), std::exception);
+    REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--pol-id", "abcdefgh" }), std::exception);
+    REQUIRE(isValidPolId("ABCDEFGH"));
+    REQUIRE(isValidPolId("U1234567"));
+    REQUIRE_FALSE(isValidPolId("ABCDEFG"));
 }
 
 TEST_CASE("output paths outside the logs folder are refused", "[config]")

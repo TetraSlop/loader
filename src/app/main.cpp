@@ -1,5 +1,7 @@
 #include "app/log.h"
 #include "app/runtime.h"
+#include "login/login.h"
+#include "ui/account.h"
 #include <algorithm>
 #include <cstdio>
 #include <exception>
@@ -74,9 +76,27 @@ void report(const char* error)
     }
 }
 
-auto play(const Config& config) -> int
+auto play(Config config) -> int
 {
-    return tmloader::launch(config);
+    if (config.localAccount)
+    {
+        config.server = tmloader::resolveIpv4(config.server);
+        return tmloader::launch(config);
+    }
+
+    auto configFile = config.configFile;
+    if (configFile.empty())
+    {
+        configFile = besideExecutable("tmloader.ini");
+    }
+
+    const auto game = tmloader::signIn(config, configFile);
+    if (!game)
+    {
+        return 0;
+    }
+
+    return tmloader::launch(*game);
 }
 
 } // namespace

@@ -39,12 +39,17 @@ def loader_bytes(path: Path) -> bytes:
     return data
 
 
-def client_config() -> bytes:
+def client_config(local: bool = False) -> bytes:
+    """The tmloader.ini shipped beside the loader, or one for the built-in account of a local server."""
+    if local:
+        return (
+            b"# A local tmserver on this machine, with its built-in test account.\n"
+            b"runtime-dir=runtime\nserver=127.0.0.1\ngame-port=51241\nprofile-port=51220\nlocal-account=true\n"
+        )
     return (
         b"# tmloader reads this file from its own folder. Command-line options override it.\n"
-        b"# Replace the example server, ports and account with the ones from your server operator.\n"
-        b"runtime-dir=runtime\nserver=127.0.0.1\ngame-port=51241\nprofile-port=51220\n"
-        b"pol-id=EEEEEEEF\npassword=tm-local-test\n"
+        b"# On first start it asks for your POL ID, password and server, and saves them here.\n"
+        b"runtime-dir=runtime\ngame-port=51241\nprofile-port=51220\n"
     )
 
 
