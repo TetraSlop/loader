@@ -381,7 +381,9 @@ could serve as one).
   per five-instruction call would cost more than it saves.
 - polcore imports ws2_32 by ordinal (`#115` is WSAStartup), so the winsock stand-ins answer to both.
 - The scripted login (`--probe`) runs the set-up, Game IRC open, open checks and polls, and the profile bootstrap in
-  31 million instructions.
+  30 to 70 million instructions, depending on how long the server takes.
+- Game IRC open copies the password into a 16-byte buffer on polcore's stack: 16 characters overwrite the low byte
+  of a return address, 17 crash at once. The Viewer refuses longer passwords at boot.
 
 ## Limits
 

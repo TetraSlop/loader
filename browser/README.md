@@ -67,7 +67,7 @@ node browser/web/harness.mjs --folder <runtime folder> --frames 360 --click <x>,
   by its own POL1 stub, set up as tmloader sets it up, with winsock on the host's WebSocket transport
   (`hle/ws2_32.cpp`). TM boots to `Direct3DCreate8(220)` on it, natively and under Node (215 million instructions,
   4 s), and a scripted run logs in to Game IRC and loads the handles, characters and status from a local tmserver
-  through its browser streams (31 million instructions, 2 s). See "The real Viewer".
+  through its browser streams (30 to 70 million instructions, 2 to 3 s). See "The real Viewer".
 - Win32 stand-ins (`hle/`) for what TM.dll and its protector import from kernel32, user32, advapi32, imm32, ole32,
   oleaut32 and gdi32. The registry serves tmloader's virtual values. Files come read-only from the runtime folder
   through `hle::HostFiles`.
@@ -180,23 +180,31 @@ By default the boot answers TM's Viewer calls with a stand-in. `tmweb_configure(
   session's account (`pol_id`, `password`), and the first accepted login seeds the profile cipher and loads the
   handles, characters and status, which pol.exe would have loaded before starting the game.
 - Its internal addresses fit only the pinned build; the PE header and the common table's address are checked.
-- The RSA key generation in CreateInstance runs four routines as host code (`keygen`, on by default): 461 million
+- The RSA key generation in CreateInstance runs three of its routines as host code (`keygen`, on by default): 461 million
   instructions to `Direct3DCreate8` become 205 million. `tests/viewer_test.cpp` checks them against polcore's own on
   inputs recorded from a real key generation.
 - polcore's sockets are non-blocking TCP polled with `select`; each is one host stream, routed by port: 51241 to the
   game stream, 51220 to a profile stream.
 
-A scripted login without TM.dll (`probe`) checks the whole path against a local tmserver:
+A scripted login without TM.dll (`probe`) checks the whole path against a local tmserver with its loopback dev
+identity (tmserver's LOADER_AUTH_SPEC.md, "Local development without Supabase"):
 
 ```sh
-# tmserver's services and gateway on loopback, with a stand-in sign-in; writes a browser play session
-TMSERVER=<tmserver checkout> python browser/tools/polcore/gateway.py play.json &
-node browser/web/run.mjs <runtime folder> --viewer polcore --probe --session play.json
+# tmserver's services and gateway with the dev identity, in one process on an in-memory store (no PostgreSQL or
+# rules bridge); a full `tmserver --auth-dev-identity --auth-port 8081 ...` serves the same routes
+TMSERVER=<tmserver checkout> python browser/tools/polcore/gateway.py &
+node browser/web/run.mjs <runtime folder> --viewer polcore --probe --sign-in http://127.0.0.1:8081 --as alice
 # viewer: profile request 171 ticket 0 result 1 ... viewer probe: Game IRC login accepted; profile handles 1, ...
 ```
 
-`--session` without `--probe` boots TM.dll with that account and routes its connections the same way. Under Node the
-transport sends the session's `origin` as the WebSocket's Origin header, as a page would.
+`--sign-in` takes a ticket with the bearer name, redeems it for a play session (ending the name's previous one) and
+logs in with its account; without `--probe` it boots TM.dll and routes its connections the same way. Under Node the
+transport sends `http://localhost:5173`, an origin tmserver's `examples/auth-dev.json` lists, as the WebSocket's
+Origin header, as a page would.
+
+polcore's Game IRC open copies the password into a 16-byte buffer, so the Viewer refuses a password of more than 15
+characters at boot. tmserver's hosted accounts get 16 at the time of writing (`secrets.token_hex(8)`); with 15 or
+fewer the login above works.
 
 ## The x87 in software
 
