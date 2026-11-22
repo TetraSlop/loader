@@ -1,7 +1,5 @@
 #include "core/x87.h"
 
-#include <cmath>
-
 namespace tmweb
 {
 namespace
@@ -266,14 +264,16 @@ private:
             case 2: // DA: m32int arithmetic
             case 6: // DE: m16int arithmetic
             {
-                auto y = F80{};
+                // m32/m64 operands convert inside the instruction (floatOperand), not as FLD would
+                auto y        = F80{};
+                auto denormal = false;
                 if (low == 0)
                 {
-                    y = loadFloat(address, 4);
+                    y = f80::floatOperand(m_.read<std::uint32_t>(address), denormal);
                 }
                 else if (low == 4)
                 {
-                    y = loadFloat(address, 8);
+                    y = f80::doubleOperand(m_.read<std::uint64_t>(address), denormal);
                 }
                 else if (low == 2)
                 {
@@ -287,6 +287,10 @@ private:
                 if (op == 2 || op == 3)
                 {
                     compareCodes(f80::compare(x, y, false, env_));
+                    if (denormal)
+                    {
+                        f80::denormalOperand(x, y, env_);
+                    }
                     commit(false);
                     if (op == 3)
                     {
@@ -295,6 +299,10 @@ private:
                     return true;
                 }
                 set(0, arithmetic(op, x, y));
+                if (denormal)
+                {
+                    f80::denormalOperand(x, y, env_);
+                }
                 commit(true);
                 return true;
             }
@@ -687,34 +695,39 @@ private:
                 push(f80::constant(static_cast<std::uint8_t>(code - 0xE8), env_));
                 return true;
             case 0xF0: // F2XM1
-                set(0, viaDouble(std::exp2(f80::toHostDouble(get(0))) - 1.0));
+                set(0, f80::exp2m1(get(0), env_));
+                commit(true);
                 return true;
             case 0xF1: // FYL2X
             {
-                const auto x = f80::toHostDouble(get(0));
-                const auto y = f80::toHostDouble(get(1));
-                set(1, viaDouble(y * std::log2(x)));
+                const auto x = get(0);
+                const auto y = get(1);
+                set(1, f80::yLog2X(x, y, env_));
+                commit(true);
                 pop();
                 return true;
             }
             case 0xF2: // FPTAN
             {
-                const auto x = f80::toHostDouble(get(0));
-                if (std::fabs(x) >= 9223372036854775808.0)
+                auto result = F80{};
+                if (!f80::tan(get(0), result, env_))
                 {
                     f_.status = static_cast<std::uint16_t>(f_.status | kC2);
+                    commit(false);
                     return true;
                 }
-                set(0, viaDouble(std::tan(x)));
-                push(f80::one());
+                set(0, result);
+                commit(true);
                 f_.status = static_cast<std::uint16_t>(f_.status & ~kC2);
+                push(f80::one());
                 return true;
             }
             case 0xF3: // FPATAN
             {
-                const auto x = f80::toHostDouble(get(0));
-                const auto y = f80::toHostDouble(get(1));
-                set(1, viaDouble(std::atan2(y, x)));
+                const auto x = get(0);
+                const auto y = get(1);
+                set(1, f80::atan2(y, x, env_));
+                commit(true);
                 pop();
                 return true;
             }
@@ -747,9 +760,10 @@ private:
                 return true;
             case 0xF9: // FYL2XP1
             {
-                const auto x = f80::toHostDouble(get(0));
-                const auto y = f80::toHostDouble(get(1));
-                set(1, viaDouble(y * std::log2(x + 1.0)));
+                const auto x = get(0);
+                const auto y = get(1);
+                set(1, f80::yLog2Xp1(x, y, env_));
+                commit(true);
                 pop();
                 return true;
             }
@@ -759,15 +773,18 @@ private:
                 return true;
             case 0xFB: // FSINCOS
             {
-                const auto x = f80::toHostDouble(get(0));
-                if (std::fabs(x) >= 9223372036854775808.0)
+                auto sine   = F80{};
+                auto cosine = F80{};
+                if (!f80::sinCos(get(0), sine, cosine, env_))
                 {
                     f_.status = static_cast<std::uint16_t>(f_.status | kC2);
+                    commit(false);
                     return true;
                 }
-                set(0, viaDouble(std::sin(x)));
-                push(viaDouble(std::cos(x)));
+                set(0, sine);
+                commit(true);
                 f_.status = static_cast<std::uint16_t>(f_.status & ~kC2);
+                push(cosine);
                 return true;
             }
             case 0xFC:
@@ -781,31 +798,30 @@ private:
             case 0xFE:
             case 0xFF:
             {
-                const auto x = f80::toHostDouble(get(0));
-                if (std::fabs(x) >= 9223372036854775808.0)
-                {
-                    f_.status = static_cast<std::uint16_t>(f_.status | kC2);
-                    return true;
-                }
+                auto result  = F80{};
+                auto inRange = false;
                 if (code == 0xFE)
                 {
-                    set(0, viaDouble(std::sin(x)));
+                    inRange = f80::sin(get(0), result, env_);
                 }
                 else
                 {
-                    set(0, viaDouble(std::cos(x)));
+                    inRange = f80::cos(get(0), result, env_);
                 }
+                if (!inRange)
+                {
+                    f_.status = static_cast<std::uint16_t>(f_.status | kC2);
+                    commit(false);
+                    return true;
+                }
+                set(0, result);
+                commit(true);
                 f_.status = static_cast<std::uint16_t>(f_.status & ~kC2);
                 return true;
             }
             default:
                 return false;
         }
-    }
-
-    static auto viaDouble(const double value) -> F80
-    {
-        return f80::fromHostDouble(value);
     }
 
     void examine()

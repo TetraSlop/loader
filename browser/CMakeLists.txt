@@ -92,6 +92,7 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
         tests/f80_test.cpp
         tests/memory_test.cpp
         tests/threads_test.cpp
+        tests/x87_test.cpp
     )
     target_link_libraries(tmweb_tests PRIVATE tmweb_host Catch2::Catch2WithMain)
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
