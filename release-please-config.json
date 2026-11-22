@@ -5,7 +5,8 @@
   "include-component-in-tag": false,
   "bump-minor-pre-major": true,
   "draft": true,
-  "bootstrap-sha": "607c16f2a272197ac69a07c00032816fe6188bee",
+  "skip-changelog": true,
+  "bootstrap-sha": "52de7b5ab0e8a70fa985fb872032310303255336",
   "packages": {
     ".": {}
   }
