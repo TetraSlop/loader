@@ -26,7 +26,7 @@ auto at(const std::span<const std::uint8_t> file, const std::size_t offset) -> T
 
 } // namespace
 
-auto loadImage(Memory& memory, Boundary& boundary, const std::span<const std::uint8_t> file) -> Image
+auto loadImage(Memory& memory, Boundary& boundary, const std::span<const std::uint8_t> file, const std::uint32_t base) -> Image
 {
     if (at<std::uint16_t>(file, 0) != 0x5A4D)
     {
@@ -41,12 +41,13 @@ auto loadImage(Memory& memory, Boundary& boundary, const std::span<const std::ui
     const auto optional    = pe + 24;
     const auto sectionBase = optional + at<std::uint16_t>(file, pe + 20);
 
-    auto image         = Image{};
-    image.base         = at<std::uint32_t>(file, optional + 28);
-    image.size         = (at<std::uint32_t>(file, optional + 56) + kPageSize - 1) & ~(kPageSize - 1);
-    const auto entry   = at<std::uint32_t>(file, optional + 16);
-    image.entry        = entry ? image.base + entry : 0;
-    const auto headers = std::min<std::size_t>(at<std::uint32_t>(file, optional + 60), file.size());
+    auto       image     = Image{};
+    const auto preferred = at<std::uint32_t>(file, optional + 28);
+    image.base           = base ? base : preferred;
+    image.size           = (at<std::uint32_t>(file, optional + 56) + kPageSize - 1) & ~(kPageSize - 1);
+    const auto entry     = at<std::uint32_t>(file, optional + 16);
+    image.entry          = entry ? image.base + entry : 0;
+    const auto headers   = std::min<std::size_t>(at<std::uint32_t>(file, optional + 60), file.size());
     memory.map(image.base, image.size);
     memory.write(image.base, file.first(headers));
 
@@ -59,6 +60,33 @@ auto loadImage(Memory& memory, Boundary& boundary, const std::span<const std::ui
         const auto raw         = at<std::uint32_t>(file, header + 20);
         const auto size        = std::min<std::size_t>({ virtualSize ? virtualSize : rawSize, rawSize, file.size() - std::min<std::size_t>(raw, file.size()) });
         memory.write(image.base + address, file.subspan(raw, size));
+    }
+
+    // IMAGE_BASE_RELOCATION blocks: page RVA, block size, then 16-bit entries (type 3: a 32-bit address)
+    const auto relocations = at<std::uint32_t>(file, optional + 136);
+    const auto relocated   = at<std::uint32_t>(file, optional + 140);
+    if (image.base != preferred && relocations)
+    {
+        const auto delta = image.base - preferred;
+        for (auto block = image.base + relocations; block < image.base + relocations + relocated;)
+        {
+            const auto page = memory.read<std::uint32_t>(block);
+            const auto size = memory.read<std::uint32_t>(block + 4);
+            if (size < 8)
+            {
+                break;
+            }
+            for (auto item = block + 8; item < block + size; item += 2)
+            {
+                const auto value = memory.read<std::uint16_t>(item);
+                if (value >> 12 == 3)
+                {
+                    const auto address = image.base + page + (value & 0xFFF);
+                    memory.write<std::uint32_t>(address, memory.read<std::uint32_t>(address) + delta);
+                }
+            }
+            block += size;
+        }
     }
 
     // IMAGE_IMPORT_DESCRIPTORs: OriginalFirstThunk, TimeDateStamp, ForwarderChain, Name, FirstThunk

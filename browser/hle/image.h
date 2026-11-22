@@ -19,9 +19,11 @@ struct Image
     std::uint32_t entry = 0; // 0 when the image has no entry point
 };
 
-// Map headers and sections at the preferred base and point every header import at boundary.resolve(). Relocations
-// are not applied: TM.dll's base is pinned. Throws std::runtime_error for a file that is not a 32-bit PE.
-auto loadImage(Memory& memory, Boundary& boundary, std::span<const std::uint8_t> file) -> Image;
+// Map headers and sections and point every header import at boundary.resolve(). At the preferred base (TM.dll's is
+// pinned) nothing is relocated; at another base the data directory's relocations are applied, as the OS loader does,
+// so polcore's POL1 stub still finds its own hidden .text relocations unapplied. Throws std::runtime_error for a file
+// that is not a 32-bit PE.
+auto loadImage(Memory& memory, Boundary& boundary, std::span<const std::uint8_t> file, std::uint32_t base = 0) -> Image;
 
 // The address an image in guest memory exports under name ("#n" for an ordinal), or 0
 auto findExport(const Memory& memory, std::uint32_t base, std::string_view name) -> std::uint32_t;
