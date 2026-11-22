@@ -33,6 +33,13 @@ add_library(tmweb_core STATIC
     f80/f80.cpp
 )
 target_include_directories(tmweb_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(tmweb_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+if(NOT EMSCRIPTEN)
+    # The interpreter alone behind a C interface, for the differential test against Unicorn (tools/difftest.py)
+    add_library(tmweb_capi SHARED tools/capi.cpp)
+    target_link_libraries(tmweb_capi PRIVATE tmweb_core)
+endif()
 
 # The module's side of the page and the Node runner (host/host.h, web/)
 add_library(tmweb_host OBJECT app/boot.cpp host/host.cpp)
