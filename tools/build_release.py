@@ -48,7 +48,7 @@ def client_config(local: bool = False) -> bytes:
         )
     return (
         b"# tmloader reads this file from its own folder. Command-line options override it.\n"
-        b"# On first start it asks for your POL ID, password and server, and saves them here.\n"
+        b"# On first start it asks for a username, password and server, and saves them here.\n"
         b"runtime-dir=runtime\ngame-port=51241\nprofile-port=51220\n"
     )
 

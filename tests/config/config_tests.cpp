@@ -68,6 +68,7 @@ TEST_CASE("a runtime directory alone yields the local defaults", "[config]")
     REQUIRE(config.checkOnly);
     REQUIRE(config.game.filename() == "TM_native.dll");
     REQUIRE(config.viewer.filename() == "polcore_native.dll");
+    REQUIRE(config.username.empty());
     REQUIRE(config.polId.empty());
     REQUIRE(config.password.empty());
     REQUIRE_FALSE(config.localAccount);
@@ -85,6 +86,30 @@ TEST_CASE("a local account defaults to the built-in test account on loopback onl
     REQUIRE(chosen.polId == "EEEEEEEK");
     REQUIRE(chosen.password == "other");
     REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--local-account", "--server", "192.0.2.1" }), std::exception);
+    REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--local-account", "--pol-id", "EEEEEEEK" }), std::exception);
+}
+
+TEST_CASE("the server assigns POL IDs, so only a local account sets one", "[config]")
+{
+    REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--pol-id", "ABCDEFGH" }), std::exception);
+    REQUIRE(parseConfig({ "--runtime-dir", ".", "--username", "Player_1.x" }).username == "Player_1.x");
+}
+
+TEST_CASE("usernames are 1 to 15 letters, digits, underscores, dots or dashes", "[config]")
+{
+    for (const auto* name : { "a", "Player_1.x", "a-b", "fifteen_chars15" })
+    {
+        CAPTURE(name);
+        REQUIRE(isValidUsername(name));
+    }
+
+    for (const auto* name : { "", "two words", "sixteen_chars_16", "caf\xc3\xa9", "a:b", "a@b" })
+    {
+        CAPTURE(name);
+        REQUIRE_FALSE(isValidUsername(name));
+    }
+
+    REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--username", "two words" }), std::exception);
 }
 
 TEST_CASE("passwords are 1 to 15 printable ASCII characters", "[config]")
@@ -130,10 +155,10 @@ TEST_CASE("saved account values read back unchanged and keep the other lines", "
             f << "# keep this comment\nruntime-dir=.\npassword = old\ngame-port=52000\n";
         }
 
-        saveConfigValues(fixture, { { "pol-id", "ABCDEFGH" }, { "password", password }, { "server", "tm.example.com" } });
+        saveConfigValues(fixture, { { "username", "Player_1.x" }, { "password", password }, { "server", "tm.example.com" } });
         const auto config = parseConfig({ "--config", fixture.string() });
         REQUIRE(config.password == password);
-        REQUIRE(config.polId == "ABCDEFGH");
+        REQUIRE(config.username == "Player_1.x");
         REQUIRE(config.server == "tm.example.com");
         REQUIRE(config.gamePort == 52000);
         REQUIRE(config.configFile == std::filesystem::absolute(fixture));
@@ -168,8 +193,8 @@ TEST_CASE("unknown options are rejected", "[config]")
 
 TEST_CASE("a malformed POL ID is rejected", "[config]")
 {
-    REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--pol-id", "invalid" }), std::exception);
-    REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--pol-id", "abcdefgh" }), std::exception);
+    REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--local-account", "--pol-id", "invalid", "--password", "x" }), std::exception);
+    REQUIRE_THROWS_AS(parseConfig({ "--runtime-dir", ".", "--local-account", "--pol-id", "abcdefgh", "--password", "x" }), std::exception);
     REQUIRE(isValidPolId("ABCDEFGH"));
     REQUIRE(isValidPolId("U1234567"));
     REQUIRE_FALSE(isValidPolId("ABCDEFG"));

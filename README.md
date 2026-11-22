@@ -47,7 +47,7 @@ Building from source also needs CMake 3.29+, Visual Studio 2022 17.13+
 1. Extract the archive to a short, writable path such as `C:\Games\TetraMaster`.
 2. Create `runtime/` beside `tmloader.exe` from your own install (see
    [game files](#game-files)).
-3. Run `tmloader.exe`. On first start it asks for your POL ID, password and
+3. Run `tmloader.exe`. On first start it asks for a username, password and
    server (see [accounts](#accounts)). `tmloader.exe --check` validates the
    setup without starting the game.
 
@@ -103,24 +103,29 @@ Viewer rewrites it when settings are saved.
 
 ## Accounts
 
-The loader signs in before the game starts. It connects to the server's game
-port, exchanges a session key with it, and sends your POL ID and password with
-tmserver's `LOGIN` command. The server answers with a one-time game password,
-which the loader hands to the game in place of yours; it is never saved.
+You sign in with a username and password; the server creates the account the
+first time it sees a username. Before the game starts, the loader connects to
+the server's game port, exchanges a session key with it, and sends the username
+and password with tmserver's `LOGIN` command. The server answers with the
+account's POL ID and a one-time game password, which the loader hands to the
+game in place of yours. Neither is saved.
 
-- **First start.** With no `pol-id` or `password` in `tmloader.ini`, a small
-  window asks for the POL ID, password and server. Once the server accepts
+- **First start.** With no `username` or `password` in `tmloader.ini`, a small
+  window asks for the username, password and server. Once the server accepts
   them, the loader saves them to `tmloader.ini` and starts the game.
-- **New accounts.** A POL ID the server has never seen becomes a new account
-  with that password on its first login. A mistyped POL ID therefore creates a
+- **New accounts.** A username the server has never seen becomes a new account
+  with that password, and it is also your display name. Usernames ignore case,
+  so `Player` and `player` are one account. A mistyped username creates a
   second account instead of failing, so check it. The window and the settings
   panel say whether the account was created or signed in.
-- **Refusals.** A wrong password, a reserved or locked POL ID, an account
-  already playing elsewhere, too many attempts or a busy server reopen the
-  window with the reason.
-- **Format.** A POL ID is 8 letters or digits. A password is 1 to 15 printable
-  ASCII characters; spaces are allowed. Longer passwords are rejected when the
-  config is read, because the game cannot use them.
+- **Refusals.** A wrong password (which is also what you get for a username
+  that belongs to someone else), a locked account, an account already playing
+  elsewhere, too many attempts or a busy server reopen the window with the
+  reason.
+- **Format.** A username is 1 to 15 letters, digits, `_`, `.` or `-`. A
+  password is 1 to 15 printable ASCII characters; spaces are allowed. Other
+  values are rejected when the config is read, because the game cannot use
+  longer passwords.
 
 The key exchange does not authenticate the server, so anyone who can intercept
 the connection can read the password. Use a password you use nowhere else.
@@ -136,8 +141,8 @@ server=127.0.0.1
 local-account=true
 ```
 
-This logs in as `EEEEEEEF` with password `tm-local-test`; set `pol-id` and
-`password` to use another built-in account. `tools/prepare_runtime.py` writes
+This logs in as POL ID `EEEEEEEF` with password `tm-local-test`; set `pol-id`
+and `password` to use another built-in account. `tools/prepare_runtime.py` writes
 this config.
 
 ## Configuration
@@ -154,9 +159,10 @@ Paths are relative to `runtime-dir` unless absolute, and a relative
 | `--server HOST` | `127.0.0.1` | Server IPv4 address or host name |
 | `--game-port PORT` | `51241` | Game port |
 | `--profile-port PORT` | `51220` | Profile port |
-| `--pol-id ID` | | Eight-character account ID; asked for when unset |
+| `--username NAME` | | Account username; asked for when unset |
 | `--password TEXT` | | Account password, 1 to 15 characters; asked for when unset |
 | `--local-account` | off | Use a local server's built-in test account, without `LOGIN` (see [a local server](#a-local-server)) |
+| `--pol-id ID` | | A built-in test account's POL ID, with `--local-account` |
 | `--diagnostics` | off | Extra logging, and screenshots at fixed startup frames |
 | `--check` | | Validate settings, DLL hashes and every file in `retail-files.txt`, then exit |
 | `--help`, `-h` | | Show help |

@@ -128,12 +128,12 @@ The runtime path must fit `MAX_PATH` because the client uses ANSI file APIs.
 3. The server answers `300` with an 8-byte Blowfish key in a PKCS#1 v1.5
    type 2 block. Every later line is encrypted with crypt64, the IV being the
    first eight modulus bytes.
-4. The loader sends `LOGIN <POL ID> :<password>`. The server answers
+4. The loader sends `LOGIN <username> :<password>`. The server answers
    `900 <POL ID> <game password> :created` or `:signed_in`, or
    `901 <code> :<text>`, and closes.
 
-The game then runs with the server's address resolved to IPv4, the POL ID and
-the game password; the player's own password never reaches the game. Without an
+The game then runs with the server's address resolved to IPv4, the POL ID the
+server assigned and the game password; the player's own password never reaches the game. Without an
 account, or after a `901`, a Dear ImGui window asks for one and saves it to the
 config file. The exchange does not authenticate the server. The wire format is
 ported from tmserver's `protocol/wire.py`; TetraPackets `irc/session.md`
@@ -306,7 +306,7 @@ and scales fall back individually. Only the eight advertised scales are accepted
   rejected rather than supported.
 - Native state is module-global, so one process hosts one game session. There
   is no reconnect or account manager.
-- The game password is valid until the next `LOGIN` for that POL ID or a
+- The game password is valid until the next `LOGIN` for that account or a
   server restart. If the server refuses the game's own login later in the
   session, restart the loader to sign in again.
 - Profile bootstrap polling is synchronous, up to five seconds per request.

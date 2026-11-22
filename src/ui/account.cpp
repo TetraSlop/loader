@@ -24,28 +24,28 @@ constexpr auto kErrorColor = ImVec4(1.0f, 0.55f, 0.5f, 1.0f);
 std::mutex  statusMutex;
 std::string status;
 
-auto describeOutcome(const LoginResult& result) -> std::string
+auto describeOutcome(const std::string& username, const LoginResult& result) -> std::string
 {
     if (result.created)
     {
-        return std::format("Account {} created.", result.polId);
+        return std::format("Account {} created.", username);
     }
 
-    return std::format("Signed in as {}.", result.polId);
+    return std::format("Signed in as {}.", username);
 }
 
 // The game connects to the address it was given, so a host name is resolved here.
 auto attempt(const Config& config) -> std::pair<std::string, LoginResult>
 {
     const auto address = resolveIpv4(config.server);
-    logLine("LOGIN {} at {}:{}", config.polId, address, config.gamePort);
-    return { address, login(address, config.gamePort, config.polId, config.password) };
+    logLine("LOGIN {} at {}:{}", config.username, address, config.gamePort);
+    return { address, login(address, config.gamePort, config.username, config.password) };
 }
 
 auto signedIn(Config config, const std::string& address, const LoginResult& result) -> Config
 {
-    const auto outcome = describeOutcome(result);
-    logLine("LOGIN accepted: {}", outcome);
+    const auto outcome = describeOutcome(config.username, result);
+    logLine("LOGIN accepted: {} POL ID {}", outcome, result.polId);
     {
         const std::lock_guard lock(statusMutex);
         status = outcome;
@@ -64,15 +64,12 @@ void copyTo(std::array<char, Size>& field, const std::string& value)
     value.copy(field.data(), Size - 1);
 }
 
-// Uppercases POL ID input; the alphabet itself is checked on submit.
-auto polIdFilter(ImGuiInputTextCallbackData* data) -> int
+// Drops characters a username cannot hold; its length is checked on submit.
+auto usernameFilter(ImGuiInputTextCallbackData* data) -> int
 {
-    if (data->EventChar >= 'a' && data->EventChar <= 'z')
-    {
-        data->EventChar = static_cast<ImWchar>(data->EventChar - 'a' + 'A');
-    }
-
-    return 0;
+    const auto c       = data->EventChar;
+    const auto allowed = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-';
+    return static_cast<int>(!allowed);
 }
 
 class AccountPrompt
@@ -84,7 +81,7 @@ public:
     , message_(std::move(message))
     , error_(!message_.empty())
     {
-        copyTo(polId_, config.polId);
+        copyTo(username_, config.username);
         copyTo(password_, config.password);
         copyTo(server_, config.server);
     }
@@ -102,12 +99,12 @@ public:
         ImGui::SetNextWindowSize(viewport->WorkSize);
         ImGui::Begin("account", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
         ImGui::TextUnformatted("TETRA MASTER");
-        ImGui::TextWrapped("Sign in with your POL ID and password. A POL ID the server does not know yet becomes a new account on first login, so check it for typos.");
+        ImGui::TextWrapped("Sign in with your username and password. A username the server does not know yet becomes a new account with this password, so check it for typos.");
         ImGui::Spacing();
         ImGui::BeginDisabled(busy || done);
-        ImGui::TextUnformatted("POL ID");
+        ImGui::TextUnformatted("Username");
         ImGui::SetNextItemWidth(-1);
-        ImGui::InputText("##pol-id", polId_.data(), polId_.size(), ImGuiInputTextFlags_CharsNoBlank | ImGuiInputTextFlags_CallbackCharFilter, polIdFilter);
+        ImGui::InputText("##username", username_.data(), username_.size(), ImGuiInputTextFlags_CallbackCharFilter, usernameFilter);
         ImGui::TextUnformatted("Password");
         ImGui::SetNextItemWidth(-1);
         const auto submitted = ImGui::InputText("##password", password_.data(), password_.size(), ImGuiInputTextFlags_Password | ImGuiInputTextFlags_EnterReturnsTrue);
@@ -180,12 +177,12 @@ private:
     void submit()
     {
         auto entered     = config_;
-        entered.polId    = polId_.data();
+        entered.username = username_.data();
         entered.password = password_.data();
         entered.server   = server_.data();
-        if (!isValidPolId(entered.polId))
+        if (!isValidUsername(entered.username))
         {
-            report("A POL ID is 8 letters or digits.", true);
+            report("A username is 1 to 15 letters, digits, '_', '.' or '-'.", true);
             return;
         }
 
@@ -217,9 +214,9 @@ private:
         try
         {
             const auto [address, result] = attempt(entered);
-            saveConfigValues(configFile_, { { "pol-id", entered.polId }, { "password", entered.password }, { "server", entered.server } });
+            saveConfigValues(configFile_, { { "username", entered.username }, { "password", entered.password }, { "server", entered.server } });
             auto game = signedIn(entered, address, result);
-            report(describeOutcome(result) + " Starting the game...", false);
+            report(describeOutcome(entered.username, result) + " Starting the game...", false);
             const std::lock_guard lock(mutex_);
             closeAt_ = std::chrono::steady_clock::now() + kResultDelay;
             result_  = std::move(game);
@@ -238,7 +235,7 @@ private:
 
     const Config&                         config_;
     const std::filesystem::path           configFile_;
-    std::array<char, 9>                   polId_{};
+    std::array<char, 16>                  username_{};
     std::array<char, 16>                  password_{};
     std::array<char, 254>                 server_{};
     std::mutex                            mutex_;
@@ -255,7 +252,7 @@ private:
 auto signIn(const Config& config, const std::filesystem::path& configFile) -> std::optional<Config>
 {
     auto message = std::string{};
-    if (!config.polId.empty() && !config.password.empty())
+    if (!config.username.empty() && !config.password.empty())
     {
         try
         {

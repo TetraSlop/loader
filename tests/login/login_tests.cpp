@@ -136,12 +136,12 @@ private:
 
 } // namespace
 
-TEST_CASE("LOGIN creates an account and returns the game password", "[login]")
+TEST_CASE("LOGIN creates an account and returns its POL ID and game password", "[login]")
 {
     const auto winsock = Winsock{};
     auto       server  = FakeServer(":srv 900 ABCDEFGH 0123456789abcd :created");
-    const auto result  = login("127.0.0.1", server.port(), "ABCDEFGH", "pass word=1");
-    REQUIRE(server.received() == "LOGIN ABCDEFGH :pass word=1");
+    const auto result  = login("127.0.0.1", server.port(), "Player_1.x", "pass word=1");
+    REQUIRE(server.received() == "LOGIN Player_1.x :pass word=1");
     REQUIRE(result.polId == "ABCDEFGH");
     REQUIRE(result.gamePassword == "0123456789abcd");
     REQUIRE(result.created);
@@ -151,7 +151,7 @@ TEST_CASE("LOGIN signs in to an existing account", "[login]")
 {
     const auto winsock = Winsock{};
     auto       server  = FakeServer(":srv 900 ABCDEFGH fedcba98765432 :signed_in");
-    const auto result  = login("127.0.0.1", server.port(), "ABCDEFGH", "secret");
+    const auto result  = login("127.0.0.1", server.port(), "player", "secret");
     REQUIRE_FALSE(result.created);
     REQUIRE(result.gamePassword == "fedcba98765432");
 }
@@ -162,24 +162,24 @@ TEST_CASE("a refused LOGIN reports the server's code", "[login]")
     auto       server  = FakeServer(":srv 901 invalid_credentials :wrong password");
     try
     {
-        login("127.0.0.1", server.port(), "ABCDEFGH", "secret");
+        login("127.0.0.1", server.port(), "player", "secret");
         FAIL("LOGIN succeeded");
     }
     catch (const LoginError& error)
     {
         REQUIRE(error.code() == "invalid_credentials");
-        REQUIRE(describeLoginError(error) == "Wrong password for this POL ID.");
+        REQUIRE(describeLoginError(error) == "Wrong password, or that username belongs to someone else.");
     }
 }
 
-TEST_CASE("a reply for another account or a malformed game password is refused", "[login]")
+TEST_CASE("a malformed POL ID, game password or outcome is refused", "[login]")
 {
     const auto winsock = Winsock{};
-    for (const auto* reply : { ":srv 900 OTHERPOL 0123456789abcd :created", ":srv 900 ABCDEFGH short :created", ":srv 900 ABCDEFGH 0123456789abcd :maybe" })
+    for (const auto* reply : { ":srv 900 abcdefgh 0123456789abcd :created", ":srv 900 ABCDEFG 0123456789abcd :created", ":srv 900 ABCDEFGH short :created", ":srv 900 ABCDEFGH 0123456789abcd :maybe" })
     {
         CAPTURE(reply);
         auto server = FakeServer(reply);
-        REQUIRE_THROWS_AS(login("127.0.0.1", server.port(), "ABCDEFGH", "secret"), LoginError);
+        REQUIRE_THROWS_AS(login("127.0.0.1", server.port(), "player", "secret"), LoginError);
     }
 }
 
@@ -189,7 +189,7 @@ TEST_CASE("a dropped connection is a transport error without a code", "[login]")
     auto       server  = FakeServer({}, true);
     try
     {
-        login("127.0.0.1", server.port(), "ABCDEFGH", "secret", std::chrono::seconds(5));
+        login("127.0.0.1", server.port(), "player", "secret", std::chrono::seconds(5));
         FAIL("LOGIN succeeded");
     }
     catch (const LoginError& error)
@@ -202,12 +202,12 @@ TEST_CASE("a dropped connection is a transport error without a code", "[login]")
 TEST_CASE("every server error code has its own message", "[login]")
 {
     auto messages = std::set<std::string>{};
-    for (const auto* code : { "invalid_request", "invalid_credentials", "pol_id_unavailable", "account_locked", "account_connected", "rate_limited", "unavailable" })
+    for (const auto* code : { "invalid_request", "invalid_credentials", "account_locked", "account_connected", "rate_limited", "unavailable" })
     {
         messages.insert(describeLoginError(LoginError(code, "text")));
     }
 
-    REQUIRE(messages.size() == 7);
+    REQUIRE(messages.size() == 6);
     REQUIRE(describeLoginError(LoginError("new_code", "details")).contains("new_code"));
 }
 
@@ -219,7 +219,7 @@ TEST_CASE("numeric addresses resolve to themselves", "[login]")
 }
 
 // Hidden: logs in to a real server, e.g. tmserver started for a manual check.
-// Set TMLOADER_LOGIN_SERVER=host:port, TMLOADER_LOGIN_POL_ID and TMLOADER_LOGIN_PASSWORD.
+// Set TMLOADER_LOGIN_SERVER=host:port, TMLOADER_LOGIN_USERNAME and TMLOADER_LOGIN_PASSWORD.
 TEST_CASE("LOGIN against a live server", "[.live]")
 {
     const auto read = [](const char* name) -> std::string
@@ -236,7 +236,7 @@ TEST_CASE("LOGIN against a live server", "[.live]")
     REQUIRE(server.contains(':'));
     const auto host    = server.substr(0, server.rfind(':'));
     const auto port    = static_cast<unsigned short>(std::stoi(server.substr(server.rfind(':') + 1)));
-    const auto result  = login(resolveIpv4(host), port, read("TMLOADER_LOGIN_POL_ID"), read("TMLOADER_LOGIN_PASSWORD"));
+    const auto result  = login(resolveIpv4(host), port, read("TMLOADER_LOGIN_USERNAME"), read("TMLOADER_LOGIN_PASSWORD"));
     auto       outcome = "signed_in";
     if (result.created)
     {

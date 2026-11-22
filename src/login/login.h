@@ -6,8 +6,8 @@
 namespace tmloader
 {
 
-// The account the server confirmed. gamePassword is what the client sends in
-// place of the player's password; it stays in memory only.
+// The account the server confirmed. The server assigns the POL ID; gamePassword
+// is what the client sends in place of the player's password. Neither is saved.
 struct LoginResult
 {
     std::string polId;
@@ -26,11 +26,11 @@ private:
     std::string code_;
 };
 
-// Sends the player's POL ID and password to the server's game port over its
+// Sends the player's username and password to the server's game port over its
 // own key exchange, as tmserver's LOGIN verb expects. The exchange has no
 // server authentication, so someone able to intercept the connection can read
 // the password. Throws LoginError.
-auto login(const std::string& server, unsigned short port, const std::string& polId, const std::string& password, std::chrono::milliseconds timeout = std::chrono::seconds(15)) -> LoginResult;
+auto login(const std::string& server, unsigned short port, const std::string& username, const std::string& password, std::chrono::milliseconds timeout = std::chrono::seconds(15)) -> LoginResult;
 
 // What to tell the player about a failed LOGIN.
 auto describeLoginError(const LoginError& error) -> std::string;
