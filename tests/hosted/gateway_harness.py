@@ -1,8 +1,9 @@
 """Run tmloader's hidden [.gateway] tests against a real tmserver gateway and a fake Supabase.
 
 Local development only. Without --tests it keeps the servers running so the real client
-can be played through them. Needs a tmserver checkout with its auth extra installed; run it
-with that checkout's Python, for example:
+can be played through them. Needs a tmserver checkout with its auth extra installed, by
+default ../tmserver beside this one, and skips when there is none. Run it with that
+checkout's Python, for example:
 
     ..\\tmserver\\.venv\\Scripts\\python tests/hosted/gateway_harness.py --tmserver ..\\tmserver
         --tests build\\RelWithDebInfo\\hosted_tests.exe   (path of the built test binary)
@@ -26,6 +27,7 @@ import tempfile
 import threading
 from pathlib import Path
 
+DEFAULT_TMSERVER = Path(__file__).resolve().parents[3] / "tmserver"
 SUBJECT = "11111111-1111-4111-8111-111111111111"
 PUBLISHABLE_KEY = "sb_publishable_test"
 
@@ -128,9 +130,14 @@ def serve_in_thread(app) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--tmserver", type=Path, required=True, help="tmserver checkout")
+    parser.add_argument(
+        "--tmserver", type=Path, default=DEFAULT_TMSERVER, help="tmserver checkout (default: %(default)s)"
+    )
     parser.add_argument("--tests", type=Path, help="built hosted_tests.exe; without it, serve for manual play")
     args = parser.parse_args()
+    if not (args.tmserver / "src/tmserver").is_dir():
+        print(f"Skipped: no tmserver checkout at {args.tmserver}")
+        return 0
 
     supabase = f"http://127.0.0.1:{serve_in_thread(fake_supabase())}"
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as directory:
