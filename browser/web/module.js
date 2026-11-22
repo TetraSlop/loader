@@ -3,11 +3,12 @@
 import { webSocketTransport } from "./transport.js";
 
 export const ROOT = "/game";
-export const RunState = { Budget: 0, Idle: 1, Halted: 2 };
+export const RunState = { Budget: 0, Idle: 1, Halted: 2, Presented: 3 };
 
 /**
  * Starts the module. factory is the Emscripten build's default export (tmweb-web.mjs); options go to it as well
- * (canvas, instantiateWasm, preRun...). onLog gets each line of the module's log.
+ * (canvas, instantiateWasm, preRun...). onLog gets each line of the module's log; onFileWritten, when given, each
+ * path the game wrote under ROOT, relative to it.
  */
 export async function loadTmweb(factory, onLog, { transport = webSocketTransport(undefined, onLog), ...options } = {}) {
   const m = await factory({ ...options, onLog, transport, print: onLog, printErr: onLog });
@@ -37,6 +38,8 @@ export async function loadTmweb(factory, onLog, { transport = webSocketTransport
     },
     /** One of RunState. */
     run: budget => m._tmweb_run(budget),
+    /** Frames presented since boot. */
+    frames: () => m._tmweb_frames(),
     instructions: () => m._tmweb_instructions(),
     /** input.js's InputKind, and its a and b. */
     input: (kind, a, b) => m._tmweb_input(kind, a, b),

@@ -95,6 +95,9 @@ jobs:
           npm ci
           npm test
           npm run build
+      - name: Headless Chromium harness (synthetic files)
+        working-directory: browser/web
+        run: CHROME=$(command -v google-chrome) node harness.mjs --synthetic --timeout 120
       - name: Wasm-only tests under Node (no game files)
         run: node build/browser-wasm/tmweb_wasm_tests.js
 

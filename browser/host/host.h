@@ -1,17 +1,20 @@
 #pragma once
 
 // The module's way out to its host: the page's worker or the Node runner (browser/web). Stand-ins reach the outside
-// world only through here: the log, the keyboard and mouse, the speakers and stream sockets. Under Emscripten the
+// world only through here: the log, the keyboard and mouse, frames, file writes, the speakers and stream sockets. Under Emscripten the
 // JS side (web/host.js) implements the outward calls; natively the log goes to stderr and every connect fails.
 //
 // The game files are plain files under the runtime root that tmweb_boot gets: the picked folder copied into MEMFS on
-// the page, the real folder mounted with NODEFS under Node. Read them with the C++ standard library.
+// the page, the real folder mounted with NODEFS under Node. Read them with the C++ standard library; after writing
+// one, call fileWritten so the page keeps it (OPFS).
 //
 // Direct3D draws on the canvas the host hands the module factory (Module.canvas, an OffscreenCanvas in the worker),
 // as Kestrel's compat gl/gl.js expects. Under Node there is none.
 
+#include <array>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string>
@@ -27,7 +30,7 @@ void log(std::string_view line);
 enum class InputKind : std::uint8_t
 {
     Key,    // a: DirectInput key code (DIK_*), b: 1 down, 0 up
-    Move,   // a, b: the pointer in back-buffer pixels
+    Move,   // a, b: the pointer in client pixels, 0-639 and 0-479
     Button, // a: 0 left, 1 right, 2 middle; b: 1 down, 0 up
     Wheel,  // a: 120ths of a notch, away from the user positive
 };
@@ -39,8 +42,27 @@ struct InputEvent
     std::int32_t b    = 0;
 };
 
-// The keyboard and mouse events the host sent since the last call, oldest first
-auto takeInput() -> std::vector<InputEvent>;
+// The keyboard and mouse as the host's events left them
+struct InputState
+{
+    std::array<bool, 256> keys{};  // by DirectInput key code (DIK_*), as InputEvent's key
+    std::int32_t          x = 320; // the pointer in client pixels
+    std::int32_t          y = 240;
+    std::array<bool, 3>   buttons{}; // 0 left, 1 right, 2 middle
+};
+
+auto inputState() -> const InputState&;
+// Called with each event as it arrives, between run slices, after inputState() reflects it. Under Emscripten the
+// events also reach compat's DirectInput (kr_dinput_key, kr_dinput_mouse with the pointer's motion, kr_dinput_button).
+void onInput(std::function<void(const InputEvent&)> listener);
+
+// A frame went to the canvas: Present calls this after gl::Present. It counts frames (tmweb_frames) and ends the run
+// slice, so each of the host's tasks shows one frame.
+void presented();
+
+// The guest wrote path (relative to the runtime root, '/'-separated) to the files under the root; the page copies it
+// to OPFS. Under Node and natively it does nothing, the folder being the real one.
+void fileWritten(std::string_view path);
 
 // Sound: interleaved stereo float frames at kSoundRate for the page's speakers. Under Node it is dropped.
 inline constexpr unsigned kSoundRate = 48000;
@@ -93,8 +115,10 @@ extern "C"
     // halts at the first call to that "module!name". 0 on success.
     auto tmweb_boot(const char* root, int trace, const char* until) -> int;
     // Run up to budget instructions. 0: ran the budget out, 1: idle until a host event or timeout, 2: halted (the
-    // reason is logged).
+    // reason is logged), 3: a frame was presented.
     auto tmweb_run(double budget) -> int;
+    // Frames presented since boot
+    auto tmweb_frames() -> double;
     // Instructions retired since boot
     auto tmweb_instructions() -> double;
     void tmweb_input(int kind, int a, int b);

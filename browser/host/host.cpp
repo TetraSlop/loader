@@ -18,6 +18,11 @@ extern "C"
     void tmweb_host_connect(int id, const char* address, int port);
     void tmweb_host_send(int id, const std::uint8_t* bytes, int length);
     void tmweb_host_close(int id);
+    void tmweb_host_file_written(const char* path, int length);
+    // compat/dx/dinput.cpp
+    void kr_dinput_key(int key, bool down);
+    void kr_dinput_mouse(int dx, int dy, int dz);
+    void kr_dinput_button(int button, bool down);
 }
 #else
 namespace
@@ -42,6 +47,10 @@ void tmweb_host_close(int)
 {
 }
 
+void tmweb_host_file_written(const char*, int)
+{
+}
+
 } // namespace
 #endif
 
@@ -50,11 +59,15 @@ namespace tmweb::host
 namespace
 {
 
-std::vector<InputEvent>                        g_input;
-std::vector<float>                             g_sound;
-std::vector<float>                             g_soundTaken;
-std::map<std::uint32_t, std::weak_ptr<Socket>> g_sockets;
-std::uint32_t                                  g_nextSocket = 1;
+InputState                                          g_inputState;
+std::vector<std::function<void(const InputEvent&)>> g_inputListeners;
+std::uint64_t                                       g_frames    = 0;
+bool                                                g_presented = false;
+tmweb::Machine*                                     g_running   = nullptr; // what presented() yields
+std::vector<float>                                  g_sound;
+std::vector<float>                                  g_soundTaken;
+std::map<std::uint32_t, std::weak_ptr<Socket>>      g_sockets;
+std::uint32_t                                       g_nextSocket = 1;
 
 } // namespace
 
@@ -63,9 +76,30 @@ void log(const std::string_view line)
     tmweb_host_log(line.data(), static_cast<int>(line.size()));
 }
 
-auto takeInput() -> std::vector<InputEvent>
+auto inputState() -> const InputState&
 {
-    return std::exchange(g_input, {});
+    return g_inputState;
+}
+
+void onInput(std::function<void(const InputEvent&)> listener)
+{
+    g_inputListeners.push_back(std::move(listener));
+}
+
+void presented()
+{
+    ++g_frames;
+    g_presented = true;
+    // End the run at this frame, so each host task shows one
+    if (g_running)
+    {
+        g_running->yield();
+    }
+}
+
+void fileWritten(const std::string_view path)
+{
+    tmweb_host_file_written(path.data(), static_cast<int>(path.size()));
 }
 
 void playSound(const std::span<const float> frames)
@@ -219,10 +253,11 @@ extern "C" auto tmweb_boot(const char* root, const int trace, const char* until)
         log(std::format("tmweb: no runtime folder at {}", root));
         return 1;
     }
-    g_machine       = std::make_unique<tmweb::Machine>();
-    g_instructions  = 0;
-    g_halted        = false;
-    const auto game = std::filesystem::path{ root } / "TM_native.dll";
+    g_machine              = std::make_unique<tmweb::Machine>();
+    tmweb::host::g_running = g_machine.get();
+    g_instructions         = 0;
+    g_halted               = false;
+    const auto game        = std::filesystem::path{ root } / "TM_native.dll";
     log(std::format("tmweb: runtime {}, TM_native.dll {} bytes, guest memory base {:#x}", root, std::filesystem::exists(game, error) ? std::filesystem::file_size(game, error) : 0, g_machine->memory().base()));
     if (trace != 0 || *until != 0)
     {
@@ -239,6 +274,9 @@ extern "C" auto tmweb_boot(const char* root, const int trace, const char* until)
                 }
             });
     }
+    tmweb::host::g_inputState = {};
+    tmweb::host::g_inputListeners.clear();
+    tmweb::host::g_frames = 0;
     tmweb::boot(*g_machine, root);
     return 0;
 }
@@ -250,7 +288,8 @@ extern "C" auto tmweb_run(const double budget) -> int
         return 2;
     }
     // Machine::run takes a budget for this call and reports what it retired
-    const auto result = g_machine->run(static_cast<std::uint64_t>(budget));
+    tmweb::host::g_presented = false;
+    const auto result        = g_machine->run(static_cast<std::uint64_t>(budget));
     g_instructions += result.instructions;
     if (result.halted)
     {
@@ -258,7 +297,16 @@ extern "C" auto tmweb_run(const double budget) -> int
         tmweb::host::log(std::format("tmweb: halted after {} instructions: {}", g_instructions, result.reason));
         return 2;
     }
+    if (tmweb::host::g_presented)
+    {
+        return 3;
+    }
     return result.idle ? 1 : 0;
+}
+
+extern "C" auto tmweb_frames() -> double
+{
+    return static_cast<double>(tmweb::host::g_frames);
 }
 
 extern "C" auto tmweb_instructions() -> double
@@ -268,7 +316,54 @@ extern "C" auto tmweb_instructions() -> double
 
 extern "C" void tmweb_input(const int kind, const int a, const int b)
 {
-    tmweb::host::g_input.push_back({ static_cast<tmweb::host::InputKind>(kind), a, b });
+    using namespace tmweb::host;
+    auto  event = InputEvent{ static_cast<InputKind>(kind), a, b };
+    auto& state = g_inputState;
+    switch (event.kind)
+    {
+        case InputKind::Key:
+            if (a <= 0 || a > 0xFF)
+            {
+                return;
+            }
+            state.keys[static_cast<std::size_t>(a)] = b != 0;
+#ifdef __EMSCRIPTEN__
+            kr_dinput_key(a, b != 0);
+#endif
+            break;
+        case InputKind::Move:
+        {
+            const auto x = std::clamp(a, 0, 639);
+            const auto y = std::clamp(b, 0, 479);
+#ifdef __EMSCRIPTEN__
+            kr_dinput_mouse(x - state.x, y - state.y, 0);
+#endif
+            state.x = event.a = x;
+            state.y = event.b = y;
+            break;
+        }
+        case InputKind::Button:
+            if (a < 0 || a > 2)
+            {
+                return;
+            }
+            state.buttons[static_cast<std::size_t>(a)] = b != 0;
+#ifdef __EMSCRIPTEN__
+            kr_dinput_button(a, b != 0);
+#endif
+            break;
+        case InputKind::Wheel:
+#ifdef __EMSCRIPTEN__
+            kr_dinput_mouse(0, 0, a);
+#endif
+            break;
+        default:
+            return;
+    }
+    for (const auto& listener : g_inputListeners)
+    {
+        listener(event);
+    }
 }
 
 extern "C" auto tmweb_sound_take() -> const float*

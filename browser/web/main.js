@@ -14,6 +14,17 @@ const append = line => {
   logView.scrollTop = logView.scrollHeight;
 };
 
+// 640x480 at the largest whole scale that fits the window, or ?scale=N; below 1x, the largest 4:3 that fits
+const fixed = Number(new URLSearchParams(location.search).get("scale")) || 0;
+const fit = () => {
+  const room = Math.min(document.documentElement.clientWidth - 32, (innerHeight - screen.getBoundingClientRect().top - 16) * 4 / 3);
+  const scale = fixed || (room >= 640 ? Math.floor(room / 640) : Math.max(room, 160) / 640);
+  screen.style.width = `${640 * scale}px`;
+  screen.style.height = `${480 * scale}px`;
+};
+addEventListener("resize", fit);
+fit();
+
 const ready = async () => {
   const cached = await hasCache();
   start.disabled = !picked && !cached;
@@ -48,8 +59,11 @@ start.onclick = () => {
   worker.onmessage = ({ data: m }) => {
     if (m.type === "log") append(m.line);
     else if (m.type === "sound") speakers.play(m.samples);
+    // The headless harness waits on this
+    else if (m.type === "frames") document.body.dataset.frames = m.frames;
     else if (m.type === "state") {
       show({ running: "Running", halted: "Halted", failed: "Failed", "need-files": "Pick your runtime folder first" }[m.state]);
+      document.body.dataset.state = m.state;
       if (m.state !== "running") speakers.close();
     }
   };

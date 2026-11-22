@@ -106,6 +106,22 @@ npm test        # the runner checks need the Wasm build; $TM_RUNTIME boots the u
 npm run build   # the page into build/browser-page
 ```
 
+The canvas is 640x480 at the largest whole scale that fits the window (`?scale=N` sets one), or the largest 4:3
+below 1x. The worker paces itself on the game's frames: each task runs until the game presents one (`host::presented`)
+or 12 ms pass, and after a frame the next task waits for the display's refresh. Keys and the pointer go to
+`tmweb_input`, which keeps `host::inputState()`, tells the `host::onInput` listeners and drives compat's DirectInput;
+a button release waits until the game has had a frame to see the press. What the game writes (`host::fileWritten`)
+is copied from MEMFS to OPFS, and a picked folder's `pub/` and `settings/` come along with the listed files.
+
+`web/harness.mjs` runs the page in headless Chromium: it uploads a runtime folder through the directory input,
+starts the game, waits for frames and screenshots the canvas at 640x480, then compares it with a reference through
+`tools/compare_frame.py`. Screenshots of game frames stay local (`build/` by default) and are never committed.
+
+```sh
+node browser/web/harness.mjs --folder <runtime folder> --frames 60 --reference <title screen.png>
+node browser/web/harness.mjs --synthetic     # CI: stand-in files, checks the harness itself
+```
+
 Sockets go through `web/transport.js`: one binary WebSocket per guest connection, at the URL `route(address, port)`
 gives, with the play-session token as the first text message, as tmserver's gateway expects of a browser stream
 (its LOADER_AUTH_SPEC.md, "Browser clients"). No route exists until sign-in lands, so every connect fails.

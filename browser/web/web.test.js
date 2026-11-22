@@ -14,12 +14,18 @@ import { SocketEvent, webSocketTransport } from "./transport.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-test("the runtime files are the ones retail-files.txt lists, matched without case", () => {
+test("the runtime files are the ones retail-files.txt lists, matched without case, and the saved ones", () => {
   const paths = retailPaths(fs.readFileSync(path.join(here, "../../retail-files.txt"), "utf8"));
   assert.ok(paths.includes("TM_native.dll") && paths.includes("data/utf/env.dat"));
-  const entries = [{ path: "tm_native.DLL", file: 1 }, { path: "Data\\Aucti.bin", file: 2 }, { path: "other.txt", file: 3 }];
+  const entries = [
+    { path: "tm_native.DLL", file: 1 },
+    { path: "Data\\Aucti.bin", file: 2 },
+    { path: "other.txt", file: 3 },
+    { path: "settings\\tm.cfg", file: 4 },
+    { path: "logs/tm.log", file: 5 },
+  ];
   const { found, missing } = runtimeFiles(entries, paths);
-  assert.deepEqual(found.map(f => f.path), ["TM_native.dll", "data/Aucti.BIN"]);
+  assert.deepEqual(found.map(f => f.path), ["TM_native.dll", "data/Aucti.BIN", "settings/tm.cfg"]);
   assert.equal(missing.length, paths.length - 2);
 });
 

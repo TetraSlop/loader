@@ -3,20 +3,38 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <vector>
 
 using namespace tmweb::host;
 
-TEST_CASE("Input events come out once, in the order the host sent them")
+TEST_CASE("Input events update the state, then reach each listener in order")
 {
+    auto seen = std::vector<InputEvent>{};
+    onInput([&seen](const InputEvent& event)
+            {
+                seen.push_back(event);
+            });
+    onInput(
+        [](const InputEvent& event)
+        {
+            if (event.kind == InputKind::Key)
+            {
+                CHECK(inputState().keys[0x1C] == (event.b != 0));
+            }
+        });
     tmweb_input(0, 0x1C, 1);
-    tmweb_input(1, 320, 240);
-    const auto events = takeInput();
-    REQUIRE(events.size() == 2);
-    CHECK(events[0].kind == InputKind::Key);
-    CHECK(events[0].a == 0x1C);
-    CHECK(events[1].kind == InputKind::Move);
-    CHECK(events[1].b == 240);
-    CHECK(takeInput().empty());
+    tmweb_input(1, 700, 100);
+    tmweb_input(2, 1, 1);
+    tmweb_input(0, 0x1C, 0);
+    tmweb_input(0, 0x100, 1); // no such key: dropped
+    REQUIRE(seen.size() == 4);
+    CHECK(seen[0].a == 0x1C);
+    CHECK(seen[1].kind == InputKind::Move);
+    CHECK(seen[1].a == 639);
+    CHECK(inputState().x == 639); // clamped to the client area
+    CHECK(inputState().y == 100);
+    CHECK(inputState().buttons[1]);
+    CHECK_FALSE(inputState().keys[0x1C]);
 }
 
 TEST_CASE("Sound played is taken whole, as stereo frames")

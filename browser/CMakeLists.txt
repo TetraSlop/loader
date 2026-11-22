@@ -122,6 +122,10 @@ if(EMSCRIPTEN)
     target_link_libraries(tmweb_directx PUBLIC tmweb_core tmweb_compat)
 endif()
 target_link_libraries(tmweb_host PUBLIC tmweb_hle)
+if(EMSCRIPTEN)
+    # host.cpp hands input to compat's DirectInput
+    target_link_libraries(tmweb_host PUBLIC tmweb_compat)
+endif()
 
 add_executable(tmweb app/main.cpp)
 target_link_libraries(tmweb PRIVATE tmweb_host)
@@ -143,7 +147,7 @@ if(EMSCRIPTEN)
         -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createTmweb -sENVIRONMENT=worker,node
         -sFORCE_FILESYSTEM=1 -lnodefs.js -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=448MB -sMAXIMUM_MEMORY=2GB
         -sSTACK_SIZE=4MB
-        -sEXPORTED_FUNCTIONS=_tmweb_boot,_tmweb_run,_tmweb_instructions,_tmweb_input,_tmweb_sound_take,_tmweb_sound_frames,_tmweb_socket_event,_malloc,_free
+        -sEXPORTED_FUNCTIONS=_tmweb_boot,_tmweb_run,_tmweb_frames,_tmweb_instructions,_tmweb_input,_tmweb_sound_take,_tmweb_sound_frames,_tmweb_socket_event,_malloc,_free
         -sEXPORTED_RUNTIME_METHODS=FS,NODEFS,HEAPU8,HEAPF32,UTF8ToString,stringToUTF8,lengthBytesUTF8)
 endif()
 
