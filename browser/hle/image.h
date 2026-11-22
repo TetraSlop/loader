@@ -1,0 +1,29 @@
+#pragma once
+
+// PE images in guest memory: map a DLL file, bind its header imports to stand-ins, look up exports.
+
+#include "core/boundary.h"
+#include "core/memory.h"
+
+#include <cstdint>
+#include <span>
+#include <string_view>
+
+namespace tmweb::hle
+{
+
+struct Image
+{
+    std::uint32_t base  = 0;
+    std::uint32_t size  = 0;
+    std::uint32_t entry = 0; // 0 when the image has no entry point
+};
+
+// Map headers and sections at the preferred base and point every header import at boundary.resolve(). Relocations
+// are not applied: TM.dll's base is pinned. Throws std::runtime_error for a file that is not a 32-bit PE.
+auto loadImage(Memory& memory, Boundary& boundary, std::span<const std::uint8_t> file) -> Image;
+
+// The address an image in guest memory exports under name ("#n" for an ordinal), or 0
+auto findExport(const Memory& memory, std::uint32_t base, std::string_view name) -> std::uint32_t;
+
+} // namespace tmweb::hle

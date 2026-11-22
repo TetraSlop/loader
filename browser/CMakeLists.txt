@@ -8,6 +8,8 @@ project(tmweb LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# tools/capi.cpp is a shared library over the static ones
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -42,7 +44,6 @@ add_library(tmweb_core STATIC
     f80/f80_transcendental.cpp
 )
 target_include_directories(tmweb_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-set_target_properties(tmweb_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(NOT EMSCRIPTEN)
     # The interpreter alone behind a C interface, for the differential test against Unicorn (tools/difftest.py)
@@ -50,9 +51,21 @@ if(NOT EMSCRIPTEN)
     target_link_libraries(tmweb_capi PRIVATE tmweb_core)
 endif()
 
+# Win32 stand-ins and the boot sequence
+add_library(tmweb_hle STATIC
+    hle/advapi32.cpp
+    hle/boot.cpp
+    hle/files.cpp
+    hle/image.cpp
+    hle/kernel32.cpp
+    hle/process.cpp
+    hle/small.cpp
+    hle/user32.cpp
+)
+target_link_libraries(tmweb_hle PUBLIC tmweb_core)
+
 # The module's side of the page and the Node runner (host/host.h, web/)
 add_library(tmweb_host OBJECT app/boot.cpp host/host.cpp)
-target_link_libraries(tmweb_host PUBLIC tmweb_core)
 target_link_libraries(tmweb_core PRIVATE softfloat)
 
 # Kestrel's Direct3D 8 on WebGL2, DirectInput and DirectSound (compat/, see README.md). They are written against
@@ -108,6 +121,7 @@ if(EMSCRIPTEN)
     add_library(tmweb_directx STATIC com/directx.cpp)
     target_link_libraries(tmweb_directx PUBLIC tmweb_core tmweb_compat)
 endif()
+target_link_libraries(tmweb_host PUBLIC tmweb_hle)
 
 add_executable(tmweb app/main.cpp)
 target_link_libraries(tmweb PRIVATE tmweb_core)
@@ -145,7 +159,11 @@ endif()
 if(BUILD_TESTING AND NOT EMSCRIPTEN)
     add_executable(tmweb_tests
         tests/boundary_com_test.cpp
+        tests/boot_test.cpp
+        tests/boundary_test.cpp
         tests/cpu_test.cpp
+        tests/guest_test.cpp
+        tests/hle_test.cpp
         tests/host_test.cpp
         tests/f80_test.cpp
         tests/memory_test.cpp
@@ -157,6 +175,29 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
     include(Catch)
     catch_discover_tests(tmweb_tests)
+
+    # The guest and boot tests again with Unicorn as the CPU, a reference for the interpreter. Off in CI. The boot
+    # test reads the user's TM_native.dll from TMWEB_RUNTIME (the runtime folder) and skips without it.
+    option(TMWEB_UNICORN "Build the tests that run guest code on Unicorn" OFF)
+    if(TMWEB_UNICORN)
+        set(UNICORN_ARCH "x86" CACHE STRING "" FORCE)
+        set(UNICORN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(UNICORN_INSTALL OFF CACHE BOOL "" FORCE)
+        set(UNICORN_LEGACY_STATIC_ARCHIVE OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(unicorn
+            URL https://github.com/unicorn-engine/unicorn/archive/refs/tags/v2.1.4.tar.gz
+            URL_HASH SHA256=ea8863f095a0136388694e5a6063afd9bb7650e30243dd6251af59c5ce5601f4
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+        FetchContent_MakeAvailable(unicorn)
+        add_executable(tmweb_unicorn_tests
+            tests/boot_test.cpp
+            tests/guest_test.cpp
+            tests/unicorn_runner.cpp
+        )
+        target_compile_definitions(tmweb_unicorn_tests PRIVATE TMWEB_ON_UNICORN)
+        target_link_libraries(tmweb_unicorn_tests PRIVATE tmweb_hle unicorn Catch2::Catch2WithMain)
+        catch_discover_tests(tmweb_unicorn_tests DISCOVERY_MODE PRE_TEST)
+    endif()
 endif()
 
 # f80's results hashed: native and Wasm (run by Node) must print the same digest as kExpected

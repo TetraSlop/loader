@@ -46,6 +46,146 @@ auto accessName(const Access access) -> const char*
     }
 }
 
+// i386 CONTEXT and EXCEPTION_RECORD offsets
+enum : std::uint32_t
+{
+    kContextSize   = 0x2CC,
+    kContextAll    = 0x1003F,
+    kFloatControl  = 0x1C,
+    kFloatStatus   = 0x20,
+    kFloatTag      = 0x24,
+    kFloatOffset   = 0x28,
+    kFloatSelector = 0x2C,
+    kFloatData     = 0x30,
+    kFloatRegs     = 0x38,
+    kSegGs         = 0x8C,
+    kSegFs         = 0x90,
+    kSegEs         = 0x94,
+    kSegDs         = 0x98,
+    kRegs          = 0x9C, // edi, esi, ebx, edx, ecx, eax, ebp
+    kEipSlot       = 0xB8,
+    kSegCs         = 0xBC,
+    kEflagsSlot    = 0xC0,
+    kEspSlot       = 0xC4,
+    kSegSs         = 0xC8,
+    kRecordSize    = 0x50,
+};
+
+constexpr auto kContextRegs = std::array<Reg, 7>{ kEdi, kEsi, kEbx, kEdx, kEcx, kEax, kEbp };
+
+constexpr auto kSehModule = "ntdll.dll";
+constexpr auto kSehReturn = "KiUserExceptionDispatcher";
+
+enum Disposition : std::uint32_t
+{
+    kContinueExecution = 0,
+    kContinueSearch    = 1,
+};
+
+auto chainEnd(const std::uint32_t frame) -> bool
+{
+    return frame == 0 || frame == 0xFFFFFFFF;
+}
+
+// Call handler(record, frame, context, dispatcherContext), returning into the SEH return trap
+void enterHandler(Memory& memory, Context& context, const std::uint32_t frame, const std::uint32_t record, const std::uint32_t contextRecord, const std::uint32_t trap)
+{
+    const auto sp     = record - 0x20;
+    const auto values = std::array<std::uint32_t, 5>{ trap, record, frame, contextRecord, 0 };
+    for (auto i = 0u; i < values.size(); ++i)
+    {
+        memory.write<std::uint32_t>(sp + 4 * i, values[i]);
+    }
+    context.r[kEsp] = sp;
+    context.eip     = memory.read<std::uint32_t>(frame + 4);
+}
+
+void saveContext(Memory& memory, const Context& context, const std::uint32_t address, const std::uint32_t eip)
+{
+    memory.fill(address, 0, kContextSize);
+    memory.write<std::uint32_t>(address, kContextAll);
+    const auto& fpu = context.fpu;
+    memory.write<std::uint32_t>(address + kFloatControl, 0xFFFF0000 | fpu.control);
+    memory.write<std::uint32_t>(address + kFloatStatus, 0xFFFF0000 | fpu.status);
+    memory.write<std::uint32_t>(address + kFloatTag, 0xFFFF0000 | fpu.tag);
+    memory.write<std::uint32_t>(address + kFloatOffset, fpu.lastInstruction);
+    memory.write<std::uint32_t>(address + kFloatSelector, (std::uint32_t{ fpu.lastOpcode } << 16) | 0x1B);
+    memory.write<std::uint32_t>(address + kFloatData, fpu.lastOperand);
+    for (auto i = 0u; i < 8; ++i)
+    {
+        const auto& value = fpu.st[(fpu.top() + i) & 7];
+        memory.write<std::uint64_t>(address + kFloatRegs + 10 * i, value.significand);
+        memory.write<std::uint16_t>(address + kFloatRegs + 10 * i + 8, value.signExponent);
+    }
+    memory.write<std::uint32_t>(address + kSegGs, 0);
+    memory.write<std::uint32_t>(address + kSegFs, 0x3B);
+    memory.write<std::uint32_t>(address + kSegEs, 0x23);
+    memory.write<std::uint32_t>(address + kSegDs, 0x23);
+    for (auto i = 0u; i < kContextRegs.size(); ++i)
+    {
+        memory.write<std::uint32_t>(address + kRegs + 4 * i, context.r[kContextRegs[i]]);
+    }
+    memory.write<std::uint32_t>(address + kEipSlot, eip);
+    memory.write<std::uint32_t>(address + kSegCs, 0x1B);
+    memory.write<std::uint32_t>(address + kEflagsSlot, context.eflags);
+    memory.write<std::uint32_t>(address + kEspSlot, context.r[kEsp]);
+    memory.write<std::uint32_t>(address + kSegSs, 0x23);
+}
+
+// Resume from the CONTEXT a handler may have edited: integer registers, eip, eflags and the x87 state. Debug
+// registers are not modelled, so a handler that clears them changes nothing.
+void restoreContext(const Memory& memory, Context& context, const std::uint32_t address)
+{
+    for (auto i = 0u; i < kContextRegs.size(); ++i)
+    {
+        context.r[kContextRegs[i]] = memory.read<std::uint32_t>(address + kRegs + 4 * i);
+    }
+    context.eip     = memory.read<std::uint32_t>(address + kEipSlot);
+    context.eflags  = (memory.read<std::uint32_t>(address + kEflagsSlot) & 0x3F7FD7) | 0x2;
+    context.r[kEsp] = memory.read<std::uint32_t>(address + kEspSlot);
+    auto& fpu       = context.fpu;
+    fpu.control     = memory.read<std::uint16_t>(address + kFloatControl);
+    fpu.status      = memory.read<std::uint16_t>(address + kFloatStatus);
+    fpu.tag         = memory.read<std::uint16_t>(address + kFloatTag);
+    for (auto i = 0u; i < 8; ++i)
+    {
+        auto& value        = fpu.st[(fpu.top() + i) & 7];
+        value.significand  = memory.read<std::uint64_t>(address + kFloatRegs + 10 * i);
+        value.signExponent = memory.read<std::uint16_t>(address + kFloatRegs + 10 * i + 8);
+    }
+}
+
+// A handler returned into the trap, so esp is at its arguments: record, frame, context
+auto handlerReturned(Call& call) -> Outcome
+{
+    auto&      memory        = call.memory();
+    auto&      context       = call.context();
+    const auto esp           = context.r[kEsp];
+    const auto record        = memory.read<std::uint32_t>(esp);
+    const auto frame         = memory.read<std::uint32_t>(esp + 4);
+    const auto contextRecord = memory.read<std::uint32_t>(esp + 8);
+    const auto disposition   = context.r[kEax];
+    if (disposition == kContinueExecution)
+    {
+        restoreContext(memory, context, contextRecord);
+        return Resume{};
+    }
+
+    const auto code    = memory.read<std::uint32_t>(record);
+    const auto address = memory.read<std::uint32_t>(record + 12);
+    if (disposition != kContinueSearch)
+    {
+        return Halt{ std::format("exception handler returned disposition {} for {:#x} at {:#x}", disposition, code, address) };
+    }
+    const auto next = memory.read<std::uint32_t>(frame);
+    if (chainEnd(next))
+    {
+        return Halt{ std::format("unhandled exception {:#x} at {:#x}", code, address) };
+    }
+    enterHandler(memory, context, next, record, contextRecord, call.machine().boundary().resolve(kSehModule, kSehReturn) + TrapRange::kTrapOffset);
+    return Resume{};
+}
+
 } // namespace
 
 Machine::Machine()
@@ -53,6 +193,8 @@ Machine::Machine()
 , boundary_(memory_)
 , scheduler_(memory_)
 {
+    // Exception handlers return here; on Windows they are called from ntdll's dispatcher too
+    boundary_.add(Function{ kSehModule, kSehReturn, Convention::Cdecl, 0, handlerReturned });
 }
 
 auto Machine::memory() -> Memory&
@@ -324,9 +466,32 @@ auto Machine::callGuest(const std::uint32_t function, const std::span<const std:
     return result;
 }
 
-auto Machine::raise(std::uint32_t, std::uint32_t, std::span<const std::uint32_t>) -> bool
+// EXCEPTION_RECORD and CONTEXT go below the thread's stack pointer, where KiUserExceptionDispatcher finds them, and
+// the first fs:[0] handler is called on them; it returns through handlerReturned. An exception inside a handler
+// builds a fresh pair further down the stack, so no dispatcher state lives outside guest memory.
+auto Machine::raise(const std::uint32_t code, const std::uint32_t address, const std::span<const std::uint32_t> information)
+    -> bool
 {
-    return false;
+    auto&      context = scheduler_.current().context;
+    const auto frame   = memory_.read<std::uint32_t>(context.fsBase);
+    if (chainEnd(frame))
+    {
+        return false;
+    }
+    const auto contextRecord = (context.r[kEsp] - 0x400) & ~0xFu;
+    const auto record        = contextRecord - kRecordSize;
+    saveContext(memory_, context, contextRecord, address);
+    memory_.fill(record, 0, kRecordSize);
+    memory_.write<std::uint32_t>(record, code);
+    memory_.write<std::uint32_t>(record + 12, address);
+    const auto count = static_cast<std::uint32_t>(std::min<std::size_t>(information.size(), 15));
+    memory_.write<std::uint32_t>(record + 16, count);
+    for (auto i = 0u; i < count; ++i)
+    {
+        memory_.write<std::uint32_t>(record + 20 + 4 * i, information[i]);
+    }
+    enterHandler(memory_, context, frame, record, contextRecord, boundary_.resolve(kSehModule, kSehReturn) + TrapRange::kTrapOffset);
+    return true;
 }
 
 void Machine::halt(std::string reason)

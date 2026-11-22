@@ -42,6 +42,21 @@ private:
     const Thread& thread_;
 };
 
+// The PEB fields the protector and the CRT read: not being debugged, no global flags, Windows XP
+auto newPeb(Memory& memory) -> std::uint32_t
+{
+    const auto peb = memory.allocate(kPageSize, kPageSize);
+    memory.write<std::uint8_t>(peb + 0x02, 0);                   // BeingDebugged
+    memory.write<std::uint32_t>(peb + 0x08, layout::kGameImage); // ImageBaseAddress
+    memory.write<std::uint32_t>(peb + 0x64, 1);                  // NumberOfProcessors
+    memory.write<std::uint32_t>(peb + 0x68, 0);                  // NtGlobalFlag
+    memory.write<std::uint32_t>(peb + 0xA4, 5);                  // OSMajorVersion
+    memory.write<std::uint32_t>(peb + 0xA8, 1);                  // OSMinorVersion
+    memory.write<std::uint16_t>(peb + 0xAC, 2600);               // OSBuildNumber
+    memory.write<std::uint32_t>(peb + 0xB0, 2);                  // OSPlatformId: NT
+    return peb;
+}
+
 auto roundUp(const std::uint32_t value, const std::uint32_t alignment) -> std::uint32_t
 {
     return (value + alignment - 1) & ~(alignment - 1);
@@ -92,10 +107,8 @@ auto Scheduler::newThread(const std::uint32_t stackSize) -> Thread&
     memory_.write<std::uint32_t>(teb + kTebSelf, teb);
     memory_.write<std::uint32_t>(teb + kTebProcessId, kProcessId);
     memory_.write<std::uint32_t>(teb + kTebThreadId, thread->id);
-    if (!threads_.empty())
-    {
-        memory_.write<std::uint32_t>(teb + kTebPeb, memory_.read<std::uint32_t>(threads_.front()->teb + kTebPeb));
-    }
+    const auto peb = threads_.empty() ? newPeb(memory_) : memory_.read<std::uint32_t>(threads_.front()->teb + kTebPeb);
+    memory_.write<std::uint32_t>(teb + kTebPeb, peb);
     threads_.push_back(std::move(thread));
     return *threads_.back();
 }
@@ -104,6 +117,8 @@ auto Scheduler::create(const std::uint32_t start, const std::uint32_t parameter,
 {
     auto& thread = newThread(stackSize);
     auto& esp    = thread.context.r[kEsp];
+    // Headroom below the stack base, as BaseThreadStart's frame leaves: a read past the start frame stays mapped
+    esp -= 16;
     esp -= 4;
     memory_.write<std::uint32_t>(esp, parameter);
     esp -= 4;

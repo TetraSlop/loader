@@ -181,9 +181,16 @@ namespace
 
 // A guest caller: pushes this and the arguments under a return address, then calls the slot's handler as the
 // boundary would on reaching its trap
+auto publish(Machine& machine) -> bool
+{
+    machine.boundary().publish();
+    return true;
+}
+
 struct Guest
 {
     Machine       machine;
+    bool          published = publish(machine); // COM slots come after the module images
     Proxies       proxies{ machine };
     Context       context{};
     std::uint32_t stack = machine.memory().allocate(0x1000);

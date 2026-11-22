@@ -69,9 +69,16 @@ constexpr DWORD         kFvf    = D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_SPECUL
 constexpr UINT          kStride = 32;
 
 // One guest arena per process, so every test shares this
+auto publish(Machine& machine) -> bool
+{
+    machine.boundary().publish();
+    return true;
+}
+
 struct World
 {
     Machine               machine;
+    bool                  published = publish(machine); // COM slots come after the module images
     Proxies               proxies{ machine };
     std::vector<Function> exports = addDirectX(proxies);
     Context               context{};

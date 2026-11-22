@@ -23,7 +23,15 @@ This branch (`feat/browser-client`) is separate from `main` and is not merged in
 - d3d8.dll, dinput8.dll and dsound.dll on compat's objects (`com/directx.cpp`, Wasm only): every slot of the
   interfaces they hand out, locks through guest staging buffers, and CreateDevice setting the x87 to 24-bit precision.
   Enumeration callbacks go through `Machine::callGuest`; volume texture locks halt.
-- Not yet: the Win32 stand-ins and the protector unpack in C++ (`Boundary::dispatch`, `Machine::raise`, `boot`).
+- **The boot** (`app/boot.cpp`, `hle/boot.h`): TM_native.dll goes through its protector and the COM start-up to its
+  first Direct3D call, `Direct3DCreate8(220)`, against a stand-in Viewer. On the interpreter, natively and as Wasm
+  under Node (about 177 million instructions, 3 s), it matches the Unicorn reference run: the 20 SEH round trips,
+  all 148 imports named, the image byte-identical to tmserver's verified one when the protector hands over to the
+  CRT, then GameStart's 41 imports with their counts, 6 core slots, 11 Viewer entries, 59 file opens in order, the
+  registry values, and the `Tetra Master` window class at `+1863D0`.
+- Win32 stand-ins (`hle/`) for what TM.dll and its protector import from kernel32, user32, advapi32, imm32, ole32,
+  oleaut32 and gdi32. The registry serves tmloader's virtual values. Files come read-only from the runtime folder
+  through `hle::HostFiles`.
 
 ## Layout
 
@@ -34,6 +42,7 @@ This branch (`feat/browser-client`) is separate from `main` and is not merged in
 | `core/boundary.h` | Stand-ins: synthetic module images with exports, trap slots, `Call` (arguments, `this`, strings), `Outcome` (`Return`, `Block`, `Resume`, `Halt`), COM vtables and guest objects |
 | `core/threads.h` | Guest threads, `Waitable` kernel objects, `Wait`/`WaitResult`, the scheduler and its clock |
 | `core/machine.h` | One process: the run loop, structured exceptions, `callGuest` for callbacks into guest code |
+| `hle/` | Win32 stand-ins, the PE loader, the host file API (`files.h`) and the boot sequence (`boot.h`) |
 | `host/host.h` | The module's way out: log, keyboard and mouse, sound, stream sockets, and the exports the host drives |
 | `web/` | The host side: the Node runner, the page and its worker, input, WebAudio, the game-file picker, the WebSocket transport |
 | `f80/f80.h` | The 80-bit soft float the x87 runs on, on Berkeley SoftFloat 3e (`third_party/softfloat`) |
@@ -64,6 +73,16 @@ ctest --test-dir build/browser --output-on-failure
 
 The Wasm build also makes `tmweb_wasm_tests.js`, for what builds only there: `node build/browser-wasm/tmweb_wasm_tests.js`.
 compat/ is written against the Windows headers, so the Wasm build downloads mingw-w64 v14.0.0's (hash-pinned).
+The boot test needs the user's runtime folder and skips without it. `TMWEB_TM_MAPPED` adds the comparison with
+tmserver's `var/native/TM_emulated_mapped.dll`:
+
+```sh
+TMWEB_RUNTIME=<runtime folder> TMWEB_TM_MAPPED=<tmserver>/var/native/TM_emulated_mapped.dll \
+    ctest --test-dir build/browser -R TM_native --output-on-failure
+```
+
+`-DTMWEB_UNICORN=ON` also builds `tmweb_unicorn_tests`: the same guest and boot tests with Unicorn 2.1.4 as the CPU,
+for comparison with the interpreter. CI does not build it.
 
 ## Node runner and page
 
@@ -153,6 +172,8 @@ These need the user's own runtime folder and skip without it. They use Python wi
 TM_RUNTIME=<runtime folder> python browser/tools/difftest.py [--count 200000] [--x87]
 # Battle and growth against tmserver's frozen vectors, and growth at 24/53/64 bits against Unicorn
 TM_RUNTIME=<runtime folder> TMSERVER=<tmserver checkout> python browser/tools/rules.py
+# The Wasm build under Node, booted to Direct3DCreate8, against the Unicorn reference's observations
+TM_RUNTIME=<runtime folder> python browser/tools/boot_compare.py
 ```
 
 ## Game files
@@ -166,7 +187,9 @@ user's files read them from paths in environment variables and skip without them
 taken.
 
 Code taken from Kestrel's port (the owner's theater-fit `kestrel/port/compat`, commit `e1240c4`, GPL-3.0) is noted
-in the file that holds it. `web/input.js` and `web/speakers.js` are taken from theater-fit's `kestrel/port/run/`
+in the file that holds it: `hle/kernel32.cpp` takes the narrow and wide string conversion and the copy-out rule
+(`win32/impl/kernel.cpp`). The registry values and the GUIDs come from tmloader's own `src/platform/system.cpp` and
+`src/app/loader.cpp`. The boot's stand-in Viewer and the protector observations come from the spike's Python run. `web/input.js` and `web/speakers.js` are taken from theater-fit's `kestrel/port/run/`
 (commit `658d8c2`), the owner's code, relicensed here under GPL-3.0.
 
 `compat/` is that port's `dx/` (Direct3D 8, D3DX pixel formats, DirectInput, DirectSound), `gl/` and the
