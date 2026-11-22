@@ -132,8 +132,10 @@ endif()
 add_executable(tmweb app/main.cpp)
 target_link_libraries(tmweb PRIVATE tmweb_host)
 if(EMSCRIPTEN)
-    # --verify-d3dx
+    # --verify-d3dx, and host/host.h's outward calls
     target_link_libraries(tmweb PRIVATE tmweb_directx)
+    target_link_options(tmweb PRIVATE --js-library=${CMAKE_CURRENT_SOURCE_DIR}/web/host.js)
+    set_property(TARGET tmweb APPEND PROPERTY LINK_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/web/host.js)
 endif()
 if(EMSCRIPTEN)
     # Node reads the user's game files straight from disk; the guest arena needs 384 MiB of linear memory
