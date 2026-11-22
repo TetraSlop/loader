@@ -83,7 +83,7 @@ def main() -> int:
         print("Error: " + "\n       ".join(problems), file=sys.stderr)
         return 1
 
-    config.write_bytes(client_config())
+    config.write_bytes(client_config(local=True))
     print(f"Prepared {runtime} and {config}.")
     return 0
 

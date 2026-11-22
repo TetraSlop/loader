@@ -2,6 +2,7 @@
 #include "graphics/render_scale.h"
 #include "graphics/screenshot.h"
 #include "imgui.h"
+#include "ui/account.h"
 #include "ui/imgui_window.h"
 #include "ui/window.h"
 #include <algorithm>
@@ -115,7 +116,7 @@ void settingsFooter()
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::TextWrapped("F10: settings   F12: screenshot   Alt+Enter: fullscreen");
-    ImGui::TextWrapped("Window preferences are saved for this local account. Online matches continue while this panel is open.");
+    ImGui::TextWrapped("Window preferences are saved for this account. Online matches continue while this panel is open.");
     ImGui::Spacing();
     if (ImGui::Button("Return to game"))
     {
@@ -138,6 +139,11 @@ void settingsContents()
     ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
     ImGui::TextUnformatted("TETRA MASTER");
     ImGui::TextDisabled("Game settings");
+    if (const auto account = accountStatus(); !account.empty())
+    {
+        ImGui::TextDisabled("%s", account.c_str());
+    }
+
     ImGui::Separator();
     const auto value = currentWindowSettings();
     if (ImGui::BeginTabBar("settings-tabs"))

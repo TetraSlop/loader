@@ -59,6 +59,10 @@ class DistributionTests(unittest.TestCase):
         }
         self.assertEqual(set(files), base)
         self.assertIn(b"runtime-dir=runtime", files["tmloader.ini"])
+        # The shipped config holds no account, so the loader asks for one.
+        self.assertNotIn(b"pol-id", files["tmloader.ini"])
+        self.assertNotIn(b"tm-local-test", files["tmloader.ini"])
+        self.assertIn(b"local-account=true", build_release.client_config(local=True))
         self.assertIn(b"CLI11", files["THIRD_PARTY_NOTICES.txt"])
         self.assertNotIn(b"Catch2", files["THIRD_PARTY_NOTICES.txt"])
         archive = self.root / "client.zip"

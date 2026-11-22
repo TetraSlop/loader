@@ -17,19 +17,34 @@ struct Config
     std::filesystem::path game;
     std::filesystem::path viewer;
     std::filesystem::path log;
-    std::string           server      = "127.0.0.1";
-    std::string           polId       = "EEEEEEEF";
-    std::string           password    = "tm-local-test";
-    unsigned short        gamePort    = kClientGamePort;
-    unsigned short        profilePort = 51220;
-    bool                  diagnostics = false;
-    bool                  checkOnly   = false;
-    bool                  help        = false;
-    bool                  version     = false;
+    // The --config file, or empty when settings came from the command line only.
+    std::filesystem::path configFile;
+    std::string           server = "127.0.0.1";
+    // Empty until the player enters an account; the loader then asks for one.
+    std::string    polId;
+    std::string    password;
+    unsigned short gamePort    = kClientGamePort;
+    unsigned short profilePort = 51220;
+    // A built-in test account on a loopback server: no LOGIN step, and the
+    // account defaults to EEEEEEEF with password tm-local-test.
+    bool localAccount = false;
+    bool diagnostics  = false;
+    bool checkOnly    = false;
+    bool help         = false;
+    bool version      = false;
 };
 
 auto parseConfig(const std::vector<std::string>& args) -> Config;
 auto usage() -> std::string;
+// Account and server rules shared by the config parser and the account prompt.
+auto isValidPolId(const std::string& polId) -> bool;
+// 1 to 15 printable ASCII characters; polcore fails on longer passwords.
+auto isValidPassword(const std::string& password) -> bool;
+// A numeric IPv4 address or a DNS host name.
+auto isValidServer(const std::string& server) -> bool;
+auto isLoopbackServer(const std::string& server) -> bool;
+// Sets each key in a key=value config file, keeping its other lines; creates the file if needed.
+void saveConfigValues(const std::filesystem::path& file, const std::vector<std::pair<std::string, std::string>>& values);
 // Reads only; never loads a DLL, creates a window or changes the token.
 void validateRuntime(const Config& config);
 auto sha256(const void* data, size_t bytes) -> std::array<std::uint8_t, 32>;

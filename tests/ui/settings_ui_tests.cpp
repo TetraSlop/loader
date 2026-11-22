@@ -49,6 +49,11 @@ auto activeRenderScale() -> float
     return 4.5f;
 }
 
+auto accountStatus() -> std::string
+{
+    return "Signed in as ABCDEFGH.";
+}
+
 void postWindowAction(WindowAction, LPARAM)
 {
 }
