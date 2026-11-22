@@ -36,7 +36,6 @@ folders.
 | `platform/desktop` | Removal of global keyboard hooks, cursor warping and focus stealing |
 | `platform/audio` | DirectSound 8 factory |
 | `platform/patch` | `replacePointer`, `setImport` and `redirectCall` |
-| `presence/` | Discord Rich Presence over the desktop client's IPC pipe, and the game phase it reports |
 | `textures/` | Texture pack manifests, HD companions, and the upload and draw hooks |
 | `ui/` | Game window, per-account preferences, the shared ImGui window host, the settings panel and the hosted launcher |
 
@@ -45,17 +44,16 @@ Hook functions are named `hooked<ApiName>`, for example `hookedCreateFileA` or
 
 ## Optional features
 
-Three features can be left out of a build. Each has a CMake option, its own
+Two features can be left out of a build. Each has a CMake option, its own
 folder and static library, and a short list of places that refer to it, all
 behind `#ifdef` on the option's name.
 
 | Option | Folder | Referenced from |
 |---|---|---|
 | `TMLOADER_HD_TEXTURES` | `textures/` | `app/loader` (install), `app/main` (`--check`), `graphics/graphics` (draw hooks), `ui/settings_ui` (the Artwork tab), `config/config` (`--texture-pack`) |
-| `TMLOADER_DISCORD_PRESENCE` | `presence/` | `app/main` (connect), `app/loader` (game-phase hook), `config/config` (`--discord-app-id`) |
 | `TMLOADER_HOSTED` | `hosted/`, `ui/launcher`, `ui/image` | `app/main` (launcher and session), `config/config` (`--hosted-server`, `--hosted-insecure-loopback`) |
 
-All three default to on. Configure with, for example,
+Both default to on. Configure with, for example,
 `-DTMLOADER_HD_TEXTURES=OFF` to build without one; its options then disappear
 from `--help` and its tests are not built. To remove a feature for good,
 delete its folder and tests, then the guarded blocks and the option. The
@@ -313,20 +311,6 @@ Preferences are stored per account as JSON in
 `runtime-dir/settings/<POL-ID>.json`, with the same path and hard-link
 protections as logs. Malformed files fall back to defaults; out-of-range sizes
 and scales fall back individually. Only the eight advertised scales are accepted.
-
-## Game phase
-
-Rich Presence reports what the player is doing. Every incoming game message passes the game's `GTM0` ingress check at `+1A2B90`,
-which receives one queued 0x220-byte record with the message text at `+0x1D`.
-The message pump's call to it at `+19E57F` is redirected to a wrapper that calls
-the original check and, for accepted messages, reads the `GTM0G` header: family,
-reserved, subtype and argument as two hex digits each. Match messages are family
-`0x43`; init, turn and battle subtypes mean a match, `ResultData` (`0x0D`) the
-results, a `Continue` reply (`0x11`) with argument 1 a rematch and 2 the lobby,
-a `Quit` reply (`0x05`) the lobby and `WatchInfo`/`WatchCard` spectating.
-Room-service (`GTM0L`) traffic marks reaching the lobby. With `--diagnostics`
-the loader logs each message header (never bodies). The message layouts are
-documented in the separate TMPackets repository.
 
 ## Known limitations
 

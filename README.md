@@ -58,7 +58,7 @@ cmake --build build --config Release
 .\build\Release\tmloader.exe --config .\tmloader.ini --check
 ```
 
-HD texture packs, Discord Rich Presence and hosted play are optional; see
+HD texture packs and hosted play are optional; see
 [optional features](docs/architecture.md#optional-features) to build without
 them.
 
@@ -84,7 +84,6 @@ Paths are relative to `runtime-dir` unless absolute, and a relative
 | `--pol-id ID` | `EEEEEEEF` | Eight-character account ID |
 | `--password TEXT` | `tm-local-test` | Account password |
 | `--hosted-server URL` | | Sign in to a hosted server with Discord instead of `--server` (see [hosted play](docs/hosted.md)) |
-| `--discord-app-id ID` | | Show Discord Rich Presence for this Discord application (see below) |
 | `--texture-pack FILE` | `textures/pack.json` | Texture pack manifest |
 | `--diagnostics` | off | Extra logging and periodic screenshots |
 | `--check` | | Validate settings, DLL hashes and assets, then exit |
@@ -108,16 +107,6 @@ Logs, screenshots and per-account preferences are written under
 `runtime-dir/logs` and `runtime-dir/settings`. If the game crashes, the loader
 also writes a minidump to `runtime-dir/logs/tmloader-crash.dmp`, replacing the
 previous one.
-
-### Discord Rich Presence
-
-With `discord-app-id` set, Discord shows "Playing online on <server>" or
-"Playing on a local server", what you are doing (in the menus, in the lobby, in
-a match, viewing results or watching a match) and how long you have been at
-it. Use the application ID from the Discord developer portal (the same
-application as hosted sign-in works) and upload a Rich Presence art asset named
-`logo`. Discord must be running before the game starts; the loader talks to it
-over Discord's local IPC pipe.
 
 ## Controls
 
@@ -143,7 +132,6 @@ src/
   hosted/     Discord sign-in, play sessions and the WebSocket tunnel
   input/      DirectInput hook and mouse bridge
   platform/   file and registry boundary, network, desktop, audio, patching
-  presence/   Discord Rich Presence
   textures/   texture packs and native texture hooks
   ui/         game window, preferences, ImGui settings panel, hosted launcher
 tests/        Catch2 tests mirroring src/; Python tool tests in tests/tools

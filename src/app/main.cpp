@@ -5,9 +5,6 @@
 #include <exception>
 #include <wil/stl.h>
 #include <wil/win32_helpers.h>
-#ifdef TMLOADER_DISCORD_PRESENCE
-#include "presence/presence.h"
-#endif
 #ifdef TMLOADER_HD_TEXTURES
 #include "textures/texture_pack.h"
 #endif
@@ -67,9 +64,6 @@ void report(const char* error)
 
 auto play(const Config& config) -> int
 {
-#ifdef TMLOADER_DISCORD_PRESENCE
-    tmloader::startPresence(config);
-#endif
 #ifdef TMLOADER_HOSTED
     if (!config.hostedServer.empty())
     {

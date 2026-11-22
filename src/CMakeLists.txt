@@ -67,19 +67,6 @@ if(TMLOADER_HD_TEXTURES)
     list(APPEND loader_targets loader_textures)
 endif()
 
-if(TMLOADER_DISCORD_PRESENCE)
-    add_library(loader_presence STATIC
-        presence/discord_presence.cpp
-        presence/discord_presence.h
-        presence/game_phase.cpp
-        presence/game_phase.h
-        presence/presence.cpp
-        presence/presence.h)
-    target_link_libraries(loader_presence PUBLIC loader_config PRIVATE nlohmann_json::nlohmann_json)
-    target_link_libraries(tmloader PRIVATE loader_presence)
-    list(APPEND loader_targets loader_presence)
-endif()
-
 if(TMLOADER_HOSTED)
     add_library(loader_hosted STATIC
         hosted/auth.cpp

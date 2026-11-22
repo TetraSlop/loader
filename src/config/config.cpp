@@ -27,9 +27,6 @@ void defineOptions(CLI::App& app, Config& config)
     app.add_option("--hosted-server", config.hostedServer, "Sign in to this hosted server instead of --server")->type_name("URL");
     app.add_flag("--hosted-insecure-loopback", config.insecureLoopback, "Development only: allow http://127.0.0.1 hosted endpoints");
 #endif
-#ifdef TMLOADER_DISCORD_PRESENCE
-    app.add_option("--discord-app-id", config.discordApplicationId, "Discord application ID for Rich Presence")->type_name("ID")->check(CLI::Number.description(""));
-#endif
 #ifdef TMLOADER_HD_TEXTURES
     app.add_option("--texture-pack", config.texturePack, "HD texture pack manifest")->type_name("FILE")->default_str("textures/pack.json");
 #endif

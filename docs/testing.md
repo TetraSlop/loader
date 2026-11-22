@@ -14,7 +14,7 @@ python -m unittest discover -s tests/tools -v
 ```
 
 CTest discovers each Catch2 case individually and adds its tags as labels, so
-`-L presence` or `-LE graphics-device` select or exclude a group.
+`-L hosted` or `-LE graphics-device` select or exclude a group.
 Assertions stay active in optimized builds. Tests that need an audio or
 graphics device report as skipped when none is available. Configure with
 `-DBUILD_TESTING=OFF` for a loader-only build; Catch2 is then not fetched.
@@ -32,11 +32,10 @@ Pillow, OpenCV). The loader does not depend on them.
 | graphics | `graphics_tests`, `render_scale_tests`, `screenshot_tests` | Device hooks, presentation and reset, scale shader and vertex-buffer dispatch, pixel-exact comparison of scaled rendering against a CPU-scaled reference at every preset, automatic resolution selection, PNG capture, row pitch, filename collisions and low-integrity writes |
 | input | `input_bridge_tests` | Focus and acquisition transitions, scaled and letterboxed mouse mapping, short-click latch |
 | platform | `audio_tests`, `desktop_tests`, `patch_tests`, `virtual_registry_tests` | DirectSound 8 buffer creation with `IDirectSoundBuffer8`, import replacement policy, guarded cursor patch, call redirection, registry values and buffer contracts |
-| presence | `presence_tests` | Discord IPC framing and activity payloads against a local pipe, game phase transitions from message headers |
 | textures | `texture_pack_tests`, `texture_replacements_tests` | Manifest hashes, containment and dimensions, HD binding and restoration, font atlas classification, COM lifetime across reset |
 | ui | `settings_ui_tests`, `window_messages_tests`, `window_settings_tests` | Settings panel layout at 100, 150 and 200% scaling, window message routing (close, Alt+F4, focus reclaim, cursor), JSON preference parsing and fallbacks |
 
-The hosted, presence and textures tests are built only when their feature is
+The hosted and textures tests are built only when their feature is
 enabled (see [optional features](architecture.md#optional-features)).
 
 Tests tagged `graphics-device` render through a real Direct3D 8 device and are

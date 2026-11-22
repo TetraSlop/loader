@@ -24,9 +24,8 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX DIRECTINPUT_VERSION=0x0800
 add_compile_options(/W4 /EHsc /utf-8)
 
 option(TMLOADER_HD_TEXTURES "HD texture packs (src/textures)" ON)
-option(TMLOADER_DISCORD_PRESENCE "Discord Rich Presence (src/presence)" ON)
 option(TMLOADER_HOSTED "Hosted play with Discord sign-in (src/hosted)" ON)
-foreach(feature IN ITEMS TMLOADER_HD_TEXTURES TMLOADER_DISCORD_PRESENCE TMLOADER_HOSTED)
+foreach(feature IN ITEMS TMLOADER_HD_TEXTURES TMLOADER_HOSTED)
     if(${feature})
         add_compile_definitions(${feature})
     endif()

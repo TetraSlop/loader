@@ -5,9 +5,6 @@
 #include "imgui_impl_win32.h"
 #include "ui/window.h"
 #include <stdexcept>
-#ifdef TMLOADER_DISCORD_PRESENCE
-#include "presence/presence.h"
-#endif
 #ifdef TMLOADER_HD_TEXTURES
 #include "textures/texture_replacements.h"
 #endif
@@ -114,9 +111,6 @@ auto loadGame(const Config& config) -> IUnknown*
     installGraphicsHooks(game);
     installInputHooks(game);
     installAudioHooks(game);
-#ifdef TMLOADER_DISCORD_PRESENCE
-    installPresenceHooks(game);
-#endif
 #ifdef TMLOADER_HD_TEXTURES
     initializeTextureReplacements(game, config.texturePack);
 #endif

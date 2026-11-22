@@ -81,14 +81,6 @@ if(TMLOADER_HD_TEXTURES)
     target_link_libraries(texture_replacements_tests PRIVATE loader_textures user32 advapi32 ole32 dbghelp)
 endif()
 
-if(TMLOADER_DISCORD_PRESENCE)
-    loader_test(presence_tests
-        presence/discord_presence_tests.cpp
-        presence/game_phase_tests.cpp
-        ${loader_source_dir}/platform/patch.cpp)
-    target_link_libraries(presence_tests PRIVATE loader_presence nlohmann_json::nlohmann_json WIL::WIL)
-endif()
-
 if(TMLOADER_HOSTED)
     loader_test(hosted_tests hosted/auth_tests.cpp hosted/gateway_tests.cpp)
     target_link_libraries(hosted_tests PRIVATE loader_hosted nlohmann_json::nlohmann_json httplib::httplib)
