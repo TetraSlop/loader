@@ -42,6 +42,8 @@ if(BUILD_TESTING)
     # The screenshot child receives a Unicode fixture path through wmain.
     target_compile_definitions(Catch2 PRIVATE UNICODE)
     target_compile_definitions(Catch2WithMain PRIVATE UNICODE)
+    # Catch2 has about 110 small sources; unity batches parse its headers far fewer times.
+    set_target_properties(Catch2 PROPERTIES UNITY_BUILD ON)
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
     include(Catch)
 endif()
