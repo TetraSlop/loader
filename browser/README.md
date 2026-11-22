@@ -192,6 +192,17 @@ TM_RUNTIME=<runtime folder> TMSERVER=<tmserver checkout> python browser/tools/ru
 TM_RUNTIME=<runtime folder> python browser/tools/boot_compare.py
 ```
 
+Reference frames come from native tmloader. `capture_reference.py` runs it with `--diagnostics` on a scratch copy of
+the runtime folder at 640x480 (screenshots at frames 60, 300, 600, 900, 1200, ...), optionally with a tmserver on a
+scratch state, so the game reaches the title and main menu by frame 1200. `compare_frame.py` scores a browser frame
+against one: the share of pixels that differ after a slight blur, a match at 0.02 or below. Keep the frames outside
+the repository.
+
+```sh
+python browser/tools/capture_reference.py --loader <tmloader.exe> --config <tmloader.ini> --runtime <runtime folder>     --out <folder outside the repo> [--tmserver <tmserver checkout>]
+python browser/tools/compare_frame.py <browser frame.png> <folder>/frame1200.png
+```
+
 ## Game files
 
 Nothing from the game is committed: no DLLs, images, data files, traces or recompiled code. Tests that need the
