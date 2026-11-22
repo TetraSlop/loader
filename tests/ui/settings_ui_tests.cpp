@@ -8,31 +8,25 @@
 namespace
 {
 
-constexpr float  kScales[]       = { 1.0f, 1.5f, 2.0f };
-constexpr float  kPanelWidth     = 524;
-constexpr float  kPanelHeight    = 730;
-constexpr float  kShortHeight    = 260;
-constexpr size_t kPackImageCount = 503;
-
-const char* const kTabs[] = {
+constexpr float   kScales[]    = { 1.0f, 1.5f, 2.0f };
+constexpr float   kPanelWidth  = 524;
+constexpr float   kPanelHeight = 730;
+constexpr float   kShortHeight = 260;
+const char* const kTabs[]      = {
     "Display",
-#ifdef TMLOADER_HD_TEXTURES
-    "Artwork & text",
-#endif
     "Screenshots",
 };
 
-const std::string kSavedStatus = "Screenshot saved: C:/Users/Player/Documents/GitHub/tmloader/runtime/logs/screenshots/" +
+const std::string kSavedStatus = "Screenshot saved: C:/Games/TetraMaster/runtime/logs/screenshots/" +
                                  std::string(180, 'A') + "-20260927-234959-999-player-EEEEEEEF-000001.png";
 
-const std::string kFailedStatus = "Screenshot failed: Cannot write the PNG to C:/Users/Player/Documents/GitHub/tmloader/runtime/logs/screenshots/" +
+const std::string kFailedStatus = "Screenshot failed: Cannot write the PNG to C:/Games/TetraMaster/runtime/logs/screenshots/" +
                                   std::string(220, 'B') + ".png. The destination folder is unavailable; please check its permissions and try again.";
 
 tmloader::WindowSettings testSettings;
 std::string              captureStatus;
 unsigned                 screenshotRequests;
 unsigned                 statusReads;
-size_t                   availableImages = kPackImageCount;
 
 } // namespace
 
@@ -53,16 +47,6 @@ auto currentWindowSettings() -> WindowSettings
 auto activeRenderScale() -> float
 {
     return 4.5f;
-}
-
-auto texturePackCount() -> size_t
-{
-    return availableImages;
-}
-
-auto textureReplacementCount() -> unsigned
-{
-    return 5;
 }
 
 void postWindowAction(WindowAction, LPARAM)
@@ -160,7 +144,6 @@ void atEachScale(Body body)
     {
         CAPTURE(scale);
         testSettings       = {};
-        availableImages    = kPackImageCount;
         screenshotRequests = 0;
         captureStatus.clear();
 
@@ -209,10 +192,6 @@ TEST_CASE("every tab fits the panel without scrolling", "[settings_ui]")
 
                     useManualResolution();
                     checkFits(selectTab("Display", preferred));
-#ifdef TMLOADER_HD_TEXTURES
-                    availableImages = 0;
-                    checkFits(selectTab("Artwork & text", preferred));
-#endif
                 });
 }
 

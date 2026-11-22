@@ -325,7 +325,7 @@ TEST_CASE("a render scale choice is applied and saved, and a bad index is ignore
     std::filesystem::remove_all(options.runtimeDir);
 }
 
-TEST_CASE("automatic resolution and the font choice are saved", "[window_messages]")
+TEST_CASE("automatic resolution is saved", "[window_messages]")
 {
     useRuntime("window-toggle-fixture");
     sendSetting(WindowAction::renderScale, kScaleIndex);
@@ -334,15 +334,9 @@ TEST_CASE("automatic resolution and the font choice are saved", "[window_message
     REQUIRE(currentWindowSettings().autoResolution);
     REQUIRE(currentWindowSettings().renderScale == kScale);
 
-    sendSetting(WindowAction::hdFonts, 0);
-    REQUIRE_FALSE(currentWindowSettings().hdFonts);
-    REQUIRE(currentWindowSettings().hdArtwork);
-
     std::ifstream updated(settingsFile());
     const auto    preferences = readWindowSettings(updated);
     REQUIRE(preferences.autoResolution);
-    REQUIRE_FALSE(preferences.hdFonts);
-    REQUIRE(preferences.hdArtwork);
     updated.close();
     std::filesystem::remove_all(options.runtimeDir);
 }

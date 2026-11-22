@@ -170,18 +170,6 @@ void applyWindowAction(HWND hwnd, WindowAction command, LPARAM value)
         case WindowAction::close:
             closeGame();
             break;
-        case WindowAction::hdArtwork:
-            updateSettings([&](WindowSettings& current)
-                           {
-                               current.hdArtwork = value != 0;
-                           });
-            break;
-        case WindowAction::hdFonts:
-            updateSettings([&](WindowSettings& current)
-                           {
-                               current.hdFonts = value != 0;
-                           });
-            break;
         case WindowAction::renderScale:
             // Resolution applies on the next launch, never as a mid-match device reset.
             if (value >= 0 && static_cast<size_t>(value) < kRenderScales.size())

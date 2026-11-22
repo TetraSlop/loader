@@ -43,7 +43,6 @@ TEST_CASE("Window settings round-trip through JSON", "[window_settings]")
 {
     auto value           = WindowSettings{ 1280, 960, true, false };
     value.renderScale    = 4.5f;
-    value.hdArtwork      = false;
     value.autoResolution = false;
     auto stream          = std::stringstream{};
     writeWindowSettings(stream, value);
@@ -53,8 +52,6 @@ TEST_CASE("Window settings round-trip through JSON", "[window_settings]")
     REQUIRE(restored.fullscreen);
     REQUIRE_FALSE(restored.preserveAspect);
     REQUIRE(restored.renderScale == 4.5f);
-    REQUIRE_FALSE(restored.hdArtwork);
-    REQUIRE(restored.hdFonts);
     REQUIRE_FALSE(restored.autoResolution);
 }
 
@@ -71,10 +68,19 @@ TEST_CASE("Window settings fall back to defaults for bad input", "[window_settin
         REQUIRE(value.autoResolution == defaults.autoResolution);
     }
 
-    auto       input = std::istringstream{ R"({"width":99999,"height":480,"renderScale":5,"hdFonts":false})" };
+    auto       input = std::istringstream{ R"({"width":99999,"height":480,"renderScale":5})" };
     const auto value = readWindowSettings(input);
     REQUIRE(value.width == defaults.width);
     REQUIRE(value.height == defaults.height);
     REQUIRE(value.renderScale == defaults.renderScale);
-    REQUIRE_FALSE(value.hdFonts);
+}
+
+TEST_CASE("Window settings saved with the removed HD keys still load", "[window_settings]")
+{
+    auto       input = std::istringstream{ R"({"width":1280,"height":960,"renderScale":3,"hdArtwork":false,"hdFonts":false,"autoResolution":false})" };
+    const auto value = readWindowSettings(input);
+    REQUIRE(value.width == 1280);
+    REQUIRE(value.height == 960);
+    REQUIRE(value.renderScale == 3);
+    REQUIRE_FALSE(value.autoResolution);
 }

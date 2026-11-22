@@ -17,7 +17,6 @@ struct Config
     std::filesystem::path game;
     std::filesystem::path viewer;
     std::filesystem::path log;
-    std::filesystem::path texturePack;
     std::string           server      = "127.0.0.1";
     std::string           polId       = "EEEEEEEF";
     std::string           password    = "tm-local-test";

@@ -66,10 +66,6 @@ TEST_CASE("a runtime directory alone yields the local defaults", "[config]")
     REQUIRE(config.polId == "EEEEEEEF");
     REQUIRE(config.gamePort == 51241);
     REQUIRE(config.profilePort == 51220);
-#ifdef TMLOADER_HD_TEXTURES
-    REQUIRE(config.texturePack == config.runtimeDir / "textures/pack.json");
-    REQUIRE(parseConfig({ "--runtime-dir", ".", "--texture-pack", "custom/pack.json" }).texturePack == config.runtimeDir / "custom/pack.json");
-#endif
 }
 
 TEST_CASE("the game port must be a number from 1 to 65535", "[config]")

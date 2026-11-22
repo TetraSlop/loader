@@ -17,8 +17,6 @@ enum class WindowAction : WPARAM
     aspect,
     close,
     renderScale,
-    hdArtwork,
-    hdFonts,
     autoResolution
 };
 

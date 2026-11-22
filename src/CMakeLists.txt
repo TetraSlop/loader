@@ -54,19 +54,6 @@ set(loader_targets loader_common loader_config tmloader)
 
 # Optional features. Each lives in its own folder and is switched in the
 # top-level CMakeLists.txt; docs/architecture.md lists what refers to it.
-if(TMLOADER_HD_TEXTURES)
-    add_library(loader_textures STATIC
-        textures/texture_draw.cpp
-        textures/texture_pack.cpp
-        textures/texture_pack.h
-        textures/texture_replacement.h
-        textures/texture_replacements.cpp
-        textures/texture_replacements.h)
-    target_link_libraries(loader_textures PUBLIC loader_config PRIVATE nlohmann_json::nlohmann_json)
-    target_link_libraries(tmloader PRIVATE loader_textures)
-    list(APPEND loader_targets loader_textures)
-endif()
-
 if(TMLOADER_HOSTED)
     add_library(loader_hosted STATIC
         hosted/auth.cpp

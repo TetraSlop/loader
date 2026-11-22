@@ -27,9 +27,6 @@ void defineOptions(CLI::App& app, Config& config)
     app.add_option("--hosted-server", config.hostedServer, "Sign in to this hosted server instead of --server")->type_name("URL");
     app.add_flag("--hosted-insecure-loopback", config.insecureLoopback, "Development only: allow http://127.0.0.1 hosted endpoints");
 #endif
-#ifdef TMLOADER_HD_TEXTURES
-    app.add_option("--texture-pack", config.texturePack, "HD texture pack manifest")->type_name("FILE")->default_str("textures/pack.json");
-#endif
     app.add_flag("--diagnostics", config.diagnostics, "Extra logging and periodic screenshots");
     app.add_flag("--check", config.checkOnly, "Verify files, hashes and settings without launching")->configurable(false);
     app.add_flag("-h,--help", config.help, "Show this help")->configurable(false);
@@ -42,16 +39,6 @@ void defineOptions(CLI::App& app, Config& config)
             option->multi_option_policy(CLI::MultiOptionPolicy::Throw);
         }
     }
-}
-
-void resolve(std::filesystem::path& path, const std::filesystem::path& root, const char* fallback)
-{
-    if (path.empty())
-    {
-        path = fallback;
-    }
-
-    path = std::filesystem::absolute(root / path).lexically_normal();
 }
 
 void validate(const Config& config)
@@ -134,7 +121,6 @@ auto parseConfig(const std::vector<std::string>& args) -> Config
     config.game       = config.runtimeDir / "TM_native.dll";
     config.viewer     = config.runtimeDir / "polcore_native.dll";
     config.log        = config.runtimeDir / "logs/tmloader.log";
-    resolve(config.texturePack, config.runtimeDir, "textures/pack.json");
     validate(config);
     return config;
 }

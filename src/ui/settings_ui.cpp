@@ -7,9 +7,6 @@
 #include <algorithm>
 #include <atomic>
 #include <thread>
-#ifdef TMLOADER_HD_TEXTURES
-#include "textures/texture_replacements.h"
-#endif
 
 namespace tmloader
 {
@@ -91,37 +88,6 @@ void displaySettings(WindowSettings value)
     ImGui::TextWrapped("Applies after relaunch. Automatic chooses the resolution for your monitor, up to 4K height.");
 }
 
-#ifdef TMLOADER_HD_TEXTURES
-void artworkSettings(WindowSettings value)
-{
-    ImGui::Spacing();
-    ImGui::Separator();
-    ImGui::TextUnformatted("Artwork");
-    if (ImGui::Checkbox("HD artwork", &value.hdArtwork))
-    {
-        postWindowAction(WindowAction::hdArtwork, value.hdArtwork);
-    }
-
-    if (ImGui::Checkbox("HD fonts", &value.hdFonts))
-    {
-        postWindowAction(WindowAction::hdFonts, value.hdFonts);
-    }
-
-    if (const auto images = texturePackCount())
-    {
-        ImGui::TextDisabled("%zu images available; %u replacements loaded", images, textureReplacementCount());
-    }
-    else
-    {
-        ImGui::TextDisabled("No HD texture pack loaded");
-    }
-
-    ImGui::TextWrapped("Switches immediately. Images missing from the pack use their originals.");
-    ImGui::TextWrapped("Font selection affects in-game text. Lettering painted into menus or card images follows the artwork setting.");
-}
-
-#endif
-
 void screenshotSettings()
 {
     ImGui::Spacing();
@@ -181,14 +147,6 @@ void settingsContents()
             displaySettings(value);
             ImGui::EndTabItem();
         }
-
-#ifdef TMLOADER_HD_TEXTURES
-        if (ImGui::BeginTabItem("Artwork & text"))
-        {
-            artworkSettings(value);
-            ImGui::EndTabItem();
-        }
-#endif
 
         if (ImGui::BeginTabItem("Screenshots"))
         {

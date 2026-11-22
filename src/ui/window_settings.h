@@ -14,8 +14,6 @@ struct WindowSettings
     bool  fullscreen     = false;
     bool  preserveAspect = true;
     float renderScale    = 1;
-    bool  hdArtwork      = true;
-    bool  hdFonts        = true;
     bool  autoResolution = true;
 };
 

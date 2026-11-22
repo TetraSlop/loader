@@ -36,7 +36,6 @@ folders.
 | `platform/desktop` | Removal of global keyboard hooks, cursor warping and focus stealing |
 | `platform/audio` | DirectSound 8 factory |
 | `platform/patch` | `replacePointer`, `setImport` and `redirectCall` |
-| `textures/` | Texture pack manifests, HD companions, and the upload and draw hooks |
 | `ui/` | Game window, per-account preferences, the shared ImGui window host, the settings panel and the hosted launcher |
 
 Hook functions are named `hooked<ApiName>`, for example `hookedCreateFileA` or
@@ -44,24 +43,16 @@ Hook functions are named `hooked<ApiName>`, for example `hookedCreateFileA` or
 
 ## Optional features
 
-Two features can be left out of a build. Each has a CMake option, its own
-folder and static library, and a short list of places that refer to it, all
-behind `#ifdef` on the option's name.
+Hosted play can be left out of a build. It has a CMake option, its own folders
+and static library, and a short list of places that refer to it, all behind
+`#ifdef TMLOADER_HOSTED`.
 
-| Option | Folder | Referenced from |
+| Option | Folders | Referenced from |
 |---|---|---|
-| `TMLOADER_HD_TEXTURES` | `textures/` | `app/loader` (install), `app/main` (`--check`), `graphics/graphics` (draw hooks), `ui/settings_ui` (the Artwork tab), `config/config` (`--texture-pack`) |
 | `TMLOADER_HOSTED` | `hosted/`, `ui/launcher`, `ui/image` | `app/main` (launcher and session), `config/config` (`--hosted-server`, `--hosted-insecure-loopback`) |
 
-Both default to on. Configure with, for example,
-`-DTMLOADER_HD_TEXTURES=OFF` to build without one; its options then disappear
-from `--help` and its tests are not built. To remove a feature for good,
-delete its folder and tests, then the guarded blocks and the option. The
-`hdArtwork` and `hdFonts` preferences and the `Config` fields stay as plain
-data either way; drop them too when removing the feature permanently.
-
-The hosted launcher draws the title artwork from the HD pack when one is
-installed and falls back to a plain background otherwise.
+It defaults to on. Configure with `-DTMLOADER_HOSTED=OFF` to build without it;
+its options then disappear from `--help` and its tests are not built.
 
 ## Startup sequence
 
@@ -77,8 +68,7 @@ installed and falls back to a plain background otherwise.
 3. The game DLL is loaded and its game object created through
    `DllGetClassObject`. The live GameStart vtable entry (slot 9) must equal
    `+8210`, otherwise startup stops.
-4. Each subsystem installs its hooks into the game DLL, and texture
-   replacements are initialized.
+4. Each subsystem installs its hooks into the game DLL.
 5. The Viewer DLL is loaded and hooked, and its core object is configured
    through the COM slots below. The common-function table must sit at Viewer
    RVA `+6FBE8`. The loader sets the language, registry root and install
@@ -230,20 +220,6 @@ is copied respecting row pitch, unlocked, and encoded as an opaque PNG with WIC
 `logs/screenshots`, so collisions never overwrite. Without a request there is
 no readback or disk I/O.
 
-## Textures
-
-`textures/` replaces artwork without changing native texture objects. The
-game's seven calls to its PNG texture loader are redirected with `redirectCall`;
-the original texture is always created first, and an HD companion is attached
-to it as private data. Draw hooks bind the companion and restore the original
-binding afterwards. The companion carries an artwork or font category: only
-the verified font atlas IDs are fonts, so the settings panel can toggle
-artwork and fonts independently. Missing or invalid replacements fall back to
-the original.
-
-See [texture load path](texture-load-path.md) for the upload ABI, call-site
-guards and ownership rules.
-
 ## Input
 
 `input/` hooks the `DirectInput8Create` import (`+204014`) and always returns
@@ -325,5 +301,5 @@ and scales fall back individually. Only the eight advertised scales are accepted
   joysticks, buffered input and force feedback are not supported.
 - Moving the window to another monitor does not change the automatic
   resolution; it is chosen once at startup.
-- The texture and viewport observations above come from static analysis of
+- The viewport observations above come from static analysis of
   the native code, not a runtime guarantee.

@@ -66,21 +66,6 @@ loader_test(graphics_tests
     ${loader_source_dir}/graphics/render_scale.cpp)
 target_link_libraries(graphics_tests PRIVATE nlohmann_json::nlohmann_json loader_config user32 ole32)
 
-if(TMLOADER_HD_TEXTURES)
-    target_link_libraries(graphics_tests PRIVATE loader_textures)
-
-    loader_test(texture_pack_tests textures/texture_pack_tests.cpp ${loader_source_dir}/platform/patch.cpp)
-    target_link_libraries(texture_pack_tests PRIVATE loader_textures nlohmann_json::nlohmann_json)
-
-    loader_test(texture_replacements_tests
-        textures/texture_replacements_tests.cpp
-        ${loader_source_dir}/app/runtime.cpp
-        ${loader_source_dir}/app/log.cpp
-        ${loader_source_dir}/graphics/render_scale.cpp
-        ${loader_source_dir}/platform/patch.cpp)
-    target_link_libraries(texture_replacements_tests PRIVATE loader_textures user32 advapi32 ole32 dbghelp)
-endif()
-
 if(TMLOADER_HOSTED)
     loader_test(hosted_tests hosted/auth_tests.cpp hosted/gateway_tests.cpp)
     target_link_libraries(hosted_tests PRIVATE loader_hosted nlohmann_json::nlohmann_json httplib::httplib)

@@ -5,9 +5,6 @@
 #include <exception>
 #include <wil/stl.h>
 #include <wil/win32_helpers.h>
-#ifdef TMLOADER_HD_TEXTURES
-#include "textures/texture_pack.h"
-#endif
 #ifdef TMLOADER_HOSTED
 #include "ui/launcher.h"
 #endif
@@ -20,16 +17,6 @@ using tmloader::Config;
 auto check(const Config& config) -> int
 {
     tmloader::validateRuntime(config);
-#ifdef TMLOADER_HD_TEXTURES
-    if (std::filesystem::exists(config.texturePack))
-    {
-        auto pack = tmloader::TexturePack{};
-        pack.load(config.texturePack);
-        pack.validateFiles();
-        std::printf("Texture pack verified: %zu images.\n", pack.size());
-    }
-#endif
-
     std::puts("Runtime verified.");
     return 0;
 }

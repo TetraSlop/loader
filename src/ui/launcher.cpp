@@ -3,7 +3,6 @@
 #include "imgui.h"
 #include "ui/image.h"
 #include "ui/imgui_window.h"
-#include <array>
 #include <atomic>
 #include <chrono>
 #include <format>
@@ -22,23 +21,6 @@ using namespace std::chrono_literals;
 
 // Signed-in players go straight to the game after this pause unless they switch account.
 constexpr auto kAutoPlayDelay = 3s;
-
-// The title screen is six tiles forming a 640x448 composition.
-struct TitleTile
-{
-    const char* name{};
-    ImVec2      position;
-    ImVec2      size;
-};
-
-constexpr std::array<TitleTile, 6> kTitleTiles{ {
-    { "title_0", { 0, 0 }, { 256, 256 } },
-    { "title_1", { 256, 0 }, { 256, 256 } },
-    { "title_2", { 512, 0 }, { 128, 256 } },
-    { "title_3", { 0, 256 }, { 256, 192 } },
-    { "title_4", { 256, 256 }, { 256, 192 } },
-    { "title_5", { 512, 256 }, { 128, 192 } },
-} };
 
 constexpr auto kDiscordBlurple = ImVec4(0.345f, 0.396f, 0.949f, 1.0f);
 
@@ -134,12 +116,6 @@ public:
     {
         window_ = window;
         device_ = device;
-        // The HD pack's title art; the launcher still works without it.
-        const auto folder = config_.texturePack.parent_path() / "gW201/1001";
-        for (size_t i = 0; i < kTitleTiles.size(); ++i)
-        {
-            title_[i] = loadImage(device, folder / (std::string(kTitleTiles[i].name) + ".png"));
-        }
     }
 
     auto frame() -> bool
@@ -179,24 +155,6 @@ private:
     {
         auto* const draw = ImGui::GetWindowDrawList();
         draw->AddRectFilled(origin, ImVec2(origin.x + size.x, origin.y + size.y), IM_COL32(12, 14, 20, 255));
-        // Cover the window with the 640x448 composition, cropping any overflow.
-        const auto scale  = std::max(size.x / 640, size.y / 448);
-        const auto offset = ImVec2(origin.x + (size.x - 640 * scale) / 2, origin.y + (size.y - 448 * scale) / 2);
-        for (size_t i = 0; i < kTitleTiles.size(); ++i)
-        {
-            if (!title_[i])
-            {
-                continue;
-            }
-
-            const auto& tile = kTitleTiles[i];
-            const auto  from = ImVec2(offset.x + tile.position.x * scale, offset.y + tile.position.y * scale);
-            draw->AddImage(title_[i].texture.Get(), from, ImVec2(from.x + tile.size.x * scale, from.y + tile.size.y * scale));
-        }
-
-        // Darken the lower part so the panel stays readable over the artwork.
-        const auto fade = origin.y + size.y * 0.5f;
-        draw->AddRectFilledMultiColor(ImVec2(origin.x, fade), ImVec2(origin.x + size.x, origin.y + size.y), IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 235), IM_COL32(0, 0, 0, 235));
     }
 
     void drawPanel(Stage stage, const std::string& message, ImVec2 origin, ImVec2 size)
@@ -533,7 +491,6 @@ private:
     const Config&                                        config_;
     HWND                                                 window_ = nullptr;
     IDirect3DDevice9*                                    device_ = nullptr;
-    std::array<Image, kTitleTiles.size()>                title_;
     Image                                                avatar_;
     std::atomic<bool>                                    raise_{ false };
     bool                                                 started_ = false;

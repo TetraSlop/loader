@@ -29,13 +29,9 @@ enum Device : unsigned
     EndScene                = 35,
     Clear                   = 36,
     SetRenderState          = 50,
-    GetTexture              = 60,
     SetTexture              = 61,
     SetTextureStageState    = 63,
     DrawPrimitive           = 70,
-    DrawIndexedPrimitive    = 71,
-    DrawPrimitiveUP         = 72,
-    DrawIndexedPrimitiveUP  = 73,
     CreateVertexShader      = 75,
     SetVertexShader         = 76,
     DeleteVertexShader      = 78,
@@ -44,17 +40,14 @@ enum Device : unsigned
     DeviceMethodCount       = 97,
 };
 
-// IDirect3DResource8 / IDirect3DTexture8 / IDirect3DSurface8 / IDirect3DVertexBuffer8 slots.
+// IDirect3DTexture8 / IDirect3DSurface8 / IDirect3DVertexBuffer8 slots.
 enum Resource : unsigned
 {
-    SetPrivateData  = 4,
-    GetPrivateData  = 5,
     SurfaceGetDesc  = 8,
     SurfaceLockRect = 9,
     SurfaceUnlock   = 10,
     BufferLock      = 11,
     BufferUnlock    = 12,
-    GetLevelDesc    = 14,
     TextureLockRect = 16,
     TextureUnlock   = 17,
 };
@@ -100,7 +93,6 @@ enum LockFlag : DWORD
 // The SDK defines these as plain flags.
 constexpr DWORD kSoftwareVertexProcessing = 0x20; // D3DCREATE_SOFTWARE_VERTEXPROCESSING
 constexpr DWORD kLockableBackBuffer       = 1;    // D3DPRESENTFLAG_LOCKABLE_BACKBUFFER
-constexpr DWORD kPrivateDataObject        = 1;    // D3DSPD_IUNKNOWN
 
 struct PresentParameters
 {

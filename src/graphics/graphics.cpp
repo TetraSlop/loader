@@ -8,9 +8,6 @@
 #include "ui/window.h"
 #include <algorithm>
 #include <atomic>
-#ifdef TMLOADER_HD_TEXTURES
-#include "textures/texture_replacements.h"
-#endif
 
 // Runs the fullscreen D3D8 renderer in a window, optionally above its fixed 640x480.
 namespace tmloader
@@ -207,9 +204,6 @@ void hookDevice(void* device)
     hook(originalPresent, vtable[d3d8::Present], hookedPresent);
     hook(originalCreateVertexBuffer, vtable[d3d8::CreateVertexBuffer], hookedCreateVertexBuffer);
     hook(originalSetVertexShader, vtable[d3d8::SetVertexShader], hookedSetVertexShader);
-#ifdef TMLOADER_HD_TEXTURES
-    hookTextureDraws(vtable);
-#endif
     VirtualProtect(vtable, d3d8::DeviceMethodCount * sizeof(void*), protection, &protection);
 }
 

@@ -19,8 +19,7 @@ Assertions stay active in optimized builds. Tests that need an audio or
 graphics device report as skipped when none is available. Configure with
 `-DBUILD_TESTING=OFF` for a loader-only build; Catch2 is then not fetched.
 
-The Python tests need the packages in `tools/ci_requirements.txt` (NumPy,
-Pillow, OpenCV). The loader does not depend on them.
+The Python tests use only the standard library.
 
 ## C++ tests
 
@@ -32,10 +31,9 @@ Pillow, OpenCV). The loader does not depend on them.
 | graphics | `graphics_tests`, `render_scale_tests`, `screenshot_tests` | Device hooks, presentation and reset, scale shader and vertex-buffer dispatch, pixel-exact comparison of scaled rendering against a CPU-scaled reference at every preset, automatic resolution selection, PNG capture, row pitch, filename collisions and low-integrity writes |
 | input | `input_bridge_tests` | Focus and acquisition transitions, scaled and letterboxed mouse mapping, short-click latch |
 | platform | `audio_tests`, `desktop_tests`, `patch_tests`, `virtual_registry_tests` | DirectSound 8 buffer creation with `IDirectSoundBuffer8`, import replacement policy, guarded cursor patch, call redirection, registry values and buffer contracts |
-| textures | `texture_pack_tests`, `texture_replacements_tests` | Manifest hashes, containment and dimensions, HD binding and restoration, font atlas classification, COM lifetime across reset |
 | ui | `settings_ui_tests`, `window_messages_tests`, `window_settings_tests` | Settings panel layout at 100, 150 and 200% scaling, window message routing (close, Alt+F4, focus reclaim, cursor), JSON preference parsing and fallbacks |
 
-The hosted and textures tests are built only when their feature is
+The hosted tests are built only when hosted play is
 enabled (see [optional features](architecture.md#optional-features)).
 
 Tests tagged `graphics-device` render through a real Direct3D 8 device and are
@@ -44,8 +42,7 @@ driver and never starts playback.
 
 ## Python tests
 
-`tests/tools/` covers the texture extraction tools, cursor and title glyph
-reconstruction, and release packaging (archive layout and loader header
+`tests/tools/` covers release packaging (archive layout and loader header
 checks). `python tools/build_release.py --loader build/RelWithDebInfo/tmloader.exe`
 additionally builds both archives and runs `tmloader.exe --check` in the
 extracted full archive.
@@ -66,10 +63,8 @@ Run these against a real server after changes that affect the game at runtime.
 6. Select a higher resolution, relaunch, and check the title, menus, cursor,
    cards, board and transitions. The panel and log report the active
    resolution. Repeat with Windows display scaling above 100%.
-7. Toggle enhanced artwork and fonts independently in the collection, shop and
-   a match; the log reports indexed images and uploads.
-8. F12 saves a PNG to `logs/screenshots`; the Screenshots tab reports the path.
-9. Music and effects are audible and follow the in-game volume settings.
+7. F12 saves a PNG to `logs/screenshots`; the Screenshots tab reports the path.
+8. Music and effects are audible and follow the in-game volume settings.
 
 ## Limitations
 

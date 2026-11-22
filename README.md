@@ -12,8 +12,6 @@ compatible server (the separate tmserver project) is required to play.
   controls (Alt+Tab, Alt+F4, minimize and maximize).
 - Higher internal rendering resolutions, from the original 640x480 up to
   3840x2880, with the original 4:3 layout preserved.
-- HD texture and font packs loaded at runtime; original archives are never
-  modified.
 - An F10 settings panel and F12 PNG screenshots at the internal resolution.
 - Sound through the game's own DirectSound 8 engine.
 - Input without a global keyboard hook, pointer warping or focus stealing.
@@ -40,7 +38,7 @@ Building from source additionally needs CMake 3.29+, Visual Studio 2022 17.13+
 | Archive | Contents |
 |---|---|
 | `tmloader-VERSION-windows-x86.zip` | `tmloader.exe`, a sample `tmloader.ini` and license notices. Game files are supplied by you. |
-| `tmloader-VERSION-windows-x86-full.zip` | The same, plus `runtime/` with the supported game and Viewer DLLs, original data and audio, and the HD texture pack. |
+| `tmloader-VERSION-windows-x86-full.zip` | The same, plus `runtime/` with the supported game and Viewer DLLs, original data and audio. |
 
 1. Extract the archive to a short, writable path such as `C:\Games\TetraMaster`.
 2. Edit `tmloader.ini` with the server address, ports and account credentials.
@@ -58,9 +56,9 @@ cmake --build build --config Release
 .\build\Release\tmloader.exe --config .\tmloader.ini --check
 ```
 
-HD texture packs and hosted play are optional; see
+Hosted play is optional; see
 [optional features](docs/architecture.md#optional-features) to build without
-them.
+it.
 
 `py tools/prepare_runtime.py` copies the committed [assets](assets/README.md)
 into the ignored `runtime/` folder and writes a matching `tmloader.ini` (or
@@ -84,7 +82,6 @@ Paths are relative to `runtime-dir` unless absolute, and a relative
 | `--pol-id ID` | `EEEEEEEF` | Eight-character account ID |
 | `--password TEXT` | `tm-local-test` | Account password |
 | `--hosted-server URL` | | Sign in to a hosted server with Discord instead of `--server` (see [hosted play](docs/hosted.md)) |
-| `--texture-pack FILE` | `textures/pack.json` | Texture pack manifest |
 | `--diagnostics` | off | Extra logging and periodic screenshots |
 | `--check` | | Validate settings, DLL hashes and assets, then exit |
 | `--help`, `-h` | | Show help |
@@ -118,9 +115,8 @@ previous one.
 | Alt+F4, title-bar close | Quit the game |
 
 The settings panel selects the rendering resolution (automatic or one of eight
-presets, applied at next launch), 4:3 aspect preservation, and independent
-toggles for enhanced artwork and enhanced fonts. Preferences are saved per
-account. Music and effect volumes stay in the game's own Options menu.
+presets, applied at next launch) and 4:3 aspect preservation. Preferences are
+saved per account. Music and effect volumes stay in the game's own Options menu.
 
 ## Project layout
 
@@ -132,16 +128,15 @@ src/
   hosted/     Discord sign-in, play sessions and the WebSocket tunnel
   input/      DirectInput hook and mouse bridge
   platform/   file and registry boundary, network, desktop, audio, patching
-  textures/   texture packs and native texture hooks
   ui/         game window, preferences, ImGui settings panel, hosted launcher
 tests/        Catch2 tests mirroring src/; Python tool tests in tests/tools
-tools/        packaging, release and texture-pack scripts
-assets/       game files and HD pack for the full release archive
+tools/        packaging, release and formatting scripts
+assets/       game files for the full release archive
 docs/         documentation
 ```
 
 The repository includes the supported original DLLs, selected original data
-and audio, and the HD texture pack under `assets/`; see
+and audio under `assets/`; see
 [assets/README.md](assets/README.md). These feed the full release archive; the
 minimal archive excludes them.
 
@@ -156,15 +151,12 @@ minimal archive excludes them.
 | [Distribution](docs/distribution.md) | Building and verifying the client archives |
 | [Releasing](docs/releasing.md) | Release automation and archive contents |
 | [Third-party code](docs/third-party.md) | Dependencies and licenses |
-| [Texture upscaling](docs/texture-upscaling.md) | Extracting textures and upscaling them with chaiNNer |
-| [Texture load path](docs/texture-load-path.md) | Native texture upload path and HD substitution |
 
 ## License
 
 tmloader is licensed under the [GNU General Public License v3.0](LICENSE).
 
 The license covers the loader source and tools only. The original game files
-and derived artwork in `assets/` and the full release archive (including the
-HD texture pack) are not covered and remain the property of their respective
+in `assets/` and the full release archive are not covered and remain the property of their respective
 owners. Third-party library notices are listed in
 [third-party code](docs/third-party.md).
