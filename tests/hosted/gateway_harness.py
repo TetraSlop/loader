@@ -1,10 +1,13 @@
 """Run tmloader's hidden [.gateway] tests against a real tmserver gateway and a fake Supabase.
 
 Local development only. Without --tests it keeps the servers running so the real client
-can be played through them. Needs a tmserver checkout with its auth extra installed, by
-default ../tmserver beside this one, and skips when there is none. Run it with that
-checkout's Python, for example:
+can be played through them. Needs a tmserver checkout with its auth and postgres extras
+installed, by default ../tmserver beside this one, and a scratch PostgreSQL database named
+by TM_TEST_DATABASE_URL. It skips when either is missing or the database does not answer.
+The harness migrates that database and tmserver writes to it, so do not point it at a
+database you want to keep. Run it with that checkout's Python, for example:
 
+    $env:TM_TEST_DATABASE_URL = 'postgresql+psycopg://USER:PASSWORD@127.0.0.1:5432/tm_gateway_test'
     ..\\tmserver\\.venv\\Scripts\\python tests/hosted/gateway_harness.py --tmserver ..\\tmserver
         --tests build\\RelWithDebInfo\\hosted_tests.exe   (path of the built test binary)
 
@@ -26,6 +29,7 @@ import sys
 import tempfile
 import threading
 from pathlib import Path
+from urllib.parse import urlsplit
 
 DEFAULT_TMSERVER = Path(__file__).resolve().parents[3] / "tmserver"
 SUBJECT = "11111111-1111-4111-8111-111111111111"
@@ -35,13 +39,12 @@ PUBLISHABLE_KEY = "sb_publishable_test"
 BOOTSTRAP = """
 import sys
 import tmserver.auth.config as config
-import tmserver.auth.provider as provider
-original = provider.validate_project_url
-def loopback(value):
-    if value.startswith("http://127.0.0.1:"):
-        return value.rstrip("/") + "/auth/v1"
-    return original(value)
-provider.validate_project_url = config.validate_project_url = loopback
+original = config.https_origin
+def loopback(value, error):
+    if isinstance(value, str) and value.startswith("http://127.0.0.1:"):
+        return value.rstrip("/")
+    return original(value, error)
+config.https_origin = loopback
 import tmserver.accounts.identities as identities
 from pydantic import field_validator
 class LoopbackIdentityLink(identities.IdentityLink):
@@ -128,6 +131,20 @@ def serve_in_thread(app) -> int:
     return listener.getsockname()[1]
 
 
+def database_reachable(url: str) -> bool:
+    """True when the database server named by url accepts TCP connections."""
+    try:
+        parts = urlsplit(url)
+        address = (parts.hostname or "127.0.0.1", parts.port or 5432)
+    except ValueError:
+        return False
+    try:
+        with socket.create_connection(address, timeout=3):
+            return True
+    except OSError:
+        return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
@@ -137,6 +154,13 @@ def main() -> int:
     args = parser.parse_args()
     if not (args.tmserver / "src/tmserver").is_dir():
         print(f"Skipped: no tmserver checkout at {args.tmserver}")
+        return 0
+    database = os.environ.get("TM_TEST_DATABASE_URL")
+    if not database:
+        print("Skipped: set TM_TEST_DATABASE_URL to a scratch PostgreSQL database for tmserver")
+        return 0
+    if not database_reachable(database):
+        print("Skipped: the database in TM_TEST_DATABASE_URL does not accept connections")
         return 0
 
     supabase = f"http://127.0.0.1:{serve_in_thread(fake_supabase())}"
@@ -155,13 +179,21 @@ def main() -> int:
         # tmserver runs the original rules through a Win32 bridge, so it needs its 32-bit Python.
         tmserver = args.tmserver.resolve()
         python = tmserver / "build/python-x86/python.exe"
-        command = [str(python if python.exists() else sys.executable), "-c", BOOTSTRAP]
-        command += ["--state", str(Path(directory) / "state.json"), "--game-port", "0", "--profile-port", "0"]
+        python = str(python if python.exists() else sys.executable)
+        # Passed in the environment, not on the command line, to keep the credentials out of process listings.
+        server_environment = dict(os.environ, TM_DATABASE_URL=database)
+        migration = subprocess.run(
+            [python, "-m", "tmserver.storage.database", "upgrade"], cwd=tmserver, env=server_environment, check=False
+        )
+        if migration.returncode:
+            print("Error: tmserver could not migrate the TM_TEST_DATABASE_URL database", file=sys.stderr)
+            return 1
+        command = [python, "-c", BOOTSTRAP, "--game-port", "0", "--profile-port", "0"]
         command += ["--auth-config", str(config), "--auth-port", "0", "--auth-insecure-loopback"]
         command += ["--rules-image", str(tmserver / "var/native/TM_emulated_mapped.dll")]
         command += ["--rules-bridge", str(tmserver / "var/native/tm_original_rules.dll")]
         server = subprocess.Popen(
-            command, cwd=args.tmserver, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            command, cwd=tmserver, env=server_environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
         )
         try:
             origin = None

@@ -54,11 +54,23 @@ The code is in `src/hosted/`: `http` (WinHTTP client and WebSocket), `auth`
 testing; hosted mode otherwise requires HTTPS.
 
 `tests/hosted/gateway_harness.py` runs a real tmserver gateway against a fake
-Supabase that issues real PKCE codes and rotating refresh tokens. It needs a
-tmserver checkout with its `auth` extra installed, by default `../tmserver`
-beside this one (`--tmserver` names another), and skips when there is none:
+Supabase that issues real PKCE codes and rotating refresh tokens. It needs:
+
+- a tmserver checkout with its `auth` and `postgres` extras installed, by
+  default `../tmserver` beside this one (`--tmserver` names another), set up as
+  tmserver's `DATABASE.md` describes for the 32-bit game server;
+- a scratch PostgreSQL database named by `TM_TEST_DATABASE_URL`. The harness
+  runs tmserver's schema migration on it and tmserver writes accounts to it, so
+  do not use a database you want to keep. It reaches tmserver as
+  `TM_DATABASE_URL`, never on a command line.
+
+It prints why and exits successfully when there is no checkout, no
+`TM_TEST_DATABASE_URL`, or the database does not accept connections:
 
 ```powershell
+docker run --detach --rm --name tm-gateway-test --env POSTGRES_PASSWORD=PASSWORD --env POSTGRES_DB=tm_gateway_test --publish 127.0.0.1:5432:5432 postgres:16
+$env:TM_TEST_DATABASE_URL = 'postgresql+psycopg://postgres:PASSWORD@127.0.0.1:5432/tm_gateway_test'
+
 # Automated: sign-in, tunnel, remembered login, conflict/takeover, logout
 ..\tmserver\.venv\Scripts\python tests\hosted\gateway_harness.py --tmserver ..\tmserver `
   --tests build\tests\RelWithDebInfo\hosted_tests.exe
