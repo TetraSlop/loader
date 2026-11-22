@@ -2,6 +2,7 @@
 
 #include "core/x87.h"
 
+#include <array>
 #include <bit>
 
 namespace tmweb
@@ -39,6 +40,31 @@ auto parity(const std::uint32_t value) -> bool
     return (std::popcount(value & 0xFF) & 1) == 0;
 }
 
+// PF for each low byte
+constexpr auto kParity = []()
+{
+    auto table = std::array<std::uint32_t, 256>{};
+    for (auto value = 0u; value < 256; ++value)
+    {
+        if ((std::popcount(value) & 1) == 0)
+        {
+            table[value] = kPF;
+        }
+    }
+    return table;
+}();
+
+// The prefix bytes, so an instruction without one skips the prefix loop
+constexpr auto kPrefix = []()
+{
+    auto table = std::array<bool, 256>{};
+    for (const auto prefix : { 0x66, 0x67, 0xF2, 0xF3, 0x64, 0x65, 0xF0, 0x26, 0x2E, 0x36, 0x3E })
+    {
+        table[prefix] = true;
+    }
+    return table;
+}();
+
 // Thrown to end an instruction early with a CPU event: a divide error, an invalid opcode, an interrupt
 struct Interruption
 {
@@ -58,14 +84,19 @@ public:
     // One instruction, or one iteration of a REP string instruction
     void execute()
     {
-        start_      = c_.eip;
-        pc_         = c_.eip;
+        start_     = c_.eip;
+        pc_        = c_.eip;
+        fastBytes_ = 0;
+        if (m_.pageMapped(start_))
+        {
+            fastBytes_ = kPageSize - (start_ & (kPageSize - 1));
+        }
         opsize_     = 4;
         addr16_     = false;
         segment_    = 0;
         rep_        = Rep::None;
         auto opcode = fetch8();
-        for (auto prefixes = 0; prefixes < 15; ++prefixes)
+        for (auto prefixes = 0; prefixes < 15 && kPrefix[opcode]; ++prefixes)
         {
             if (opcode == 0x66)
             {
@@ -120,7 +151,11 @@ private:
     // Fetch
     auto fetch8() -> std::uint32_t
     {
-        m_.check(pc_, 1, Access::Execute);
+        // Bytes up to the end of the instruction's first page were checked once in execute()
+        if (pc_ - start_ >= fastBytes_)
+        {
+            m_.check(pc_, 1, Access::Execute);
+        }
         const auto value = *m_.host(pc_);
         ++pc_;
         return value;
@@ -392,9 +427,13 @@ private:
 
     void setSzp(const std::uint32_t result, const unsigned size)
     {
-        setFlag(kZF, (result & kMask[size]) == 0);
-        setFlag(kSF, (result & kSign[size]) != 0);
-        setFlag(kPF, parity(result));
+        c_.eflags = (c_.eflags & ~(kZF | kSF | kPF)) | szp(result, size);
+    }
+
+    // ZF SF PF of a result, as bits
+    static auto szp(const std::uint32_t result, const unsigned size) -> std::uint32_t
+    {
+        return (static_cast<std::uint32_t>((result & kMask[size]) == 0) * kZF) | (static_cast<std::uint32_t>((result & kSign[size]) != 0) * kSF) | kParity[result & 0xFF];
     }
 
     auto add(const std::uint32_t a, const std::uint32_t b, const std::uint32_t carry, const unsigned size)
@@ -402,10 +441,8 @@ private:
     {
         const auto wide   = static_cast<std::uint64_t>(a) + b + carry;
         const auto result = static_cast<std::uint32_t>(wide) & kMask[size];
-        setFlag(kCF, wide > kMask[size]);
-        setFlag(kOF, ((a ^ result) & (b ^ result) & kSign[size]) != 0);
-        setFlag(kAF, ((a ^ b ^ result) & 0x10) != 0);
-        setSzp(result, size);
+        const auto flags  = (static_cast<std::uint32_t>(wide > kMask[size]) * kCF) | (static_cast<std::uint32_t>(((a ^ result) & (b ^ result) & kSign[size]) != 0) * kOF) | ((a ^ b ^ result) & kAF) | szp(result, size);
+        c_.eflags         = (c_.eflags & ~kArithmeticFlags) | flags;
         return result;
     }
 
@@ -413,18 +450,15 @@ private:
         -> std::uint32_t
     {
         const auto result = (a - b - borrow) & kMask[size];
-        setFlag(kCF, static_cast<std::uint64_t>(a) < static_cast<std::uint64_t>(b) + borrow);
-        setFlag(kOF, ((a ^ b) & (a ^ result) & kSign[size]) != 0);
-        setFlag(kAF, ((a ^ b ^ result) & 0x10) != 0);
-        setSzp(result, size);
+        const auto flags  = (static_cast<std::uint32_t>(static_cast<std::uint64_t>(a) < static_cast<std::uint64_t>(b) + borrow) * kCF) | (static_cast<std::uint32_t>(((a ^ b) & (a ^ result) & kSign[size]) != 0) * kOF) | ((a ^ b ^ result) & kAF) | szp(result, size);
+        c_.eflags         = (c_.eflags & ~kArithmeticFlags) | flags;
         return result;
     }
 
     auto logic(const std::uint32_t result, const unsigned size) -> std::uint32_t
     {
         const auto masked = result & kMask[size];
-        c_.eflags &= ~(kCF | kOF | kAF);
-        setSzp(masked, size);
+        c_.eflags         = (c_.eflags & ~kArithmeticFlags) | szp(masked, size);
         return masked;
     }
 
@@ -2267,6 +2301,7 @@ private:
     Context&      c_;
     std::uint32_t start_     = 0;
     std::uint32_t pc_        = 0;
+    std::uint32_t fastBytes_ = 0; // instruction bytes known to be mapped, from start_
     unsigned      opsize_    = 4;
     bool          addr16_    = false;
     std::uint32_t segment_   = 0;
@@ -2289,46 +2324,51 @@ Cpu::Cpu(Memory& memory)
 auto Cpu::run(Context& context, const std::uint64_t budget) -> Event
 {
     auto interpreter = Interpreter{ memory_, context };
-    for (auto count = std::uint64_t{}; count < budget; ++count)
+    // The state before the current instruction, for precise faults. The try block wraps the whole loop: a try per
+    // instruction costs the Wasm build its loop optimizations.
+    auto registers = context.r;
+    auto eflags    = context.eflags;
+    auto eip       = context.eip;
+    auto count     = std::uint64_t{};
+    try
     {
-        if (traps_.contains(context.eip))
+        for (; count < budget; ++count)
         {
-            return Event{ Stop::Trap, context.eip };
-        }
-        const auto registers = context.r;
-        const auto eflags    = context.eflags;
-        const auto eip       = context.eip;
-        const auto tracing   = (eflags & kTF) != 0;
-        try
-        {
+            if (traps_.contains(context.eip))
+            {
+                return Event{ Stop::Trap, context.eip };
+            }
+            registers          = context.r;
+            eflags             = context.eflags;
+            eip                = context.eip;
             interpreter.rdtsc_ = retired_;
             interpreter.execute();
             ++retired_;
-        }
-        catch (const GuestFault& fault)
-        {
-            context.r      = registers;
-            context.eflags = eflags;
-            context.eip    = eip;
-            return Event{ Stop::Fault, eip, 0, fault };
-        }
-        catch (const Interruption& interruption)
-        {
-            if (interruption.trap)
+            if (eflags & kTF)
             {
-                ++retired_;
-                return Event{ Stop::Interrupt, interpreter.start(), interruption.vector };
+                // Single-step trap after the instruction; the hardware clears TF on entry to the handler
+                return Event{ Stop::Interrupt, eip, 1 };
             }
-            context.r      = registers;
-            context.eflags = eflags;
-            context.eip    = eip;
-            return Event{ Stop::Interrupt, eip, interruption.vector };
         }
-        if (tracing)
+    }
+    catch (const GuestFault& fault)
+    {
+        context.r      = registers;
+        context.eflags = eflags;
+        context.eip    = eip;
+        return Event{ Stop::Fault, eip, 0, fault };
+    }
+    catch (const Interruption& interruption)
+    {
+        if (interruption.trap)
         {
-            // Single-step trap after the instruction; the hardware clears TF on entry to the handler
-            return Event{ Stop::Interrupt, eip, 1 };
+            ++retired_;
+            return Event{ Stop::Interrupt, interpreter.start(), interruption.vector };
         }
+        context.r      = registers;
+        context.eflags = eflags;
+        context.eip    = eip;
+        return Event{ Stop::Interrupt, eip, interruption.vector };
     }
     return Event{ Stop::Budget, context.eip };
 }

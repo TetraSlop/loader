@@ -124,7 +124,7 @@ endif()
 target_link_libraries(tmweb_host PUBLIC tmweb_hle)
 
 add_executable(tmweb app/main.cpp)
-target_link_libraries(tmweb PRIVATE tmweb_core)
+target_link_libraries(tmweb PRIVATE tmweb_host)
 if(EMSCRIPTEN)
     # Node reads the user's game files straight from disk; the guest arena needs 384 MiB of linear memory
     target_link_options(tmweb PRIVATE -sNODERAWFS=1 -sENVIRONMENT=node -sALLOW_MEMORY_GROWTH=1

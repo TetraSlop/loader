@@ -117,12 +117,27 @@ public:
 
     void check(const std::uint32_t address, const std::uint32_t size, const Access access) const
     {
+        // Most accesses stay inside one page: one lookup
+        if ((address & (kPageSize - 1)) + size <= kPageSize)
+        {
+            if (!pages_[address >> 12])
+            {
+                fault(address, size, access);
+            }
+            return;
+        }
         const auto first = address >> 12;
         const auto last  = (address + size - 1) >> 12;
         if (!pages_[first] || !pages_[last] || last < first)
         {
             fault(address, size, access);
         }
+    }
+
+    // Whether the page holding address is mapped
+    auto pageMapped(const std::uint32_t address) const -> bool
+    {
+        return pages_[address >> 12] != 0;
     }
 
 private:
