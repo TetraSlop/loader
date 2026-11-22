@@ -4,8 +4,8 @@ tmloader is a standalone 32-bit Windows host for the original Tetra Master PC
 client. It loads the game DLL (`TM_native.dll`) and the Viewer DLL
 (`polcore_native.dll`) directly, without PlayOnline, and connects them to a
 server. It does not include one; you need a running
-[tmserver](https://github.com/sruon/tmserver) to play.
-[TetraPackets](https://github.com/sruon/TetraPackets) documents the protocol
+[tmserver](https://github.com/TetraSlop/server) to play.
+[TetraPackets](https://github.com/TetraSlop/packets) documents the protocol
 between the client and the server.
 
 tmloader is an unofficial fan project. It is not affiliated with, endorsed by
@@ -30,7 +30,8 @@ or sponsored by Square Enix.
   and game data listed in [`retail-files.txt`](retail-files.txt). Only the DLL
   builds whose SHA256 hashes are pinned in `src/config/validation.cpp` are
   accepted. See [game files](#game-files).
-- A reachable compatible server, addressed by numeric IPv4.
+- A reachable tmserver, by IPv4 address or host name, and an account on it
+  (see [accounts](#accounts)).
 
 Building from source also needs CMake 3.29+, Visual Studio 2022 17.13+
 (MSVC 19.43+) with the Desktop C++ workload and an x86 Windows SDK.
@@ -39,16 +40,16 @@ Building from source also needs CMake 3.29+, Visual Studio 2022 17.13+
 
 ### Release download
 
-[Releases](https://github.com/sruon/tmloader/releases) provide
+[Releases](https://github.com/TetraSlop/loader/releases) provide
 `tmloader-VERSION-windows-x86.zip`: `tmloader.exe`, a sample `tmloader.ini`,
 `retail-files.txt` and license notices. It contains no game files.
 
 1. Extract the archive to a short, writable path such as `C:\Games\TetraMaster`.
 2. Create `runtime/` beside `tmloader.exe` from your own install (see
    [game files](#game-files)).
-3. Edit `tmloader.ini` with the server address, ports and account credentials.
-4. Run `tmloader.exe`. `tmloader.exe --check` validates the setup without
-   starting the game.
+3. Run `tmloader.exe`. On first start it asks for your POL ID, password and
+   server (see [accounts](#accounts)). `tmloader.exe --check` validates the
+   setup without starting the game.
 
 See [distribution](docs/distribution.md) for the layout and how the archive is
 built.
@@ -62,8 +63,9 @@ cmake --build build --config Release
 ```
 
 `py tools/prepare_runtime.py` builds the ignored `runtime/` folder from your
-own install and writes a matching `tmloader.ini` (see [game files](#game-files)).
-Start the server, then run the loader without `--check`.
+own install and writes a `tmloader.ini` for a local server (see
+[game files](#game-files) and [a local server](#a-local-server)). Start the
+server, then run the loader without `--check`.
 
 ## Game files
 
@@ -99,6 +101,45 @@ against its hash, and refuses other DLL builds or damaged files. The Viewer
 settings file `pub/home00/option.bin` is accepted with any content, because the
 Viewer rewrites it when settings are saved.
 
+## Accounts
+
+The loader signs in before the game starts. It connects to the server's game
+port, exchanges a session key with it, and sends your POL ID and password with
+tmserver's `LOGIN` command. The server answers with a one-time game password,
+which the loader hands to the game in place of yours; it is never saved.
+
+- **First start.** With no `pol-id` or `password` in `tmloader.ini`, a small
+  window asks for the POL ID, password and server. Once the server accepts
+  them, the loader saves them to `tmloader.ini` and starts the game.
+- **New accounts.** A POL ID the server has never seen becomes a new account
+  with that password on its first login. A mistyped POL ID therefore creates a
+  second account instead of failing, so check it. The window and the settings
+  panel say whether the account was created or signed in.
+- **Refusals.** A wrong password, a reserved or locked POL ID, an account
+  already playing elsewhere, too many attempts or a busy server reopen the
+  window with the reason.
+- **Format.** A POL ID is 8 letters or digits. A password is 1 to 15 printable
+  ASCII characters; spaces are allowed. Longer passwords are rejected when the
+  config is read, because the game cannot use them.
+
+The key exchange does not authenticate the server, so anyone who can intercept
+the connection can read the password. Use a password you use nowhere else.
+
+### A local server
+
+A tmserver on the same machine also has built-in test accounts that skip
+`LOGIN`. To use one, set `local-account=true` with a loopback server:
+
+```ini
+runtime-dir=runtime
+server=127.0.0.1
+local-account=true
+```
+
+This logs in as `EEEEEEEF` with password `tm-local-test`; set `pol-id` and
+`password` to use another built-in account. `tools/prepare_runtime.py` writes
+this config.
+
 ## Configuration
 
 Settings come from a `key=value` file: `--config FILE`, or `tmloader.ini` next
@@ -110,18 +151,19 @@ Paths are relative to `runtime-dir` unless absolute, and a relative
 |---|---|---|
 | `--config FILE` | | Read settings from a `key=value` file |
 | `--runtime-dir DIR` | required | Runtime directory holding the DLLs and data |
-| `--server IPV4` | `127.0.0.1` | Server address (numeric IPv4 only) |
+| `--server HOST` | `127.0.0.1` | Server IPv4 address or host name |
 | `--game-port PORT` | `51241` | Game port |
 | `--profile-port PORT` | `51220` | Profile port |
-| `--pol-id ID` | `EEEEEEEF` | Eight-character account ID |
-| `--password TEXT` | `tm-local-test` | Account password |
+| `--pol-id ID` | | Eight-character account ID; asked for when unset |
+| `--password TEXT` | | Account password, 1 to 15 characters; asked for when unset |
+| `--local-account` | off | Use a local server's built-in test account, without `LOGIN` (see [a local server](#a-local-server)) |
 | `--diagnostics` | off | Extra logging, and screenshots at fixed startup frames |
 | `--check` | | Validate settings, DLL hashes and every file in `retail-files.txt`, then exit |
 | `--help`, `-h` | | Show help |
 | `--version` | | Show the version |
 
 `tmloader.ini` holds the password in plain text, so keep it out of version
-control. The loader never logs credentials.
+control. The loader never logs passwords.
 
 The runtime directory contains:
 
@@ -157,10 +199,11 @@ saved per account. Music and effect volumes stay in the game's own Options menu.
 src/
   app/        entry point, loader, COM and Viewer ABI, logging, shared runtime
   config/     CLI and config parsing, endpoint and path rules, DLL validation
+  login/      the game port's key exchange and LOGIN
   graphics/   Direct3D 8 hooks, render scaling, screenshots
   input/      DirectInput hook and mouse bridge
   platform/   file and registry boundary, network, desktop, audio, patching
-  ui/         game window, preferences, ImGui settings panel
+  ui/         game window, preferences, ImGui settings panel, account window
 tests/        Catch2 tests mirroring src/; Python tool tests in tests/tools
 tools/        packaging, release and formatting scripts
 docs/         documentation

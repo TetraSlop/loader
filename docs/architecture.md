@@ -30,12 +30,14 @@ folders.
 | `graphics/render_scale` | Resolution presets, automatic selection and the scale shader |
 | `graphics/screenshot` | F12 backbuffer capture and PNG encoding |
 | `input/` | DirectInput factory hook and the mouse bridge |
+| `login/wire` | The game port's wire format: PlayOnline base64, line checksums, the client's Blowfish key schedule and crypt64, 256-bit RSA |
+| `login/login` | One `LOGIN` connection, its result and readable refusals |
 | `platform/system` | File-write boundary, virtual registry, message boxes |
 | `platform/network` | Connect/DNS redirection and the Viewer profile session |
 | `platform/desktop` | Removal of global keyboard hooks, cursor warping and focus stealing |
 | `platform/audio` | DirectSound 8 factory |
 | `platform/patch` | `replacePointer`, `setImport` and `writeCode` |
-| `ui/` | Game window, per-account preferences, the shared ImGui window host, and the settings panel |
+| `ui/` | Game window, per-account preferences, the shared ImGui window host, the settings panel and the account window |
 
 Hook functions are named `hooked<ApiName>`, for example `hookedCreateFileA` or
 `hookedPresent`.
@@ -46,21 +48,23 @@ Hook functions are named `hooked<ApiName>`, for example `hookedCreateFileA` or
    executable) and verifies the DLL hashes and required assets. `--check`
    also hashes every file in the `retail-files.txt` beside the executable, then
    stops without loading any DLL.
-2. The log is opened, then the process enters the runtime directory and
-   disables DEP (the game executes generated code from data pages). It labels
-   `pub/`, `logs/` and `settings/` writable at low integrity, then lowers its
-   own token to low integrity.
-3. The game DLL is loaded and its game object created through
+2. The log is opened and the loader signs in (see [Sign-in](#sign-in)), unless
+   `local-account` is set. The rest of startup uses the server's game password.
+3. The process enters the runtime directory and disables DEP (the game
+   executes generated code from data pages). It labels `pub/`, `logs/` and
+   `settings/` writable at low integrity, then lowers its own token to low
+   integrity.
+4. The game DLL is loaded and its game object created through
    `DllGetClassObject`. The live GameStart vtable entry (slot 9) must equal
    `+8210`, otherwise startup stops.
-4. Each subsystem installs its hooks into the game DLL.
-5. The Viewer DLL is loaded and hooked, and its core object is configured
+5. Each subsystem installs its hooks into the game DLL.
+6. The Viewer DLL is loaded and hooked, and its core object is configured
    through the COM slots below. The common-function table must sit at Viewer
    RVA `+6FBE8`. The loader sets the language, registry root and install
    directory, then initializes the Viewer session (see [Network](#network)).
-6. GameStart (slot 9) runs with the core object and a 28-byte launch
+7. GameStart (slot 9) runs with the core object and a 28-byte launch
    descriptor. The game's own message loop runs until the player quits.
-7. When GameStart returns, the loader stops the settings panel and terminates
+8. When GameStart returns, the loader stops the settings panel and terminates
    its own process without unloading the DLLs.
 
 ### COM ABI
@@ -111,6 +115,29 @@ The runtime path must fit `MAX_PATH` because the client uses ANSI file APIs.
   stores it at `+2369CC`, and `+180E40` skips all sound initialization when it
   is zero. `FULLSCREEN` is 0.
 - **Message boxes.** Native message boxes are logged and answered with `IDOK`.
+
+## Sign-in
+
+`ui/account` signs in before any DLL is loaded, over one short connection to
+`server:game-port` that runs the start of the client's own handshake:
+
+1. The server sends a plaintext `NOTICE AUTH` challenge, which `LOGIN` ignores.
+2. The loader generates a 256-bit RSA key (public exponent 0xFFFF, as the
+   client uses) and sends `USER x 8 * :<modulus>`, little-endian in PlayOnline
+   base64.
+3. The server answers `300` with an 8-byte Blowfish key in a PKCS#1 v1.5
+   type 2 block. Every later line is encrypted with crypt64, the IV being the
+   first eight modulus bytes.
+4. The loader sends `LOGIN <POL ID> :<password>`. The server answers
+   `900 <POL ID> <game password> :created` or `:signed_in`, or
+   `901 <code> :<text>`, and closes.
+
+The game then runs with the server's address resolved to IPv4, the POL ID and
+the game password; the player's own password never reaches the game. Without an
+account, or after a `901`, a Dear ImGui window asks for one and saves it to the
+config file. The exchange does not authenticate the server. The wire format is
+ported from tmserver's `protocol/wire.py`; TetraPackets `irc/session.md`
+documents it.
 
 ## Network
 
@@ -279,6 +306,9 @@ and scales fall back individually. Only the eight advertised scales are accepted
   rejected rather than supported.
 - Native state is module-global, so one process hosts one game session. There
   is no reconnect or account manager.
+- The game password is valid until the next `LOGIN` for that POL ID or a
+  server restart. If the server refuses the game's own login later in the
+  session, restart the loader to sign in again.
 - Profile bootstrap polling is synchronous, up to five seconds per request.
 - After GameStart returns, the loader terminates its own process. Full COM and
   DLL teardown is not attempted.

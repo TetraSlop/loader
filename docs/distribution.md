@@ -2,7 +2,7 @@
 
 `tools/build_release.py` builds one archive, `tmloader-VERSION-windows-x86.zip`.
 It holds no game files and no server; you supply the game files from your own
-install, and the loader connects to the server named in `tmloader.ini`.
+install, and the loader connects to the server you sign in to.
 
 ## Layout
 
@@ -31,8 +31,10 @@ From a source checkout, `py tools/prepare_runtime.py` does this (see the
 `runtime/`, checks the copy. `tmloader.exe --check` does the same, against the
 `retail-files.txt` beside it, and also verifies the settings.
 
-Edit `tmloader.ini` with the server address, ports and account from the server
-operator, then run `tmloader.exe`.
+Run `tmloader.exe`. On first start it asks for your POL ID, password and
+server, signs in, and saves them to `tmloader.ini`; a new POL ID becomes a new
+account (see [accounts](../README.md#accounts)). The shipped `tmloader.ini`
+holds no account. Change the ports there if the server operator gives others.
 
 The game runs at low integrity. On launch the loader labels `runtime/pub`,
 `runtime/logs` and `runtime/settings` as writable at that level; everything
