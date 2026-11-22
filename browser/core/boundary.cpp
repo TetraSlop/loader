@@ -17,6 +17,9 @@ constexpr std::uint32_t kImageAlignment = 0x10000; // module images start on 64 
 constexpr std::uint32_t kSectionStart   = 0x1000;  // headers take the first page
 constexpr std::uint32_t kSlotIndex      = 20;      // the slot's index is stored past the trap, where nothing runs
 constexpr std::uint32_t kReturnTrapName = 0;       // the first late slot
+// Module images take the first MiB of the stand-in range; slots made one at a time (COM methods, names resolved
+// after publish, the return trap) the rest, so they can be made before publish too
+constexpr std::uint32_t kLateSlots = layout::kModules + 0x100000;
 
 // mov edi,edi; push ebp; mov ebp,esp; pop ebp; nops up to the trap; int3 after it
 constexpr auto kSlotBytes = []()
@@ -176,6 +179,11 @@ auto Call::context() const -> Context&
 Boundary::Boundary(Memory& memory)
 : memory_(memory)
 {
+    next_ = kLateSlots;
+    static_cast<void>(newSlot(Function{ "tmweb", std::to_string(kReturnTrapName), Convention::Cdecl, 0, [](Call&) -> Outcome
+                                        {
+                                            return Halt{ "the callGuest return trap ran outside callGuest" };
+                                        } }));
 }
 
 void Boundary::add(Function function)
@@ -197,10 +205,15 @@ void Boundary::publish()
         throw std::logic_error("Boundary::publish twice");
     }
 
+    // Functions add() registered; slots newSlot made already have their address
+    const auto pending = [this](const Function& function)
+    {
+        return !entries_.contains(key(function.module, function.name));
+    };
     auto modules = std::vector<std::string>{};
     for (const auto& function : slots_)
     {
-        if (std::ranges::find(modules, function.module) == modules.end())
+        if (pending(function) && std::ranges::find(modules, function.module) == modules.end())
         {
             modules.push_back(function.module);
         }
@@ -212,7 +225,7 @@ void Boundary::publish()
         auto indices = std::vector<std::uint32_t>{};
         for (auto index = std::uint32_t{}; index < slots_.size(); ++index)
         {
-            if (slots_[index].module == module)
+            if (slots_[index].module == module && pending(slots_[index]))
             {
                 indices.push_back(index);
             }
@@ -329,7 +342,7 @@ void Boundary::publish()
         image.u32(section + 20, kSectionStart);
         image.u32(section + 36, 0x60000020); // code, execute, read
 
-        if (base + imageSize > layout::kModulesEnd)
+        if (base + imageSize > kLateSlots)
         {
             throw std::runtime_error("Synthetic module images overflow their address range");
         }
@@ -344,12 +357,7 @@ void Boundary::publish()
         base             = align(base + imageSize, kImageAlignment);
     }
 
-    next_      = base;
     published_ = true;
-    static_cast<void>(newSlot(Function{ "tmweb", std::to_string(kReturnTrapName), Convention::Cdecl, 0, [](Call&) -> Outcome
-                                        {
-                                            return Halt{ "the callGuest return trap ran outside callGuest" };
-                                        } }));
 }
 
 auto Boundary::module(const std::string_view name) const -> std::optional<std::uint32_t>
@@ -379,7 +387,7 @@ auto Boundary::resolve(const std::string_view module, const std::string_view nam
 auto Boundary::find(const std::uint32_t address) const -> const Function*
 {
     const auto start = address & ~(TrapRange::kSlotSize - 1);
-    if (start < layout::kModules || start >= next_ || address - start > TrapRange::kTrapOffset ||
+    if (start < layout::kModules || start >= layout::kModulesEnd || address - start > TrapRange::kTrapOffset ||
         !memory_.mapped(start, TrapRange::kSlotSize))
     {
         return nullptr;
@@ -465,10 +473,6 @@ auto Boundary::dispatch(Machine& machine, Context& context, const std::uint32_t 
 
 auto Boundary::newSlot(Function function) -> std::uint32_t
 {
-    if (!published_)
-    {
-        throw std::logic_error("Boundary::newSlot before publish");
-    }
     if (next_ + TrapRange::kSlotSize > layout::kModulesEnd)
     {
         throw std::runtime_error("Out of stand-in slots");

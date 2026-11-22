@@ -5,6 +5,7 @@
 #include "hle/process.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <format>
 
@@ -708,7 +709,21 @@ void installKernel32(Process& p)
             memory.write<std::uint32_t>(p.thread().teb + 0xE10 + 4 * (call.arg(0) & 63), call.arg(1));
             return ret(1);
         });
-    add("CreateMutexA", 3, [&p, threadId](Call& call)
+    // A thread that exits holding a mutex abandons it, and the next waiter takes it
+    // ponytail: the waiter sees WAIT_OBJECT_0, not WAIT_ABANDONED
+    auto mutexes = std::make_shared<std::vector<std::weak_ptr<Mutex>>>();
+    p.machine.scheduler().onExit([mutexes](const Thread& thread)
+                                 {
+                                     for (const auto& weak : *mutexes)
+                                     {
+                                         if (const auto mutex = weak.lock(); mutex && mutex->count > 0 && mutex->owner == thread.id)
+                                         {
+                                             mutex->owner = 0;
+                                             mutex->count = 0;
+                                         }
+                                     }
+                                 });
+    add("CreateMutexA", 3, [&p, threadId, mutexes](Call& call)
         {
             const auto name  = call.argString(2);
             auto       mutex = std::shared_ptr<Mutex>{};
@@ -720,6 +735,7 @@ void installKernel32(Process& p)
             else
             {
                 mutex = std::make_shared<Mutex>();
+                mutexes->push_back(mutex);
                 if (call.arg(1))
                 {
                     mutex->acquire(threadId());

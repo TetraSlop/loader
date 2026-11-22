@@ -1,10 +1,14 @@
 #include "core/machine.h"
+#include "hle/image.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <string>
+#include <vector>
 
 using namespace tmweb;
+using tmweb::hle::findExport;
 
 namespace
 {
@@ -257,4 +261,20 @@ TEST_CASE("Structured exceptions walk the fs:[0] chain and resume from the edite
 
     memory.write<std::uint32_t>(context.fsBase, 0xFFFFFFFF);
     CHECK_FALSE(machine.raise(kBreakpoint, 0x10000700, {}));
+}
+
+TEST_CASE("Slots made before publish keep their place beside the module images")
+{
+    auto       machine  = Machine{};
+    auto&      memory   = machine.memory();
+    auto&      boundary = machine.boundary();
+    const auto methods  = std::array{ Method{ "QueryInterface", 3, {} }, Method{ "AddRef", 1, {} }, Method{ "Release", 1, {} } };
+    const auto vtable   = boundary.addInterface("IEarly", methods);
+    addSample(machine);
+    const auto release = memory.read<std::uint32_t>(vtable + 8);
+    REQUIRE(boundary.find(release));
+    CHECK(boundary.find(release)->name == "Release");
+    CHECK(release != boundary.resolve("kernel32.dll", "GetTickCount"));
+    CHECK(findExport(memory, *boundary.module("kernel32.dll"), "GetTickCount") == boundary.resolve("kernel32.dll", "GetTickCount"));
+    CHECK_FALSE(boundary.module("iearly"));
 }

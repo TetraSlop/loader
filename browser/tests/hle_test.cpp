@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <filesystem>
+#include <format>
 #include <fstream>
 
 using namespace tmweb;
@@ -255,6 +256,15 @@ TEST_CASE("Heap, TLS, last error, strings and the window the boot creates")
     CHECK(world.call("kernel32.dll", "ReleaseMutex", { mutex }) == 0);
     world.call("kernel32.dll", "CreateMutexA", { 0, 0, world.text("TetraMaster") });
     CHECK(world.lastError() == kErrorAlreadyExists);
+
+    // A mutex its owner never released is free once the owner exits
+    const auto held  = world.process.handle(world.call("kernel32.dll", "CreateMutexA", { 0, 0, 0 }));
+    auto&      other = world.machine.scheduler().create(0x10002000, 0, 0x10000, true, 0);
+    const auto self  = world.machine.scheduler().current().id;
+    held->acquire(other.id);
+    CHECK_FALSE(held->signaled(self));
+    world.machine.scheduler().exit(other, 0);
+    CHECK(held->signaled(self));
 
     // A new thread starts suspended or ready, returning into ExitThread; its handle signals once it exits
     const auto id     = world.buffer(4);

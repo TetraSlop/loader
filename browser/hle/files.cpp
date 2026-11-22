@@ -1,7 +1,9 @@
 #include "hle/files.h"
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
+#include <iterator>
 #include <ranges>
 
 namespace tmweb::hle

@@ -1,5 +1,6 @@
 #include "hle/boot.h"
 
+#include <algorithm>
 #include <array>
 #include <format>
 #include <stdexcept>
