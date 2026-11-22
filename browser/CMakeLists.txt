@@ -62,6 +62,7 @@ add_library(tmweb_hle STATIC
     hle/small.cpp
     hle/text.cpp
     hle/user32.cpp
+    hle/ws2_32.cpp
 )
 target_link_libraries(tmweb_hle PUBLIC tmweb_core)
 

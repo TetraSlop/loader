@@ -163,6 +163,8 @@ struct Process
     std::string installRoot; // the runtime folder as the guest sees it: C:\PlayOnline\SquareEnix\TetraMaster
     Image       game;        // set once TM.dll is mapped
     std::string gameFile = "TM_native.dll";
+    Image       viewer; // set once polcore is mapped (hle/viewer.h); empty with the stand-in Viewer
+    std::string viewerFile = "polcore_native.dll";
 
     // Guest handles: multiples of 4 from 0x100, as Windows hands them out
     auto addHandle(std::shared_ptr<Waitable> object) -> std::uint32_t;
@@ -225,6 +227,7 @@ struct Process
     std::uint32_t             tlsSlots        = 0; // TlsAlloc bitmap, 32 slots
     std::uint32_t             commandLine     = 0;
     std::uint32_t             environment     = 0;
+    std::uint64_t             guids           = 0; // CoCreateGuid's counter
 
     std::map<std::string, std::shared_ptr<Mutex>> namedMutexes;
 
@@ -246,6 +249,7 @@ void finishInstall(Process& process);
 void installKernel32(Process& process);
 void installUser32(Process& process);
 void installAdvapi32(Process& process);
-void installSmallModules(Process& process); // imm32, ole32, oleaut32, gdi32, and media placeholders
+void installSmallModules(Process& process); // imm32, ole32, oleaut32, gdi32, winmm, and media placeholders
+void installWs2_32(Process& process);       // winsock on the host's stream sockets
 
 } // namespace tmweb::hle

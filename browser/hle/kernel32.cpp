@@ -428,6 +428,18 @@ void installKernel32(Process& p)
             writeSystemTime(memory, call.arg(0), now());
             return ret();
         });
+    // 100 ns ticks since 1601-01-01
+    add("GetSystemTimeAsFileTime", 1, [&memory, now](Call& call)
+        {
+            const auto unix = now().time_since_epoch().count();
+            memory.write<std::uint64_t>(call.arg(0), static_cast<std::uint64_t>(unix + 11644473600000LL) * 10000);
+            return ret();
+        });
+    add("QueryPerformanceCounter", 1, [&p, &memory](Call& call)
+        {
+            memory.write<std::uint64_t>(call.arg(0), p.machine.scheduler().now() * 1000); // microseconds
+            return ret(1);
+        });
     add("GetTimeZoneInformation", 1, [&memory](Call& call)
         {
             memory.fill(call.arg(0), 0, 172);
@@ -474,6 +486,10 @@ void installKernel32(Process& p)
         {
             return p.game.base;
         }
+        if (p.viewer.base && (name == lowerText(p.viewerFile) || name == "polcore.dll"))
+        {
+            return p.viewer.base;
+        }
         if (const auto base = p.machine.boundary().module(name))
         {
             return *base;
@@ -490,6 +506,10 @@ void installKernel32(Process& p)
         {
             return ret(moduleHandle(call, 0));
         });
+    add("LoadLibraryExA", 3, [moduleHandle](Call& call)
+        {
+            return ret(moduleHandle(call, 0));
+        });
     constant("FreeLibrary", 1, 1);
     constant("DisableThreadLibraryCalls", 1, 1);
     add("GetProcAddress", 2, [&p, &memory](Call& call)
@@ -497,7 +517,7 @@ void installKernel32(Process& p)
             const auto module = call.arg(0);
             const auto name   = call.arg(1) < 0x10000 ? std::format("#{}", call.arg(1)) : call.argString(1);
             auto       found  = std::uint32_t{};
-            if (module == p.game.base || p.modules.contains(module))
+            if (module == p.game.base || (p.viewer.base && module == p.viewer.base) || p.modules.contains(module))
             {
                 found = findExport(memory, module, name);
             }
@@ -511,7 +531,11 @@ void installKernel32(Process& p)
         {
             const auto module = call.arg(0);
             auto       path   = std::format("{}\\{}", p.installRoot, p.gameFile);
-            if (const auto found = p.modules.find(module); found != p.modules.end())
+            if (p.viewer.base && module == p.viewer.base)
+            {
+                path = std::format("{}\\{}", p.installRoot, p.viewerFile);
+            }
+            else if (const auto found = p.modules.find(module); found != p.modules.end())
             {
                 path = std::format("C:\\WINDOWS\\system32\\{}", found->second);
             }
@@ -578,6 +602,7 @@ void installKernel32(Process& p)
         {
             return ret(bad(call.arg(0), 1));
         });
+    constant("GetProcessHeap", 0, kHeapHandle);
     add("HeapCreate", 3, [](Call&)
         {
             return ret(kHeapHandle);
@@ -811,6 +836,21 @@ void installKernel32(Process& p)
             return Resume{};
         });
     constant("SetThreadPriority", 2, 1);
+    add("ResumeThread", 1, [&p](Call& call)
+        {
+            const auto object = p.handle(call.arg(0));
+            for (const auto& thread : p.machine.scheduler().threads())
+            {
+                if (object && thread->handle == object)
+                {
+                    const auto previous = thread->suspendCount;
+                    p.machine.scheduler().resume(*thread);
+                    return ret(previous);
+                }
+            }
+            p.setLastError(kErrorInvalidHandle);
+            return ret(0xFFFFFFFF);
+        });
     add("CloseHandle", 1, [&p](Call& call)
         {
             if (const auto file = p.handleAs<File>(call.arg(0)))

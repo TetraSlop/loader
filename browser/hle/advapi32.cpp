@@ -78,6 +78,13 @@ void installAdvapi32(Process& p)
         boundary.add(Function{ "advapi32.dll", name, Convention::Stdcall, argc, std::move(handler) });
     };
 
+    // polcore mixes the hardware profile into its RSA key generation. It fails, as it did in the measured run
+    // (browser/docs/polcore.md); the key generation does not depend on it.
+    add("GetCurrentHwProfileA", 1, [](Call&)
+        {
+            return Return{ 0 };
+        });
+
     // RegOpenKeyA(key, subkey, result): the game's own import, always the virtual key
     add("RegOpenKeyA", 3, [&p, &memory](Call& call)
         {

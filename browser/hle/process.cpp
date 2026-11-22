@@ -10,7 +10,7 @@ namespace tmweb::hle
 namespace
 {
 
-constexpr auto kModules = std::array{ "kernel32.dll", "user32.dll", "advapi32.dll", "imm32.dll", "ole32.dll", "oleaut32.dll", "gdi32.dll", "d3d8.dll", "dinput8.dll", "dsound.dll", "ntdll.dll" };
+constexpr auto kModules = std::array{ "kernel32.dll", "user32.dll", "advapi32.dll", "imm32.dll", "ole32.dll", "oleaut32.dll", "gdi32.dll", "d3d8.dll", "dinput8.dll", "dsound.dll", "ntdll.dll", "winmm.dll", "ws2_32.dll" };
 
 auto lower(std::string text) -> std::string
 {
@@ -210,6 +210,7 @@ void install(Process& process)
     installUser32(process);
     installAdvapi32(process);
     installSmallModules(process);
+    installWs2_32(process);
 }
 
 void finishInstall(Process& process)
