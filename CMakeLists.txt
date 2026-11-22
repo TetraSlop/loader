@@ -14,6 +14,8 @@ if(MSVC_VERSION LESS 1943)
 endif()
 set(CMAKE_CXX23_STANDARD_COMPILE_OPTION "/std:c++23preview")
 set(CMAKE_CXX23_EXTENSION_COMPILE_OPTION "/std:c++23preview")
+# No sources use C++ modules; skip the per-file dependency scan that Ninja does for C++20+.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 # Debug info embedded per object (/Z7), so compiler caches such as sccache work
 # and parallel compiles never share a PDB. The linker still writes a .pdb.
