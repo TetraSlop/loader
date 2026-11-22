@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace tmweb
@@ -81,6 +82,9 @@ public:
     auto create(std::uint32_t start, std::uint32_t parameter, std::uint32_t stackSize, bool suspended, std::uint32_t exitTrap) -> Thread&;
     // The thread the machine starts from: no start routine, the caller sets its context
     auto createMain(std::uint32_t stackSize) -> Thread&;
+    // What create and createMain share: a thread with a mapped stack and a TEB (SEH chain end, stack bounds, self,
+    // client ids, the PEB of the first thread), FS on the TEB and ESP at the stack top
+    auto newThread(std::uint32_t stackSize) -> Thread&;
 
     auto current() -> Thread&;
     auto find(ThreadId id) -> Thread*;
@@ -95,12 +99,18 @@ public:
     // Pick the next thread to run, waking satisfied waits; false when every thread is parked or gone and no
     // timeout is pending
     auto schedule() -> bool;
+    // The earliest timeout among parked threads, on the scheduler's clock
+    auto nextDeadline() const -> std::optional<std::uint64_t>;
+    // Threads parked on a wait
+    auto waiting() const -> std::size_t;
 
     // Milliseconds since start for GetTickCount and timeouts. The host clock by default; tests set their own.
     auto now() const -> std::uint64_t;
     void setClock(std::function<std::uint64_t()> clock);
 
 private:
+    void wake();
+
     struct Parked
     {
         Thread*                                thread = nullptr;

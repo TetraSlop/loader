@@ -51,7 +51,7 @@ public:
     auto boundary() -> Boundary&;
     auto scheduler() -> Scheduler&;
 
-    // Run until a halt or until budget instructions have retired in total
+    // Run at most budget instructions, summed over threads; returns early on a halt or when idle
     auto run(std::uint64_t budget) -> RunResult;
 
     // Call guest code from a stand-in (window procedures, hook procedures, callbacks) on the current thread and
@@ -66,13 +66,24 @@ public:
     // Halt from inside a handler or the host; run() returns with the reason
     void halt(std::string reason);
 
+    // Finish the stand-in call stopped at trap: EAX/EDX, the return address popped, and for stdcall and thiscall
+    // the arguments too. The machine does this for a Return at once and for a Block when it wakes.
+    void complete(Context& context, std::uint32_t trap, const Return& result);
+
 private:
-    Memory      memory_;
-    Cpu         cpu_;
-    Boundary    boundary_;
-    Scheduler   scheduler_;
-    bool        halted_ = false;
-    std::string reason_;
+    // Act on why the CPU stopped; false when the machine halted
+    auto handle(Thread& thread, const Event& event) -> bool;
+    auto dispatchTrap(Thread& thread, std::uint32_t trap) -> bool;
+    auto exception(Thread& thread, const Event& event) -> bool;
+
+    Memory        memory_;
+    Cpu           cpu_;
+    Boundary      boundary_;
+    Scheduler     scheduler_;
+    bool          halted_ = false;
+    std::string   reason_;
+    unsigned      nested_     = 0; // callGuest depth
+    std::uint32_t exceptions_ = 0;
 };
 
 } // namespace tmweb
