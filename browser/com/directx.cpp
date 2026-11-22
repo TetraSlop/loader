@@ -1,5 +1,7 @@
 #include "com/directx.h"
 
+#include "com/d3dx.h"
+
 #include "com/proxies.h"
 
 #include <d3d8.h>
@@ -816,6 +818,7 @@ auto addDirectX(Proxies& proxies) -> std::vector<Function>
     // TM imports it by ordinal
     functions.push_back(Function{ "dsound.dll", "#11", Convention::Stdcall, 3, directSound });
     functions.push_back(Function{ "dsound.dll", "DirectSoundCreate8", Convention::Stdcall, 3, directSound });
+    addD3dx(proxies, functions);
     return functions;
 }
 

@@ -618,10 +618,7 @@ public:
         UINT width, UINT height, D3DFORMAT format, IDirect3DSurface8** surface) override;
     HRESULT STDMETHODCALLTYPE CopyRects(IDirect3DSurface8* source, const RECT* rects, UINT count, IDirect3DSurface8* destination, const POINT* points) override;
 
-    HRESULT STDMETHODCALLTYPE UpdateTexture(IDirect3DBaseTexture8*, IDirect3DBaseTexture8*) override
-    {
-        return D3DERR_INVALIDCALL;
-    }
+    HRESULT STDMETHODCALLTYPE UpdateTexture(IDirect3DBaseTexture8* source, IDirect3DBaseTexture8* destination) override;
 
     HRESULT STDMETHODCALLTYPE GetFrontBuffer(IDirect3DSurface8* destination) override
     {

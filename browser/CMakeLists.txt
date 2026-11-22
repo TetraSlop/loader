@@ -118,7 +118,7 @@ if(EMSCRIPTEN)
         --js-library=${CMAKE_CURRENT_SOURCE_DIR}/compat/gl/gl.js)
 
     # d3d8.dll, dinput8.dll and dsound.dll for the guest, on compat's objects
-    add_library(tmweb_directx STATIC com/directx.cpp)
+    add_library(tmweb_directx STATIC com/d3dx.cpp com/directx.cpp)
     target_link_libraries(tmweb_directx PUBLIC tmweb_core tmweb_compat)
 endif()
 target_link_libraries(tmweb_host PUBLIC tmweb_hle)
@@ -129,6 +129,10 @@ endif()
 
 add_executable(tmweb app/main.cpp)
 target_link_libraries(tmweb PRIVATE tmweb_host)
+if(EMSCRIPTEN)
+    # --verify-d3dx
+    target_link_libraries(tmweb PRIVATE tmweb_directx)
+endif()
 if(EMSCRIPTEN)
     # Node reads the user's game files straight from disk; the guest arena needs 384 MiB of linear memory
     target_link_options(tmweb PRIVATE -sNODERAWFS=1 -sENVIRONMENT=node -sALLOW_MEMORY_GROWTH=1

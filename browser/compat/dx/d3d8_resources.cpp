@@ -396,6 +396,43 @@ HRESULT NullDevice::CreateImageSurface(UINT width, UINT height, D3DFORMAT format
     return D3D_OK;
 }
 
+// tmweb: D3DX 8 loads every texture into a system-memory copy and updates the real one from it. Kestrel never
+// called this, so it was a stub; TM.dll's statically linked D3DX does for each texture it creates. Plain textures only.
+HRESULT NullDevice::UpdateTexture(IDirect3DBaseTexture8* source, IDirect3DBaseTexture8* destination)
+{
+    if (source == nullptr || destination == nullptr || source->GetType() != D3DRTYPE_TEXTURE || destination->GetType() != D3DRTYPE_TEXTURE)
+    {
+        return D3DERR_INVALIDCALL;
+    }
+
+    auto* const from   = static_cast<IDirect3DTexture8*>(source);
+    auto* const to     = static_cast<IDirect3DTexture8*>(destination);
+    const auto  levels = std::min(from->GetLevelCount(), to->GetLevelCount());
+    for (UINT level = 0; level < levels; ++level)
+    {
+        IDirect3DSurface8* a = nullptr;
+        IDirect3DSurface8* b = nullptr;
+        from->GetSurfaceLevel(level, &a);
+        to->GetSurfaceLevel(level, &b);
+        auto* const fromLevel = static_cast<NullSurface*>(a);
+        auto* const toLevel   = static_cast<NullSurface*>(b);
+        const auto  same      = fromLevel->Desc().Format == toLevel->Desc().Format && fromLevel->Desc().Width == toLevel->Desc().Width && fromLevel->Desc().Height == toLevel->Desc().Height;
+        if (same)
+        {
+            const auto whole = RECT{ 0, 0, static_cast<LONG>(fromLevel->Desc().Width), static_cast<LONG>(fromLevel->Desc().Height) };
+            CopyRegion(fromLevel, whole, toLevel, POINT{ 0, 0 });
+        }
+        a->Release();
+        b->Release();
+        if (!same)
+        {
+            return D3DERR_INVALIDCALL;
+        }
+    }
+
+    return D3D_OK;
+}
+
 HRESULT NullDevice::CopyRects(
     IDirect3DSurface8* source, const RECT* rects, UINT count, IDirect3DSurface8* destination, const POINT* points)
 {
