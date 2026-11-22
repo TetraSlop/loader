@@ -8,11 +8,19 @@ This branch (`feat/browser-client`) is separate from `main` and is not merged in
 
 ## What works
 
-- The interfaces: guest memory, the CPU context, the guest/host boundary, guest threads and the f80 API. Most
-  bodies are still stubs.
-- Guest memory: identity-mapped in Wasm (guest address = linear-memory address), offset into a 4 GiB reservation
+- **The interpreter** (`core/cpu.cpp`, `core/x87.cpp`): the x86-32 integer ISA, 16- and 32-bit addressing, string
+  instructions, precise faults, CPUID without MMX or SSE, and every x87 instruction on `f80/`.
+  - Stepped in lockstep with Unicorn over 1,316,129 instructions of the real boot run (protector, CRT start-up,
+    GameStart), with registers, flags and memory writes identical.
+  - TM's battle and growth routines run through it and match tmserver's frozen native vectors: 1,168 battles and
+    6,248 growth cases. Growth also agrees with Unicorn on every case at 24, 53 and 64-bit precision.
+- **Guest memory**: identity-mapped in Wasm (guest address = linear-memory address), offset into a 4 GiB reservation
   natively.
-- The x87's arithmetic (`f80/`), checked against a real x87 (see "The x87 in software").
+- **Threads and the run loop**: TEBs and stacks, waits with timeouts, round robin, idle reporting, structured
+  exceptions handed to `Machine::raise`, and `callGuest` for callbacks.
+- **The x87's arithmetic** (`f80/`), checked against a real x87 (see "The x87 in software").
+- Not yet: the Win32 stand-ins and the protector unpack in C++ (`Boundary::dispatch`, `Machine::raise`, `boot`),
+  and the COM bridge.
 
 ## Layout
 
@@ -28,6 +36,8 @@ This branch (`feat/browser-client`) is separate from `main` and is not merged in
 | `f80/f80.h` | The 80-bit soft float the x87 runs on, on Berkeley SoftFloat 3e (`third_party/softfloat`) |
 | `app/` | The command-line entry for Node and native runs |
 | `tests/` | Catch2 tests, native only |
+| `tools/` | Local checks with the user's files: `difftest.py`, `rules.py`, the Unicorn reference run in `reference/`, the C interface they use (`capi.cpp`) and the polcore research in `polcore/` |
+| `docs/` | Design notes: `polcore.md` |
 
 ## Build
 
@@ -123,6 +133,18 @@ To compare with your own CPU (Windows, MSVC, x86 only):
 cmake -S browser -B build/browser-x86 -A Win32
 cmake --build build/browser-x86 --config Release --target f80_hostdiff
 build/browser-x86/Release/f80_hostdiff.exe 100000        # cases per instruction and mode; optional seed and instruction
+```
+
+## Local checks with the game files
+
+These need the user's own runtime folder and skip without it. They use Python with `pefile`, `capstone` and
+`unicorn`, and the native build's `tmweb_capi` library.
+
+```sh
+# The interpreter against Unicorn over stretches of the boot run
+TM_RUNTIME=<runtime folder> python browser/tools/difftest.py [--count 200000] [--x87]
+# Battle and growth against tmserver's frozen vectors, and growth at 24/53/64 bits against Unicorn
+TM_RUNTIME=<runtime folder> TMSERVER=<tmserver checkout> python browser/tools/rules.py
 ```
 
 ## Game files
