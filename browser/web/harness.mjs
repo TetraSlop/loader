@@ -28,10 +28,31 @@ const { values: o } = parseArgs({
     reference: { type: "string" },
     threshold: { type: "string" },
     chrome: { type: "string", default: process.env.CHROME },
+    key: { type: "string", multiple: true, default: [] },
+    mouse: { type: "string", multiple: true, default: [] },
+    click: { type: "string", multiple: true, default: [] },
   },
 });
+// --key Name@N presses and releases a key once the game has presented N frames. Name is a KeyboardEvent code:
+// ArrowRight, Enter, KeyA... Several are pressed in frame order.
+const keyCodes = { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Enter: 13, Escape: 27, Space: 32 };
+const keys = o.key
+  .map(k => {
+    const [code, frame] = k.split("@");
+    return { code, frame: Number(frame), vk: keyCodes[code] ?? code.replace(/^Key/, "").charCodeAt(0) };
+  })
+  .sort((a, b) => a.frame - b.frame);
+// --mouse X,Y@N moves the pointer onto the canvas at 640x480 coordinates once the game has presented N frames
+// --click X,Y@N moves there the same way, then presses and releases the left button
+const moves = [...o.mouse.map(m => [m, false]), ...o.click.map(m => [m, true])]
+  .map(([m, click]) => {
+    const [point, frame] = m.split("@");
+    const [x, y] = point.split(",").map(Number);
+    return { x, y, frame: Number(frame), click };
+  })
+  .sort((a, b) => a.frame - b.frame);
 if (!o.folder === !o.synthetic) {
-  console.error("usage: node browser/web/harness.mjs (--folder <runtime folder> | --synthetic) [--frames N] [--timeout s] [--out shot.png] [--reference ref.png [--threshold N]] [--chrome path]");
+  console.error("usage: node browser/web/harness.mjs (--folder <runtime folder> | --synthetic) [--frames N] [--key Code@frame]... [--mouse X,Y@frame]... [--click X,Y@frame]... [--timeout s] [--out shot.png] [--reference ref.png [--threshold N]] [--chrome path]");
   process.exit(2);
 }
 
@@ -137,6 +158,34 @@ async function drive() {
   await evaluate(`document.getElementById("start").click(), true`);
 
   const status = () => evaluate(`({ state: document.body.dataset.state, frames: Number(document.body.dataset.frames ?? 0) })`);
+  for (const k of keys) {
+    await until(async () => ((await status()).frames >= k.frame ? true : undefined), `frame ${k.frame} for ${k.code}`);
+    await evaluate(`document.getElementById("screen").focus(), true`);
+    for (const type of ["keyDown", "keyUp"]) {
+      await send("Input.dispatchKeyEvent", { type, code: k.code, key: k.code, windowsVirtualKeyCode: k.vk });
+      await sleep(50);
+    }
+    console.log(`harness: pressed ${k.code} at frame ${(await status()).frames}`);
+  }
+  for (const m of moves) {
+    await until(async () => ((await status()).frames >= m.frame ? true : undefined), `frame ${m.frame} for the pointer`);
+    const r = await evaluate(`(r => ({ x: r.x, y: r.y, width: r.width, height: r.height }))(document.getElementById("screen").getBoundingClientRect())`);
+    // From the canvas's centre, in a few steps, as a hand would
+    for (let step = 1; step <= 8; ++step) {
+      const x = r.x + r.width * (0.5 + ((m.x / 640 - 0.5) * step) / 8);
+      const y = r.y + r.height * (0.5 + ((m.y / 480 - 0.5) * step) / 8);
+      await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+      await sleep(30);
+    }
+    if (m.click) {
+      const x = r.x + (r.width * m.x) / 640;
+      const y = r.y + (r.height * m.y) / 480;
+      await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+      await sleep(80);
+      await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+    }
+    console.log(`harness: pointer at ${m.x},${m.y}${m.click ? ", clicked" : ""} at frame ${(await status()).frames}`);
+  }
   const settled = await until(async () => {
     const s = await status();
     return (wanted > 0 ? s.frames >= wanted : false) || ["halted", "failed", "need-files"].includes(s.state) ? s : undefined;

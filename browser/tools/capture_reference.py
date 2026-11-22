@@ -1,7 +1,7 @@
 # Capture reference frames from native tmloader, for compare_frame.py and web/harness.mjs.
 #
 #   python browser/tools/capture_reference.py --loader <tmloader.exe> --config <tmloader.ini> --runtime <runtime>
-#                                             --out <folder> [--seconds 45] [--tmserver <checkout>]
+#                                             --out <folder> [--seconds 45] [--tmserver <checkout>] [--key VK@s]
 #
 # It copies the runtime folder to a scratch place (the user's own settings stay as they are), sets the account's
 # preferences to 640x480 at scale 1 without HD art, runs tmloader with --diagnostics, which saves screenshots at
@@ -11,6 +11,8 @@
 #
 # The frames are the user's game: keep <out> outside the repository.
 import argparse
+import ctypes
+import ctypes.wintypes
 import json
 import os
 import re
@@ -18,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 FRAMES = [60, 300, 600, 900, 1200, 1440, 1500, 1800]
@@ -39,7 +42,57 @@ def start_server(checkout, scratch, seconds):
     raise RuntimeError('tmserver did not start')
 
 
+def game_window():
+    """The game window, brought to the front: a background process may only take the foreground through the
+    foreground thread's input queue"""
+    user32 = ctypes.windll.user32
+    window = user32.FindWindowW(None, 'Tetra Master')
+    if window:
+        foreground = user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), None)
+        mine = ctypes.windll.kernel32.GetCurrentThreadId()
+        user32.AttachThreadInput(mine, foreground, True)
+        user32.SetForegroundWindow(window)
+        user32.AttachThreadInput(mine, foreground, False)
+        time.sleep(0.2)
+    return window
+
+
+def press(code):
+    """A key press to the game window"""
+    user32 = ctypes.windll.user32
+    game_window()
+    user32.keybd_event(code, 0, 0, 0)
+    time.sleep(0.05)
+    user32.keybd_event(code, 0, 2, 0)
+
+
+def screen_point(window, x, y):
+    """640x480 client coordinates to physical screen pixels"""
+    user32 = ctypes.windll.user32
+    rect = ctypes.wintypes.RECT()
+    user32.GetClientRect(window, ctypes.byref(rect))
+    origin = ctypes.wintypes.POINT(0, 0)
+    user32.ClientToScreen(window, ctypes.byref(origin))
+    return origin.x + x * rect.right // 640, origin.y + y * rect.bottom // 480
+
+
+def point_at(x, y, click=False):
+    """Move the pointer onto the game window at 640x480 client coordinates, and click there if asked"""
+    user32 = ctypes.windll.user32
+    window = game_window()
+    if not window:
+        return
+    user32.SetCursorPos(*screen_point(window, x, y))
+    if click:
+        time.sleep(0.1)
+        user32.mouse_event(0x0002, 0, 0, 0, 0)  # left down
+        time.sleep(0.1)
+        user32.mouse_event(0x0004, 0, 0, 0, 0)  # left up
+
+
 def main():
+    # Physical pixels, so the pointer lands where the game window really is on a scaled desktop
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
     parser = argparse.ArgumentParser()
     parser.add_argument('--loader', required=True)
     parser.add_argument('--config', required=True, help='a tmloader.ini with the account; runtime-dir is replaced')
@@ -47,6 +100,11 @@ def main():
     parser.add_argument('--out', required=True)
     parser.add_argument('--seconds', type=int, default=45, help='how long the game runs (frame 1800 is about 30 s)')
     parser.add_argument('--tmserver', help='a tmserver checkout to run on a scratch state during the capture')
+    parser.add_argument('--key', action='append', default=[],
+                        help='VK@seconds: press and release a virtual key (hex or decimal) that long after launch')
+    parser.add_argument('--mouse', action='append', default=[],
+                        help='X,Y@seconds: put the pointer on the game window at these 640x480 client coordinates')
+    parser.add_argument('--click', action='append', default=[], help='X,Y@seconds: click there')
     args = parser.parse_args()
 
     scratch = tempfile.mkdtemp(prefix='tm-reference-')
@@ -66,6 +124,17 @@ def main():
     json.dump(values, open(preferences, 'w'), indent=2)
 
     server = start_server(args.tmserver, scratch, args.seconds) if args.tmserver else None
+    for spec in args.key:
+        code, seconds = spec.split('@')
+        threading.Timer(float(seconds), press, (int(code, 0),)).start()
+    for spec in args.mouse:
+        point, seconds = spec.split('@')
+        x, y = (int(v) for v in point.split(','))
+        threading.Timer(float(seconds), point_at, (x, y)).start()
+    for spec in args.click:
+        point, seconds = spec.split('@')
+        x, y = (int(v) for v in point.split(','))
+        threading.Timer(float(seconds), point_at, (x, y, True)).start()
     try:
         try:
             subprocess.run([args.loader, '--config', os.path.join(scratch, 'tmloader.ini')], cwd=scratch,
