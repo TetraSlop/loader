@@ -371,6 +371,18 @@ This fits inside the spike's 4–6 weeks for polcore; the gateway change it incl
 Reimplementing instead: about 10–16 person-weeks with a long tail, plus an oracle for every entry (this harness
 could serve as one).
 
+## In the build
+
+`hle/viewer.h` follows this design (browser/README.md, "The real Viewer"). Measured there:
+
+- TM boots to `Direct3DCreate8(220)` on polcore in 205 million instructions with host code for the key
+  generation's routines (`+2C1D0`, `+2CA20`, `+2CFA0`), 461 million without; the stand-in Viewer's boot is 177
+  million. The CRT's `+53940` (`_aullshr`) runs as guest code: its hot caller `+2CFA0` is host code now, and a trap
+  per five-instruction call would cost more than it saves.
+- polcore imports ws2_32 by ordinal (`#115` is WSAStartup), so the winsock stand-ins answer to both.
+- The scripted login (`--probe`) runs the set-up, Game IRC open, open checks and polls, and the profile bootstrap in
+  31 million instructions.
+
 ## Limits
 
 - Boot and login were run; lobby, match, profile writes, options writes, friends, messages and mail are attributed

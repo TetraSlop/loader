@@ -63,6 +63,11 @@ node browser/web/harness.mjs --folder <runtime folder> --frames 360 --click <x>,
   all 148 imports named, the image byte-identical to tmserver's verified one when the protector hands over to the
   CRT, then GameStart's 41 imports with their counts, 6 core slots, 11 Viewer entries, 59 file opens in order, the
   registry values, and the `Tetra Master` window class at `+1863D0`.
+- **The real Viewer** (`hle/viewer.h`, behind a switch): the user's `polcore_native.dll` at `0x10400000`, unpacked
+  by its own POL1 stub, set up as tmloader sets it up, with winsock on the host's WebSocket transport
+  (`hle/ws2_32.cpp`). TM boots to `Direct3DCreate8(220)` on it, natively and under Node (215 million instructions,
+  4 s), and a scripted run logs in to Game IRC and loads the handles, characters and status from a local tmserver
+  through its browser streams (31 million instructions, 2 s). See "The real Viewer".
 - Win32 stand-ins (`hle/`) for what TM.dll and its protector import from kernel32, user32, advapi32, imm32, ole32,
   oleaut32 and gdi32. The registry serves tmloader's virtual values. Files come read-only from the runtime folder
   through `hle::HostFiles`.
@@ -76,7 +81,7 @@ node browser/web/harness.mjs --folder <runtime folder> --frames 360 --click <x>,
 | `core/boundary.h` | Stand-ins: synthetic module images with exports, trap slots, `Call` (arguments, `this`, strings), `Outcome` (`Return`, `Block`, `Resume`, `Halt`), COM vtables and guest objects |
 | `core/threads.h` | Guest threads, `Waitable` kernel objects, `Wait`/`WaitResult`, the scheduler and its clock |
 | `core/machine.h` | One process: the run loop, structured exceptions, `callGuest` for callbacks into guest code |
-| `hle/` | Win32 stand-ins, the PE loader, the host file API (`files.h`) and the boot sequence (`boot.h`) |
+| `hle/` | Win32 stand-ins, the PE loader, the host file API (`files.h`), the boot sequence (`boot.h`), the real Viewer (`viewer.h`) and winsock (`ws2_32.cpp`) |
 | `host/host.h` | The module's way out: log, keyboard and mouse, sound, stream sockets, and the exports the host drives |
 | `web/` | The host side: the Node runner, the page and its worker, input, WebAudio, the game-file picker, the WebSocket transport |
 | `f80/f80.h` | The 80-bit soft float the x87 runs on, on Berkeley SoftFloat 3e (`third_party/softfloat`) |
@@ -159,6 +164,39 @@ node browser/web/harness.mjs --synthetic     # CI: stand-in files, checks the ha
 Sockets go through `web/transport.js`: one binary WebSocket per guest connection, at the URL `route(address, port)`
 gives, with the play-session token as the first text message, as tmserver's gateway expects of a browser stream
 (its LOADER_AUTH_SPEC.md, "Browser clients"). No route exists until sign-in lands, so every connect fails.
+
+## The real Viewer
+
+By default the boot answers TM's Viewer calls with a stand-in. `tmweb_configure("viewer", "polcore")` before
+`tmweb_boot` (`--viewer polcore` for the Node runner) runs the user's `polcore_native.dll` instead
+(`docs/polcore.md` has the research):
+
+- It is mapped at `layout::kViewerImage` with the data directory's relocations applied, as the OS loader does; its
+  POL1 stub then decompresses `.text` and applies the `.text` relocations it hides from the OS.
+- Between TM's CreateInstance and GameStart the boot runs tmloader's Viewer set-up (`src/app/loader.cpp`,
+  `src/platform/network.cpp`): DllMain, the core object, the area code, parameters, languages, registry root, install
+  folder, account, and the INET and profile clients. GameStart then gets polcore's core object.
+- Common-table entries 132 and 133 are hooked as tmloader hooks them: Game IRC open gets the server and the play
+  session's account (`pol_id`, `password`), and the first accepted login seeds the profile cipher and loads the
+  handles, characters and status, which pol.exe would have loaded before starting the game.
+- Its internal addresses fit only the pinned build; the PE header and the common table's address are checked.
+- The RSA key generation in CreateInstance runs four routines as host code (`keygen`, on by default): 461 million
+  instructions to `Direct3DCreate8` become 205 million. `tests/viewer_test.cpp` checks them against polcore's own on
+  inputs recorded from a real key generation.
+- polcore's sockets are non-blocking TCP polled with `select`; each is one host stream, routed by port: 51241 to the
+  game stream, 51220 to a profile stream.
+
+A scripted login without TM.dll (`probe`) checks the whole path against a local tmserver:
+
+```sh
+# tmserver's services and gateway on loopback, with a stand-in sign-in; writes a browser play session
+TMSERVER=<tmserver checkout> python browser/tools/polcore/gateway.py play.json &
+node browser/web/run.mjs <runtime folder> --viewer polcore --probe --session play.json
+# viewer: profile request 171 ticket 0 result 1 ... viewer probe: Game IRC login accepted; profile handles 1, ...
+```
+
+`--session` without `--probe` boots TM.dll with that account and routes its connections the same way. Under Node the
+transport sends the session's `origin` as the WebSocket's Origin header, as a page would.
 
 ## The x87 in software
 
