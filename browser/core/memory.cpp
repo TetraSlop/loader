@@ -1,5 +1,7 @@
 #include "core/memory.h"
 
+#include <algorithm>
+
 #include <stdexcept>
 
 #if defined(__EMSCRIPTEN__)
@@ -162,15 +164,80 @@ auto Memory::regions() const -> std::vector<Region>
 
 auto Memory::allocate(const std::uint32_t size, const std::uint32_t alignment) -> std::uint32_t
 {
+    const auto length = std::max(size, 1u);
+    // First fit among freed blocks; what the alignment skips and what is left over stay free
+    for (auto it = free_.begin(); it != free_.end(); ++it)
+    {
+        const auto [block, blockSize] = *it;
+        const auto address            = (block + alignment - 1) & ~(alignment - 1);
+        if (address < block || static_cast<std::uint64_t>(address) + length > static_cast<std::uint64_t>(block) + blockSize)
+        {
+            continue;
+        }
+        free_.erase(it);
+        if (address > block)
+        {
+            free_[block] = address - block;
+        }
+        const auto end = block + blockSize;
+        if (address + length < end)
+        {
+            free_[address + length] = end - (address + length);
+        }
+        allocated_[address] = length;
+        // An alignment gap of the bump path was never mapped
+        map(address, length);
+        fill(address, 0, length);
+        return address;
+    }
     const auto address = (heapTop_ + alignment - 1) & ~(alignment - 1);
-    if (static_cast<std::uint64_t>(address) + size > layout::kHeapEnd)
+    if (static_cast<std::uint64_t>(address) + length > layout::kHeapEnd)
     {
         throw std::runtime_error("Guest heap exhausted");
     }
-    heapTop_ = address + size;
-    map(address, size);
-    fill(address, 0, size);
+    if (address > heapTop_)
+    {
+        release(heapTop_, address - heapTop_);
+    }
+    heapTop_ = address + length;
+    map(address, length);
+    fill(address, 0, length);
+    allocated_[address] = length;
     return address;
+}
+
+void Memory::free(const std::uint32_t address)
+{
+    const auto found = allocated_.find(address);
+    if (found == allocated_.end())
+    {
+        throw std::invalid_argument("Memory::free of an address allocate() did not return");
+    }
+    const auto size = found->second;
+    allocated_.erase(found);
+    release(address, size);
+}
+
+// Put [address, address + size) on the free list, merged with free neighbours
+void Memory::release(std::uint32_t address, std::uint32_t size)
+{
+    auto next = free_.lower_bound(address);
+    if (next != free_.begin())
+    {
+        const auto previous = std::prev(next);
+        if (previous->first + previous->second == address)
+        {
+            address = previous->first;
+            size += previous->second;
+            free_.erase(previous);
+        }
+    }
+    if (next != free_.end() && address + size == next->first)
+    {
+        size += next->second;
+        free_.erase(next);
+    }
+    free_[address] = size;
 }
 
 void Memory::read(const std::uint32_t address, const std::span<std::uint8_t> out) const

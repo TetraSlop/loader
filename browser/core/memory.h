@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <map>
 #include <span>
 #include <string>
 #include <type_traits>
@@ -73,9 +74,11 @@ public:
     // Mapped ranges, merged, for snapshots and the differential test
     auto regions() const -> std::vector<Region>;
 
-    // Allocate address space from the heap part of the arena, mapped and zeroed; never reused. Alignment is a power
-    // of two; VirtualAlloc uses 64 KiB.
+    // Allocate address space from the heap part of the arena, mapped and zeroed. Alignment is a power of two;
+    // VirtualAlloc uses 64 KiB. Freed space is reused, first fit, with neighbours merged.
     auto allocate(std::uint32_t size, std::uint32_t alignment = 16) -> std::uint32_t;
+    // Give back an allocation; its pages stay mapped. Freeing an address allocate() did not return throws.
+    void free(std::uint32_t address);
 
     // Unchecked host view of a guest address
     auto host(const std::uint32_t address) const -> std::uint8_t*
@@ -142,10 +145,13 @@ public:
 
 private:
     [[noreturn]] void fault(std::uint32_t address, std::uint32_t size, Access access) const;
+    void              release(std::uint32_t address, std::uint32_t size);
 
-    std::uintptr_t            base_ = 0;
-    std::vector<std::uint8_t> pages_; // one byte per 4 KiB page: 1 when mapped
-    std::uint32_t             heapTop_ = layout::kHeap;
+    std::uintptr_t                         base_ = 0;
+    std::vector<std::uint8_t>              pages_; // one byte per 4 KiB page: 1 when mapped
+    std::uint32_t                          heapTop_ = layout::kHeap;
+    std::map<std::uint32_t, std::uint32_t> allocated_; // address -> size
+    std::map<std::uint32_t, std::uint32_t> free_;      // address -> size, never adjacent
 };
 
 } // namespace tmweb
