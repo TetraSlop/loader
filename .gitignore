@@ -16,3 +16,9 @@ __pycache__/
 /.PVS-Studio/
 /cmake-build-*/
 /.ruff_cache/
+# Browser client spike outputs: game code and data never go in the repository
+/spike/
+/WASM_SPIKE.md
+*.wasm
+/browser/**/lifted*.c
+/browser/**/*mapped*

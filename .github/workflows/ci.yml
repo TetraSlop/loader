@@ -63,6 +63,32 @@ jobs:
           branch=$(gh pr view "$number" --json headRefName --jq '.headRefName')
           gh workflow run ci.yml --ref "$branch"
 
+  browser:
+    name: Browser client
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Native build and tests (no game files)
+        run: |
+          sudo apt-get install -y ninja-build
+          cmake -G Ninja -S browser -B build/browser -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/browser
+          ctest --test-dir build/browser --output-on-failure --timeout 120
+      - name: Install Emscripten 5.0.7
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install 5.0.7
+          "$RUNNER_TEMP/emsdk/emsdk" activate 5.0.7
+      - name: Wasm build under Node
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          emcmake cmake -G Ninja -S browser -B build/browser-wasm -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/browser-wasm
+          node build/browser-wasm/tmweb.js
+
   build:
     name: Windows x86
     needs: release

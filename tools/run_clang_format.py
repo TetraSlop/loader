@@ -37,7 +37,7 @@ def format_sources(executable: str, check: bool) -> int:
     """Return clang-format's exit status; with --check it lists every misformatted line."""
     files = sorted(
         file
-        for directory in (ROOT / "src", ROOT / "tests")
+        for directory in (ROOT / "src", ROOT / "tests", ROOT / "browser")
         for file in directory.rglob("*")
         if file.suffix in {".cpp", ".h", ".hpp"} and file.is_file() and not file.is_symlink()
     )
