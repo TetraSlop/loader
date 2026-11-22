@@ -1,0 +1,151 @@
+# Retail files tmloader needs in its runtime folder, in sha256sum format.
+#
+# They come from your own PlayOnline install of Tetra Master and are not
+# distributed with tmloader. Copy them into the runtime folder with the paths
+# below (tools/prepare_runtime.py does this), then check them from that folder:
+#
+#     sha256sum -c ../retail-files.txt
+#
+# Where each group comes from in a standard install (under PlayOnline\SquareEnix):
+#   TM_native.dll          TM.dll from the Tetra Master game folder, renamed
+#   data/ (except utf/)    the Tetra Master game folder's data\ folder
+#   polcore_native.dll     viewer\com\polcore.dll from the PlayOnline Viewer, renamed
+#   data/utf/env.dat       the PlayOnline Viewer's data\utf\env.dat
+#   pub/home00/option.bin  the PlayOnline Viewer's default\pub\home\option.bin
+#
+# The two DLL hashes are the builds pinned in src/config/validation.cpp; other
+# builds are rejected. pub/home00/option.bin is the factory copy and changes once
+# the Viewer saves settings, so a mismatch on that line after playing is expected.
+29c965a835fad561a94860262f780bc087b7bcc89be9e3e89da8f08d57f52003  TM_native.dll
+73b1864bf522d3aa6ec28e9f4bb226fcee956f7f4848a238c9c2d756dc703b06  polcore_native.dll
+ce5b7cd9bc2f35ad7199536990a3e6eaaa6f1020742baba726f35435599cea4e  data/Aucti.BIN
+c460533bf40ba0b3218ae026ff513821bf3807be7ea2e9cd70ae0686771e3b66  data/CardPri.BIN
+793eb7ca0a70862d29d3c5bfebd0299ed0f31b5e43bd818460393f5f6e3bade4  data/CardPrm.BIN
+7c239ec692885c872492524d7d43ffc0f9cf5e3308e626b9db9fb0ca5a6d2e1e  data/Cardsel.BIN
+3868951915daa27fa339fa43189af27d5e11590752ce45847a4d666a9922ba3e  data/Cardsh.BIN
+b1b971b35095732d0a95b9954a1ce4e984fcb6e159b784ab4f8dba09d196d04f  data/Chatmess.BIN
+4808740018825c8b1a3d32d1de6f0087e5f1f07d6e9e3e0bfe0cade43777bcaf  data/CoPrm.BIN
+bbb044807dc39c244df281e87504aa294c121249426dd8344a61eeb3afab873f  data/Error.BIN
+06c58a9a01286ea5b8965cfc8d84b1352a8e2dd498edd9c1b079363947a4a071  data/Friend.BIN
+94eb36b8b798cba453881ac647309da236b4820b5bdc3aa5b103ca02d7e6f0dc  data/Lobby.BIN
+084f946649988c4e064c298708b39f827bd43a45e8c49fa923caca0b8d4e28ec  data/Nuisance.BIN
+43497ac75834e1b31559a90cb0d6030e60d8264f63532f0821080220f857c589  data/Option.BIN
+c757798eecfdf9a520e48005953affe8eaae511ee04bf7692c7163ff41abd87c  data/PackPrm.BIN
+b32c71431bf5857c5d2f3134b4ef0be924a02dae4f371aa7c8e706506206602c  data/PlPrm.BIN
+bac70ea7f25f4e5fb2ae8e6160504f7e69916d10a03d4d21ce7d1683ff81f694  data/Playdat.BIN
+76caf5336383fcff99f720a89dfb20fc474d947fc31fdb98cab0e85defdcfe8c  data/Playmes.BIN
+11a3ba17d9daea20c9f018a54b1cb796d5d0ee08819c7f94573999502cb23476  data/Ranking.BIN
+fc509e9e912ea1a4a05ac85b7d8c04e457654afaaa5581ca8adccf3ccbd8653d  data/RankingPrize.BIN
+9bd3a98150646b98ad17a4b6e2b5eca15d1fe848b6ae0edf711ce3e3a32e4732  data/TMess.BIN
+308c489526f537debfa158261e04b7bf74fc41f52a4b94f924648cfee1133297  data/Title.BIN
+2d6876da1c5e567c360bb78c3cf4b3e99a32a5987b073fc0ce6004ad07cee0e2  data/Trade.BIN
+d2d9605dc1eca5eb042545579e7752091ed0fe766f582aacb0d2fe923fd04db3  data/WIN/sound/music/music200.bgw
+c63cea729cd6b73c59bf729d3506d3de8def5d7c2febe250a52daefca67f657b  data/WIN/sound/music/music201.bgw
+66f795d37bf377f85a5fee53a4ec86220c358d6ee3c9a1daf0912dc777c55f00  data/WIN/sound/music/music202.bgw
+93e792ab89c9531d8295879dd3e1c0a8af1b3a51ac263d773d23e6186b66df1e  data/WIN/sound/music/music203.bgw
+4a788e85fdf9ff1012a770c12fba37b0e77f9d27d18d720f69e4cad731314a13  data/WIN/sound/music/music204.bgw
+5ba047089cfaba4cf1450f2366f915c6cd6f8e21ef1ec1908b29bf8bea6e8487  data/WIN/sound/music/music205.bgw
+e28a0a5b4a5f5dc894aa801b3a1a5e762de17f2d1159f20ef03dc2fcb7bb93a6  data/WIN/sound/music/music206.bgw
+b6d258c9fee072ad50845643cd8159d4e1180fbf202a4bb085ab30efb1ed35c2  data/WIN/sound/music/music207.bgw
+b56649621eb2bea4c1e94183f03aaf97cd09c2759ff13a2345e548d85876540b  data/WIN/sound/music/music208.bgw
+735fa158c5b1e8ed4293536c1ef64c074c47a292489675227f74335c50a75d6b  data/WIN/sound/music/music209.bgw
+68051e0923e132224b32b4676f12c47a0d8a364b3c7ee3b23a256a612b7a980b  data/WIN/sound/music/music210.bgw
+885d4735c773f0d5e411036996219d262c88b6243acfb24b02b0d20e7037b27b  data/WIN/sound/music/music212.bgw
+888e529a05b4258d0a6f32510bdd2d6b27b56338fae378c007602075a750f118  data/WIN/sound/music/music213.bgw
+2e8da7bd5aacdfad260896734a53b7a7e0ae53c51fc6e6ccd3e2a4ca240c13be  data/WIN/sound/music/music215.bgw
+3211dd96e6552623f9ef0de34fbef8105b2f21d9a0070e4a0cc2b1d95f1e911a  data/WIN/sound/music/music216.bgw
+0027e973828bda941f97e76f86792f47a526a00749b130a97e8ef00628c1bcaf  data/WIN/sound/se/se001001.spw
+5f5f8f9031712398a83588d63a3b5ac8b7dc035cd8cbe12e391ebc0a549ae6ee  data/WIN/sound/se/se001002.spw
+aa80b2d7bfbf4b572df5e150a9b4de47e894bd3b6db8f08facde589df15e2eb8  data/WIN/sound/se/se001003.spw
+b05f04f959fb594cf73b70dcb3fff4d43bf4d2f9e6f1d8edc9732d6ea04f217c  data/WIN/sound/se/se001004.spw
+0e598832c0b0089575ce07be5ff8120000c614c8bdb8d2da590593f7c39e6a4f  data/WIN/sound/se/se001005.spw
+1318a08f8c3c98979f155fb4a8d6332600a7825decc5ced4576f12c1070eea66  data/WIN/sound/se/se001006.spw
+ff73717c6632d6cdba4023069358a31f951d89c4971ce540a3f46cd1c0567577  data/WIN/sound/se/se001007.spw
+060eb43b92eb380c6b38811f99aec5eaf3a4a36f5ae9b687b28e702561d34483  data/WIN/sound/se/se001008.spw
+0c09213a465ec0594c5ebf65be201ef4991f37f723938d60b52a47ea5cba2c64  data/WIN/sound/se/se001009.spw
+6e2373245399b2693398df7f4f439ca9b85e08d5641ec588cedb010382cdb3ae  data/WIN/sound/se/se001010.spw
+857bade14712ad61723d8175fcf889ce4f7d4fae197c98537c0d8b0423dd45c8  data/WIN/sound/se/se001011.spw
+7422e97b8beab61b07679bcc1a03771c2d8aed35486aa97db5ab421acd4de89a  data/WIN/sound/se/se001012.spw
+0a2219b6bd842d537cdc04641e6f8ce7b8c18efa62bbbec65c35a16234277962  data/WIN/sound/se/se001013.spw
+672db2bfb13ce7c5a8e7be8f2d40293e609915ce972b979d3ce62d62b77a4689  data/WIN/sound/se/se001017.spw
+c8aa5d2fa6a6fb88410d7896d53979c027b9f6e98d1326528c6afdaaa7e6439d  data/WIN/sound/se/se001018.spw
+cbac5fac78a2d4b8022b4003dc655125b2a1d0b2e3f024f6b460b167dd273ca5  data/WIN/sound/se/se001019.spw
+513b7722ac790ff0cf9269f530135771b6f4efe00344abf3b14d2d57b84470ae  data/WIN/sound/se/se001020.spw
+f905592647c5a4593f3d975363b15da690b1a6b3e8971f6db1f42dc0b9335d9d  data/WIN/sound/se/se001021.spw
+e20e842b903006895ea5dec870e8ef6d908374613aa420fd8acd9a315b9e03cd  data/WIN/sound/se/se001022.spw
+3a244ebc70fe0a13095df33b5a4d7563594b4f0c331697a4747793efb6c6c181  data/WIN/sound/se/se001023.spw
+4160b11afd3ddcb1a6e7f1e8348ff6b379b0badf292dc48c02743402ae605fee  data/WIN/sound/se/se001024.spw
+201d16677f5a56b9a56f3eb85908a20cec6aa5345d9446221055edcf204684ad  data/WIN/sound/se/se001025.spw
+59658d2d896f21653fd9a8e689707d5811438ac9f77238c7667cddad82783ce3  data/WIN/sound/se/se001026.spw
+02235875363b4e012be55df10ebc5161d6631d19e1bc61d09cb40db485ab2124  data/WIN/sound/se/se001027.spw
+ad4f545af7772ce3bd69cb95f7c3fc5715ef35e45116aaa08aea563441847cf4  data/WIN/sound/se/se001028.spw
+1b0d89c4b5094fd833d2168c75ce51a15cff63d65fcbc21ae992ca5c1aa69ce0  data/WIN/sound/se/se001029.spw
+f6e7c376ac0d367b638161430cc660ca077d2cb136c5f9943a9fd998e8ec6267  data/WIN/sound/se/se001030.spw
+40f6b7e28de704d16bedd73a18092bc711f187cce906fb3d7d9dc31f452c5b34  data/WIN/sound/se/se001031.spw
+b8b937258c14b52c981988c0f25dd1a12b0855abceb61c8c01af9ab2e901daf2  data/WIN/sound/se/se001032.spw
+42433db00a1c6b9eea631f2673a16cad7da74080c62f00359515fa1bcce1bf82  data/WIN/sound/se/se001033.spw
+8b4c5d7a9fa00f282cb46b6082f660bad4fec9132870e46a80545fa2d35f1915  data/WIN/sound/se/se001034.spw
+72ca66a9353eab9fe3aa3897b8ad61bb431b3076ef92486846b053d87bf5be74  data/WIN/sound/se/se001035.spw
+a7a5443dbfd2a41bd5b2361dd44fa8e96398852d634c895ab785a3588fcd8735  data/WIN/sound/se/se001036.spw
+84263e1779295026a875a633630861ec47ed0a09871cbad6b61e55b278d90238  data/WIN/sound/se/se001037.spw
+45c0c4e4675bfca44b4905350d0da81707cca7e5f4ffe293ad4a31802a58b491  data/WIN/sound/se/se001038.spw
+c78cab970c8eb35b9f24e68bb376044de53827453795b874f1a90e1034d60cc0  data/WIN/sound/se/se001039.spw
+c8dbe6d471520affc4e3618e1bd9e029ad9c2372e9ec7bd6636a76fa38db8c72  data/WIN/sound/se/se001040.spw
+cb662c7330d4f4985d5648e05d3ef4f390d6d0c9d4b3c7cdf459c9b0ebd3baa9  data/WIN/sound/se/se001041.spw
+7794d007e628dd962e1ae3b879274943986328366d514fe1d50b7f0a8282e74d  data/WIN/sound/se/se001042.spw
+360be701eee909673cd6e8a80c6a0f73de64d1f7bbe9d296e61fdb6294e33dd1  data/WIN/sound/se/se001043.spw
+dced76ef96085efa1776ac3ce33160358218cbc749687c4eae0d9d1f862157fd  data/WIN/sound/se/se001044.spw
+b3ca04099e3daab1d4e356e1b0b8f4a7b9757dd0294e5e5953157d0dc23ddb06  data/WIN/sound/se/se001045.spw
+faa1b0c4f5a690a19565f306fa1da37639dcccab0bc3d17d240f3322a2ed9308  data/WIN/sound/se/se001046.spw
+2612fc0707cc795947e4d7b1e9a146a548bd31166b9f23578d42ba057a9f5f39  data/WIN/sound/se/se001047.spw
+2aa010d332402729c1d4f8a08ffc4c594166c559b0620c026c5971c419fac433  data/WIN/sound/se/se001048.spw
+287f050e0d9faf6b044890190acbfb72b74d36d7c429fe82a5cf8e63a792e871  data/WIN/sound/se/se001049.spw
+0f739bce0ab76f7cae2c83bb8a3cf7a315c7eb65ec52972d09894e6122c9aea3  data/WIN/sound/se/se001050.spw
+6140cfd28362e87467353b738da119320e6211fbdd049867b83a8c795178b394  data/WIN/sound/se/se001051.spw
+06435ab64e2ad839c1b77fa5bf2450671d40ce4b2b7edee4d7cd46e77cfddab6  data/WIN/sound/se/se001052.spw
+3451fb7f94b0629e2e0dadfeb7c860b80138b8d901830960eb069ba5bc7daf5c  data/WIN/sound/se/se001053.spw
+416f3127ecd0cb6f265ed8d4a1845a1f6d73fd62851adcc299d633f81eb2b341  data/WIN/sound/se/se001054.spw
+810fabbde4936e0fc1fa31e684cb5077c1c63f69e6cbd5464d2268a53fbecfe4  data/WIN/sound/se/se001055.spw
+0be45f6266009014f392bd6295eb49575a1589bd00115722c58425eba3768ba7  data/WIN/sound/se/se001056.spw
+77747caac421258ecc181c3bb2295e126c5d8b81d25bf8fae6f203dd04702a3a  data/WIN/sound/se/se001057.spw
+f5495c6136c69572a08da5dbf8335ce8850935e23ac552a0fbcac34bd46211d7  data/WIN/sound/se/se001058.spw
+2f0d031c0e7cb24314a2d2d6dffac204eb576c40fe2921faf59eb895198fee82  data/WIN/sound/se/se001059.spw
+dfdb42aabc7c1722be4f2096d3620030ebc1d283c0d6388a8ed6c52c75bd4733  data/WIN/sound/se/se001060.spw
+1fcd5cdd6a8e90bc9e813946ca2299aefab21efbadf3131d074ba635b3fed9dd  data/WIN/sound/se/se001061.spw
+7ac14c9b91a961c3f5e81fafc0244ce48fdbc5b94e794635f458dab26eac44b0  data/WIN/sound/se/se001062.spw
+238fac34c4b9321464ede91f02b20c27fe7aff182ed8c6dd4c2a864a6df5588a  data/WIN/sound/se/se001063.spw
+50e3148c26d8ad5f333e20de4a1159780a9eb672b2b69d5d530efbe917153b64  data/WIN/sound/se/se001065.spw
+4df5b5c20ffd8bada8713d60d2fb3c9e3ed0894975ddb30bf9cf8076c3e4ffe9  data/WIN/sound/se/se001066.spw
+a6498915340f585bebada3a727db6b2d339739a96bb71d122b6beffe27179443  data/WIN/sound/se/se001067.spw
+7903ade9a43a7bccb4125c3581704ee0de1c7ec86c4bf7dfa2b4ae36ea2989d9  data/WIN/sound/se/se001068.spw
+327b598b288e94d9aca79bbf2f2a1b0092bdf86113075b509c803dd091dc785b  data/WIN/sound/se/se001069.spw
+71bf3169dda810d4b5fcff8db978d9c5b4e3506a33576eaab6848e88b9ab0566  data/WIN/sound/se/se001070.spw
+3aefc90f0b03123fcbaa2d07dcc02e84a99b7f66d9ebb80f0a24dd9c5dc2a502  data/WIN/sound/se/se001071.spw
+bfe9cd6018904fe5c8b4edd2f76cec6ed184d9dd26a37ad6b7416d325da06870  data/WIN/sound/se/se001072.spw
+d2700e1e70bcec0a2404914c3de84c7c4d5138d8bba1e08ad8b25f4b7df384be  data/WIN/sound/se/se001073.spw
+796a93cc098ef1e02080950b64bd22ea79d61ebef9f108c354f9a819b9ccf350  data/WIN/sound/se/se001074.spw
+3dbde83f775bbf87e063b1df82e152b1876b560fb2b9c7a7617f8fd7557d6646  data/WIN/sound/se/se001075.spw
+2207b91247f0cda4f197c13e244e0ac0c8ca8d5eb721ce65dc5c174886df4958  data/WIN/sound/se/se001076.spw
+69b1a9d4774c13df9b6363f99b795108d2feabbf9c76dbf603301dd3da9956da  data/WIN/sound/se/se001077.spw
+651e4c6575ac4f3b52f8e8eb53c3e79607f9de319623059ca6669e7605e85f4c  data/WIN/sound/se/se001078.spw
+f0bcf2c6e5323a47eac5c0e92da34b0f483a26b1bc96653a873641ecaa4d7be7  data/WIN/sound/se/se002014.spw
+cbfdd08c9d094c14981c0e313d06b0c60ae24c5270449de127ecc55d5d5d761c  data/WIN/sound/se/se002015.spw
+68d5b8407aa238aa76cb17737373e6da2fa075bb2c6c7df3528858934c57784b  data/WIN/sound/se/se002016.spw
+486bfa75bed95490a7a0a7ad5acc48189e4741342f11c1870d03c90a2defeb81  data/WIN/sound/se/se002064.spw
+421835ef2f4fa07fb721da949e5aa77b8b86cb3d42c83610321971c9d92c4d37  data/filter.bin
+36a9e7f1c95b82ffb99743e0c5c4ce95d83c9a430aac59f84ef3cbfab6145068  data/filter.txt
+ffe8497ec8ecf12540d0f72496dcbf2f2554aa0d7f9ec5428e53b5ee17d4d0cd  data/gW000.dat
+98a7689cb68194ff4bdd05fead45cdcceed18ddf5f55c158a9e05e149a86b033  data/gW001.dat
+57d96d0af017e248e4f22adb1b66b8fbc1a59113ddcca6dafcff5a533e6da70c  data/gW002.dat
+f320c4959185ad788525b41dd08adfdebba5a2be317bcbae9fcf5662fa0326d8  data/gW003.dat
+2cdfce4c4a365bbc33bcdeed61ef862969e7b5faa117e7160417f4e4b4a954a1  data/gW080.dat
+4aa8f64530ad77f22e393dca1fc1c417425c1e83634eb854fc16c971eb7cded4  data/gW101.dat
+978e4e4256a40ce137993a5b71107ca976cb371bb18171521f407a017a034466  data/gW201.dat
+c36fe6d31f51408a05f004e6d6ac644c5bcbd5d9c28dd5ab377cffeefc89e4e6  data/kiyaku.bin
+6bdf66b5bf2a44e658bea2ee86695ab150a06e600bf67cd5cce245ad54962c61  data/kiyaku.txt
+c36fe6d31f51408a05f004e6d6ac644c5bcbd5d9c28dd5ab377cffeefc89e4e6  data/rules.bin
+36a9e7f1c95b82ffb99743e0c5c4ce95d83c9a430aac59f84ef3cbfab6145068  data/rules.txt
+c36fe6d31f51408a05f004e6d6ac644c5bcbd5d9c28dd5ab377cffeefc89e4e6  data/rules_b.bin
+36a9e7f1c95b82ffb99743e0c5c4ce95d83c9a430aac59f84ef3cbfab6145068  data/rules_b.txt
+ba477ba666a2bdd395922a1022b7242e6246bdc4581a9185e1a438335ae3c719  data/utf/env.dat
+b46e4c6262ff149ba18707145e2f51cf0dddf374ae198fa36539395dc4c2ff01  pub/home00/option.bin

@@ -6,7 +6,6 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 import build_release
@@ -48,29 +47,16 @@ class DistributionTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 build_release.loader_bytes(self.file(f"{name}.exe", data))
 
-    def test_minimal_and_full_layouts(self):
-        assets = self.root / "assets"
-        for name in ("TM_native.dll", "data/gW201.dat", "pub/home00/option.bin", "textures/pack.json"):
-            self.file(f"assets/runtime/{name}")
-        with patch.object(build_release, "ASSETS", assets):
-            minimal = build_release.package_files(b"loader", full=False)
-            full = build_release.package_files(b"loader", full=True)
-        base = {"tmloader.exe", "tmloader.ini", "LICENSE.txt", "THIRD_PARTY_NOTICES.txt"}
-        self.assertEqual(set(minimal), base)
-        self.assertEqual(
-            set(full) - base,
-            {
-                "runtime/TM_native.dll",
-                "runtime/data/gW201.dat",
-                "runtime/pub/home00/option.bin",
-                "runtime/textures/pack.json",
-            },
-        )
-        self.assertIn(b"runtime-dir=runtime", minimal["tmloader.ini"])
-        self.assertIn(b"CLI11", minimal["THIRD_PARTY_NOTICES.txt"])
-        self.assertNotIn(b"Catch2", minimal["THIRD_PARTY_NOTICES.txt"])
-        archive = self.root / "minimal.zip"
-        build_release.write_archive(archive, minimal)
+    def test_archive_holds_only_the_loader_config_and_notices(self):
+        files = build_release.package_files(b"loader")
+        base = {"tmloader.exe", "tmloader.ini", "LICENSE.txt", "THIRD_PARTY_NOTICES.txt", "retail-files.txt"}
+        self.assertEqual(set(files), base)
+        self.assertIn(b"runtime-dir=runtime", files["tmloader.ini"])
+        self.assertIn(b"CLI11", files["THIRD_PARTY_NOTICES.txt"])
+        self.assertIn(b"cpp-httplib", files["THIRD_PARTY_NOTICES.txt"])
+        self.assertNotIn(b"Catch2", files["THIRD_PARTY_NOTICES.txt"])
+        archive = self.root / "client.zip"
+        build_release.write_archive(archive, files)
         with zipfile.ZipFile(archive) as zipped:
             self.assertEqual({name.removeprefix("TetraMaster/") for name in zipped.namelist()}, base)
             self.assertEqual(zipped.read("TetraMaster/tmloader.exe"), b"loader")

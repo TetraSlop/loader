@@ -43,9 +43,10 @@ driver and never starts playback.
 ## Python tests
 
 `tests/tools/` covers release packaging (archive layout and loader header
-checks). `python tools/build_release.py --loader build/RelWithDebInfo/tmloader.exe`
-additionally builds both archives and runs `tmloader.exe --check` in the
-extracted full archive.
+checks), `retail-files.txt` against the pinned DLL hashes, and
+`tools/prepare_runtime.py`. `python tools/build_release.py --loader build/RelWithDebInfo/tmloader.exe`
+also builds the archive and runs its `tmloader.exe --check` against
+placeholder DLLs.
 
 ## Manual checks
 

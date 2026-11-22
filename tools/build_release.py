@@ -1,9 +1,10 @@
-"""Build and verify the minimal and full Windows client archives from this checkout."""
+"""Build and verify the Windows client archive from this checkout. It contains no game files."""
 
 import argparse
 import hashlib
 import json
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -12,7 +13,6 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-ASSETS = ROOT / "assets"
 ARCHIVE_ROOT = "TetraMaster"
 # A fixed timestamp keeps archives reproducible.
 TIMESTAMP = (2020, 1, 1, 0, 0, 0)
@@ -58,20 +58,15 @@ def notices() -> bytes:
     return "\n".join(sections).encode()
 
 
-def package_files(loader: bytes, full: bool) -> dict[str, bytes | Path]:
-    """Map archive paths to their contents; large assets stay on disk until written."""
-    files: dict[str, bytes | Path] = {
+def package_files(loader: bytes) -> dict[str, bytes | Path]:
+    """Map archive paths to their contents."""
+    return {
         "tmloader.exe": loader,
         "tmloader.ini": client_config(),
         "LICENSE.txt": ROOT / "LICENSE",
         "THIRD_PARTY_NOTICES.txt": notices(),
+        "retail-files.txt": ROOT / "retail-files.txt",
     }
-    if full:
-        runtime = ASSETS / "runtime"
-        files.update(
-            {f"runtime/{path.relative_to(runtime).as_posix()}": path for path in runtime.rglob("*") if path.is_file()}
-        )
-    return files
 
 
 def write_archive(output: Path, files: dict[str, bytes | Path]) -> None:
@@ -94,30 +89,40 @@ def tree_hashes(root: Path) -> dict[str, str]:
     return result
 
 
-def verify(archive: Path, full: bool) -> dict:
-    """Extract the archive and, for the full variant, run the loader's read-only --check with its bundled config."""
+def verify(archive: Path) -> dict:
+    """Extract the archive and run its loader's --check against placeholder DLLs.
+
+    Without game files the check must fail, and fail at the DLL hash check: that shows the executable starts,
+    reads its bundled tmloader.ini and resolves the runtime folder.
+    """
     with tempfile.TemporaryDirectory(prefix="verify-", dir=archive.parent) as directory:
         with zipfile.ZipFile(archive) as zipped:
             zipped.extractall(directory)
         root = Path(directory) / ARCHIVE_ROOT
         before = tree_hashes(root)
-        report = {"files": len(before), "native_preflight": "requires game files"}
-        if full:
-            # Piping output makes Windows wait for the GUI-subsystem loader.
-            result = subprocess.run(
-                [str(root / "tmloader.exe"), "--check"],
-                cwd=root,
-                capture_output=True,
-                text=True,
-                timeout=120,
-                check=False,
-            )
-            if result.returncode:
-                raise RuntimeError(f"Loader check failed: {result.stdout.strip() or result.stderr.strip()}")
-            report["native_preflight"] = True
+        fixture = root / "runtime"
+        fixture.mkdir()
+        for name in ("TM_native.dll", "polcore_native.dll"):
+            (fixture / name).write_bytes(b"placeholder")
+        # Piping output makes Windows wait for the GUI-subsystem loader.
+        result = subprocess.run(
+            [str(root / "tmloader.exe"), "--check"], cwd=root, capture_output=True, text=True, timeout=120, check=False
+        )
+        if result.returncode != 2 or "Unsupported DLL hash" not in result.stderr:
+            raise RuntimeError(f"Unexpected loader check result {result.returncode}: {result.stderr.strip()}")
+        if tree_hashes(fixture) != {
+            "TM_native.dll": digest(b"placeholder"),
+            "polcore_native.dll": digest(b"placeholder"),
+        }:
+            raise RuntimeError("The loader check wrote to the runtime folder")
+        shutil.rmtree(fixture)
         if tree_hashes(root) != before:
             raise RuntimeError("The loader check changed the extracted package")
-    return report
+    return {"files": len(before), "check": "rejects placeholder DLLs"}
+
+
+def digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def build(loader_path: Path, output: Path) -> dict:
@@ -127,13 +132,11 @@ def build(loader_path: Path, output: Path) -> dict:
     loader = loader_bytes(loader_path)
     output.mkdir(parents=True, exist_ok=True)
     report = {"version": version, "packages": {}}
-    for variant in ("minimal", "full"):
-        full = variant == "full"
-        archive = output / f"tmloader-{version}-windows-x86{'-full' if full else ''}.zip"
-        write_archive(archive, package_files(loader, full))
-        with archive.open("rb") as stream:
-            digest = hashlib.file_digest(stream, "sha256").hexdigest()
-        report["packages"][archive.name] = dict(verify(archive, full), sha256=digest, bytes=archive.stat().st_size)
+    archive = output / f"tmloader-{version}-windows-x86.zip"
+    write_archive(archive, package_files(loader))
+    with archive.open("rb") as stream:
+        sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+    report["packages"][archive.name] = dict(verify(archive), sha256=sha256, bytes=archive.stat().st_size)
     (output / "SHA256SUMS.txt").write_text(
         "".join(f"{data['sha256']}  {name}\n" for name, data in report["packages"].items()), newline="\n"
     )

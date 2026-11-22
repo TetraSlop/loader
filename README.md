@@ -21,9 +21,10 @@ compatible server (the separate tmserver project) is required to play.
 ## Requirements
 
 - Windows 10 or 11. The loader is a 32-bit (x86) process.
-- The supported game DLL and Viewer DLL with the original game data. Only the
+- Your own PlayOnline install of Tetra Master, with the game DLL, Viewer DLL
+  and game data listed in [`retail-files.txt`](retail-files.txt). Only the DLL
   builds whose SHA256 hashes are pinned in `src/config/validation.cpp` are
-  accepted.
+  accepted. See [game files](#game-files).
 - A reachable compatible server, addressed by numeric IPv4.
 
 Building from source additionally needs CMake 3.29+, Visual Studio 2022 17.13+
@@ -33,20 +34,19 @@ Building from source additionally needs CMake 3.29+, Visual Studio 2022 17.13+
 
 ### Release download
 
-[Releases](https://github.com/sruon/tmloader/releases) provide two archives:
-
-| Archive | Contents |
-|---|---|
-| `tmloader-VERSION-windows-x86.zip` | `tmloader.exe`, a sample `tmloader.ini` and license notices. Game files are supplied by you. |
-| `tmloader-VERSION-windows-x86-full.zip` | The same, plus `runtime/` with the supported game and Viewer DLLs, original data and audio. |
+[Releases](https://github.com/sruon/tmloader/releases) provide
+`tmloader-VERSION-windows-x86.zip`: `tmloader.exe`, a sample `tmloader.ini`,
+`retail-files.txt` and license notices. It contains no game files.
 
 1. Extract the archive to a short, writable path such as `C:\Games\TetraMaster`.
-2. Edit `tmloader.ini` with the server address, ports and account credentials.
-3. Run `tmloader.exe`. `tmloader.exe --check` validates the setup without
+2. Create `runtime/` beside `tmloader.exe` from your own install (see
+   [game files](#game-files)).
+3. Edit `tmloader.ini` with the server address, ports and account credentials.
+4. Run `tmloader.exe`. `tmloader.exe --check` validates the setup without
    starting the game.
 
-See [distribution](docs/distribution.md) for the layout, how to supply game
-files for the minimal archive, and how the archives are built.
+See [distribution](docs/distribution.md) for the layout and how the archive is
+built.
 
 ### Build from source
 
@@ -60,10 +60,35 @@ Hosted play is optional; see
 [optional features](docs/architecture.md#optional-features) to build without
 it.
 
-`py tools/prepare_runtime.py` copies the committed [assets](assets/README.md)
-into the ignored `runtime/` folder and writes a matching `tmloader.ini` (or
-copy `tmloader.example.ini` and point `runtime-dir` at your own runtime).
+`py tools/prepare_runtime.py` builds the ignored `runtime/` folder from your
+own install and writes a matching `tmloader.ini` (see [game files](#game-files)).
 Start the server, then run the loader without `--check`.
+
+## Game files
+
+tmloader does not include any game files. They come from your own PlayOnline
+install of Tetra Master, and [`retail-files.txt`](retail-files.txt) lists each
+one the runtime folder needs, with its SHA256 and where it comes from in a
+standard install. To check a copy, run `sha256sum -c ../retail-files.txt` from
+the runtime folder.
+
+In a source checkout, `tools/prepare_runtime.py` copies them for you. Pass the
+Tetra Master game folder and the PlayOnline Viewer folder:
+
+```powershell
+py tools/prepare_runtime.py "C:\...\PlayOnline\SquareEnix\TetraMaster" --viewer "C:\...\PlayOnline\SquareEnix\PlayOnlineViewer"
+```
+
+or a folder already laid out as a runtime:
+
+```powershell
+py tools/prepare_runtime.py D:\old-runtime
+```
+
+It copies only the listed files into `runtime/`, checks each
+against its hash, and refuses other DLL builds or damaged files. The Viewer
+settings file `pub/home00/option.bin` is accepted with any content, because the
+Viewer rewrites it when settings are saved.
 
 ## Configuration
 

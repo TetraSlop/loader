@@ -6,6 +6,8 @@
 *.ini text eol=lf
 *.json text eol=lf
 *.yml text eol=lf
+# sha256sum -c reads the path up to the line end, so a CR would become part of it.
+retail-files.txt text eol=lf
 /assets/** -text
 /assets/runtime/** binary
 /assets/**/*.json text eol=lf

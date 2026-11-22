@@ -14,15 +14,16 @@ manifests.
    manifest and `CHANGELOG.md`.
 3. Merging that PR creates a draft release. CI builds the release commit with
    MSVC (C++23, static x86 runtime), checks formatting, runs the C++ and Python
-   tests, then builds both archives, checking the executable and running
-   `tmloader.exe --check` in the extracted full archive.
-4. When both archives pass, they are attached and the draft is published.
+   tests, then builds the archive. It checks the executable and runs
+   `tmloader.exe --check` in the extracted archive against placeholder DLLs,
+   which must be rejected at the hash check.
+4. When the archive passes, it is attached and the draft is published.
 
-Tests that need a real graphics device are excluded from hosted CI. No CI step
-starts the game or a server.
+CI skips tests that need a real graphics device. No CI step needs game files,
+or starts the game or a server.
 
 While a draft is unpublished, no new release PR is opened. If a release build
-or upload fails, rerun the failed jobs rather than tagging manually.
+or upload fails, rerun the failed jobs; do not tag by hand.
 
 The workflow uses the repository's `GITHUB_TOKEN`. The repository's Actions
 settings must allow Actions to create pull requests. Because bot-created PRs
@@ -33,12 +34,11 @@ itself, and publishing runs in the same workflow.
 
 | File | Contents |
 |---|---|
-| `tmloader-VERSION-windows-x86.zip` | `tmloader.exe`, a sample `tmloader.ini` and license notices. No game files, HD textures or server. |
-| `tmloader-VERSION-windows-x86-full.zip` | The same, plus the supported game and Viewer DLLs, original data and audio, factory Viewer settings and the HD texture pack. |
-| `SHA256SUMS.txt` | Archive hashes |
+| `tmloader-VERSION-windows-x86.zip` | `tmloader.exe`, a sample `tmloader.ini`, `retail-files.txt` and license notices. No game files or server. |
+| `SHA256SUMS.txt` | Archive hash |
 | `validation.json` | Verification results |
 
-CI runs also upload both archives as build artifacts, kept for seven days.
+CI runs also upload the archive as a build artifact, kept for seven days.
 
 ## Building locally
 
@@ -47,5 +47,4 @@ python tools/build_release.py --loader build/Release/tmloader.exe
 ```
 
 Output goes to `out/release/` and existing archives are never overwritten. The
-full archive's inputs are described in [assets/README.md](../assets/README.md);
-the package layout and checks are in [distribution](distribution.md).
+package layout and checks are in [distribution](distribution.md).
