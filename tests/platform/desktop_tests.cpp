@@ -106,7 +106,7 @@ auto installHooks() -> BYTE*
 
 } // namespace
 
-TEST_CASE("an unrecognised cursor sync layout is left unpatched", "[desktop]")
+TEST_CASE("an unrecognized cursor sync layout is left unpatched", "[desktop]")
 {
     auto* const base = allocateImage();
 

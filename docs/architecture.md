@@ -2,9 +2,9 @@
 
 tmloader hosts the original Tetra Master client in its own process. It loads
 the game DLL (`TM_native.dll`) and the Viewer DLL (`polcore_native.dll`) as
-in-process COM servers, patches a small set of imports, vtable entries and
-call sites, and then hands control to the game's own online startup. The game
-code, its data files and the DLLs on disk are never modified.
+in-process COM servers, patches a small set of imports, vtable entries and one
+block of game code in memory, and then hands control to the game's own online
+startup. The loader never changes the DLLs or data files on disk.
 
 All offsets in this document are RVAs in the supported game DLL (image base
 `0x10000000`) unless stated otherwise, written as `+RVA`. They are valid only
@@ -106,7 +106,7 @@ its own validation on top:
   port.
 - The account ID must be eight characters from the PlayOnline ID alphabet, and
   the password must not be empty.
-- Log, screenshot, capture and settings files must stay inside
+- Log, screenshot and settings files must stay inside
   `runtime-dir/logs` or `runtime-dir/settings`. Paths that escape those trees,
   point into `data/` or `pub/`, alias a DLL or are hard links are rejected.
 - The game and Viewer DLLs must match their pinned SHA256 hashes.
@@ -301,5 +301,5 @@ and scales fall back individually. Only the eight advertised scales are accepted
   joysticks, buffered input and force feedback are not supported.
 - Moving the window to another monitor does not change the automatic
   resolution; it is chosen once at startup.
-- The viewport observations above come from static analysis of
-  the native code, not a runtime guarantee.
+- The viewport notes above come from reading the native code, not from
+  tests.

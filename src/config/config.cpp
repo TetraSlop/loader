@@ -27,7 +27,7 @@ void defineOptions(CLI::App& app, Config& config)
     app.add_option("--hosted-server", config.hostedServer, "Sign in to this hosted server instead of --server")->type_name("URL");
     app.add_flag("--hosted-insecure-loopback", config.insecureLoopback, "Development only: allow http://127.0.0.1 hosted endpoints");
 #endif
-    app.add_flag("--diagnostics", config.diagnostics, "Extra logging and periodic screenshots");
+    app.add_flag("--diagnostics", config.diagnostics, "Extra logging, and screenshots at fixed startup frames");
     app.add_flag("--check", config.checkOnly, "Verify files, hashes and settings without launching")->configurable(false);
     app.add_flag("-h,--help", config.help, "Show this help")->configurable(false);
     app.add_flag("--version", config.version, "Show the version")->configurable(false);

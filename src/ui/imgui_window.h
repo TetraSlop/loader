@@ -13,7 +13,7 @@ struct ImGuiWindowSpec
     const wchar_t* title  = L"";
     int            width  = 0; // At 100% display scale.
     int            height = 0;
-    // Placed near this window when set, otherwise centred on the primary monitor.
+    // Placed near this window when set, otherwise centered on the primary monitor.
     HWND owner = nullptr;
 };
 

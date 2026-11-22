@@ -1,15 +1,14 @@
 # Third-party code
 
 CMake fetches every dependency from a pinned archive and verifies its SHA256.
-None adds a runtime DLL. Include each license notice with redistributed loader
-binaries; the notices live in `third_party/`, and `tools/build_release.py`
-writes those of the linked libraries into each archive's
-`THIRD_PARTY_NOTICES.txt`.
+None adds a runtime DLL. Each library's license is in `third_party/`, and
+`tools/build_release.py` copies those of the linked libraries into the
+archive's `THIRD_PARTY_NOTICES.txt`.
 
 | Library | Version | License | Used for | Notice |
 |---|---|---|---|---|
 | [Dear ImGui](https://github.com/ocornut/imgui) | 1.92.5 (`6d910d5`) | MIT | Settings panel, with the unmodified Win32 and DirectX 9 backends | `third_party/imgui.LICENSE.txt` |
-| [JSON for Modern C++](https://github.com/nlohmann/json) | 3.12.0 | MIT | Texture pack manifests | `third_party/nlohmann-json.LICENSE.MIT` |
+| [JSON for Modern C++](https://github.com/nlohmann/json) | 3.12.0 | MIT | Saved preferences and the hosted API | `third_party/nlohmann-json.LICENSE.txt` |
 | [CLI11](https://github.com/CLIUtils/CLI11) | 2.7.2 | BSD-3-Clause | Command-line and config file parsing (header-only) | `third_party/CLI11.LICENSE.txt` |
 | [Microsoft WIL](https://github.com/microsoft/wil) | v1.0.260126.7 (`cbf677f`) | MIT | Windows resource ownership (header-only) | `third_party/WIL.LICENSE.txt` |
 | [cpp-httplib](https://github.com/yhirose/cpp-httplib) | 0.60.1 | MIT | Loopback sign-in callback for hosted play (header-only); fetched and linked only with `TMLOADER_HOSTED`, without its TLS or compression backends | `third_party/cpp-httplib.LICENSE.txt` |

@@ -36,8 +36,8 @@ The Python tests use only the standard library.
 The hosted tests are built only when hosted play is
 enabled (see [optional features](architecture.md#optional-features)).
 
-Tests tagged `graphics-device` render through a real Direct3D 8 device and are
-excluded from hosted CI; run them locally. The audio test needs a Windows audio
+Tests tagged `graphics-device` render through a real Direct3D 8 device. CI
+skips them; run them locally. The audio test needs a Windows audio
 driver and never starts playback.
 
 ## Python tests

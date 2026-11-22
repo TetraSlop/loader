@@ -341,7 +341,7 @@ TEST_CASE("automatic resolution is saved", "[window_messages]")
     std::filesystem::remove_all(options.runtimeDir);
 }
 
-TEST_CASE("initialising an already subclassed window changes nothing", "[window_messages]")
+TEST_CASE("initializing an already subclassed window changes nothing", "[window_messages]")
 {
     useRuntime("window-reinit-fixture");
     sendSetting(WindowAction::renderScale, kScaleIndex);

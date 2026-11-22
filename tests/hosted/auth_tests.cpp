@@ -127,13 +127,13 @@ TEST_CASE("The pending callback path yields its decoded code", "[hosted]")
 
 TEST_CASE("A denied sign-in yields the provider's description", "[hosted]")
 {
-    const auto denied = visit({ "/callback/nonce?error=access_denied&error_description=User+cancelled" });
+    const auto denied = visit({ "/callback/nonce?error=access_denied&error_description=User+canceled" });
     REQUIRE(denied.callback);
     REQUIRE(denied.callback->kind == Callback::Kind::error);
-    REQUIRE(denied.callback->value == "User cancelled");
+    REQUIRE(denied.callback->value == "User canceled");
     REQUIRE(denied.replies.size() == 1);
     REQUIRE(denied.replies[0].status == 400);
-    REQUIRE(denied.replies[0].body.contains("Sign-in cancelled"));
+    REQUIRE(denied.replies[0].body.contains("Sign-in canceled"));
 
     const auto bare = visit({ "/callback/nonce?error=access_denied" });
     REQUIRE(bare.callback);

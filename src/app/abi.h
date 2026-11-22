@@ -21,7 +21,6 @@ static_assert(sizeof(LaunchDescriptor) == 28, "The game requires its 32-bit laun
 using GetClass  = HRESULT(STDAPICALLTYPE*)(REFCLSID, REFIID, void**);
 using GameStart = HRESULT(__stdcall*)(IUnknown*, IUnknown*, LaunchDescriptor*);
 
-// RVA of the game's windowed-mode flag.
 constexpr DWORD kWindowedFlag = 0x2ff248;
 
 // IPOLCoreCom vtable slots. 23/24 and 25/26 are the PlayOnline and SquareEnix

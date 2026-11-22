@@ -206,7 +206,7 @@ auto awaitCallback(const std::string& path, const std::function<void(unsigned sh
 
                    if (seen.kind == Callback::Kind::error)
                    {
-                       servePage(response, httplib::StatusCode::BadRequest_400, "Sign-in cancelled", "Return to Tetra Master to try again. You can close this tab.");
+                       servePage(response, httplib::StatusCode::BadRequest_400, "Sign-in canceled", "Return to Tetra Master to try again. You can close this tab.");
                    }
                    else
                    {
@@ -374,7 +374,7 @@ auto AuthClient::signIn(const OpenBrowser& openBrowser, const std::stop_token& s
 
     if (callback->kind == Callback::Kind::error)
     {
-        throw std::runtime_error("Sign-in was cancelled: " + callback->value);
+        throw std::runtime_error("Sign-in was canceled: " + callback->value);
     }
 
     const auto body = nlohmann::json{ { "auth_code", callback->value }, { "code_verifier", verifier } }.dump();

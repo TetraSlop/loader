@@ -88,7 +88,7 @@ public:
     AuthClient(HttpClient& http, std::string origin);
 
     auto settings() -> const AuthSettings&;
-    // Runs the browser PKCE flow; returns nothing when cancelled.
+    // Runs the browser PKCE flow; returns nothing when canceled.
     auto signIn(const OpenBrowser& openBrowser, const std::stop_token& stop) -> std::optional<Tokens>;
     auto refresh(const std::string& refreshToken) -> Tokens;
 

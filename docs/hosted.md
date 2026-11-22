@@ -1,9 +1,9 @@
 # Hosted play
 
-Hosted mode connects to a public tmserver through its authenticated launcher
-gateway instead of raw game ports. Players sign in with Discord in their normal
-browser; the server maps the verified identity to their enrolled account. The
-contract is tmserver's `LOADER_AUTH_SPEC.md` (protocol 1).
+Hosted mode connects to a public [tmserver](https://github.com/sruon/tmserver)
+through its sign-in gateway instead of the raw game ports. Players sign in with
+Discord in their normal browser; the server maps the verified identity to their
+enrolled account. The contract is tmserver's `LOADER_AUTH_SPEC.md` (protocol 1).
 
 ## Using it
 
@@ -28,7 +28,7 @@ server supplies the account.
 
 ## How it works
 
-| Step | Loader behaviour |
+| Step | Loader behavior |
 |---|---|
 | Discover | `GET /v1/auth/config`; only protocol 1 with the `discord` provider is accepted |
 | Sign in | Supabase PKCE: random verifier, S256 challenge, a one-time loopback callback on `127.0.0.1` with a random path served by cpp-httplib, a five-minute limit, then `POST /auth/v1/token?grant_type=pkce` |
@@ -53,9 +53,10 @@ The code is in `src/hosted/`: `http` (WinHTTP client and WebSocket), `auth`
 `--hosted-insecure-loopback` allows `http://127.0.0.1:PORT` endpoints for local
 testing; hosted mode otherwise requires HTTPS.
 
-`tests/hosted/gateway_harness.py` runs a real tmserver gateway (from a sibling
-checkout with its `auth` extra installed) against a fake Supabase that issues
-real PKCE codes and rotating refresh tokens:
+`tests/hosted/gateway_harness.py` runs a real tmserver gateway against a fake
+Supabase that issues real PKCE codes and rotating refresh tokens. It needs a
+tmserver checkout with its `auth` extra installed, by default `../tmserver`
+beside this one (`--tmserver` names another), and skips when there is none:
 
 ```powershell
 # Automated: sign-in, tunnel, remembered login, conflict/takeover, logout

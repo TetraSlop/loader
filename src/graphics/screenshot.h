@@ -4,8 +4,8 @@
 namespace tmloader
 {
 
-// May be called by the game-window hotkey or settings UI. Repeated pending
-// requests coalesce into one frame; nothing is captured automatically.
+// May be called by the game-window hotkey or settings UI, and at fixed startup
+// frames with --diagnostics. Repeated pending requests coalesce into one frame.
 void requestScreenshot() noexcept;
 // Call on the render thread after drawing and immediately before Present.
 // The backbuffer is read at its actual internal resolution, without desktop UI.
