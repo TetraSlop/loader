@@ -49,7 +49,14 @@ class DistributionTests(unittest.TestCase):
 
     def test_archive_holds_only_the_loader_config_and_notices(self):
         files = build_release.package_files(b"loader")
-        base = {"tmloader.exe", "tmloader.ini", "LICENSE.txt", "THIRD_PARTY_NOTICES.txt", "retail-files.txt"}
+        base = {
+            "tmloader.exe",
+            "tmloader.ini",
+            "LICENSE.txt",
+            "LICENSE-EXCEPTION.txt",
+            "THIRD_PARTY_NOTICES.txt",
+            "retail-files.txt",
+        }
         self.assertEqual(set(files), base)
         self.assertIn(b"runtime-dir=runtime", files["tmloader.ini"])
         self.assertIn(b"CLI11", files["THIRD_PARTY_NOTICES.txt"])

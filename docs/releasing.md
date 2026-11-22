@@ -34,7 +34,7 @@ itself, and publishing runs in the same workflow.
 
 | File | Contents |
 |---|---|
-| `tmloader-VERSION-windows-x86.zip` | `tmloader.exe`, a sample `tmloader.ini`, `retail-files.txt` and license notices. No game files or server. |
+| `tmloader-VERSION-windows-x86.zip` | `tmloader.exe`, a sample `tmloader.ini`, `retail-files.txt`, the license with its additional permission and third-party notices. No game files or server. |
 | `SHA256SUMS.txt` | Archive hash |
 | `validation.json` | Verification results |
 

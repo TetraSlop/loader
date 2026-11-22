@@ -64,6 +64,7 @@ def package_files(loader: bytes) -> dict[str, bytes | Path]:
         "tmloader.exe": loader,
         "tmloader.ini": client_config(),
         "LICENSE.txt": ROOT / "LICENSE",
+        "LICENSE-EXCEPTION.txt": ROOT / "LICENSE-EXCEPTION.txt",
         "THIRD_PARTY_NOTICES.txt": notices(),
         "retail-files.txt": ROOT / "retail-files.txt",
     }

@@ -3,8 +3,13 @@
 tmloader is a standalone 32-bit Windows host for the original Tetra Master PC
 client. It loads the game DLL (`TM_native.dll`) and the Viewer DLL
 (`polcore_native.dll`) directly, without PlayOnline, and connects them to a
-separately deployed server. The loader does not include or start a server; a
-compatible server (the separate tmserver project) is required to play.
+server. It does not include one; you need a running
+[tmserver](https://github.com/sruon/tmserver) to play.
+[TetraPackets](https://github.com/sruon/TetraPackets) documents the protocol
+between the client and the server.
+
+tmloader is an unofficial fan project. It is not affiliated with, endorsed by
+or sponsored by Square Enix.
 
 ## Features
 
@@ -27,7 +32,7 @@ compatible server (the separate tmserver project) is required to play.
   accepted. See [game files](#game-files).
 - A reachable compatible server, addressed by numeric IPv4.
 
-Building from source additionally needs CMake 3.29+, Visual Studio 2022 17.13+
+Building from source also needs CMake 3.29+, Visual Studio 2022 17.13+
 (MSVC 19.43+) with the Desktop C++ workload and an x86 Windows SDK.
 
 ## Quick start
@@ -107,13 +112,13 @@ Paths are relative to `runtime-dir` unless absolute, and a relative
 | `--pol-id ID` | `EEEEEEEF` | Eight-character account ID |
 | `--password TEXT` | `tm-local-test` | Account password |
 | `--hosted-server URL` | | Sign in to a hosted server with Discord instead of `--server` (see [hosted play](docs/hosted.md)) |
-| `--diagnostics` | off | Extra logging and periodic screenshots |
+| `--diagnostics` | off | Extra logging, and screenshots at fixed startup frames |
 | `--check` | | Validate settings, DLL hashes and assets, then exit |
 | `--help`, `-h` | | Show help |
 | `--version` | | Show the version |
 
-Passwords are stored in plain text; keep personal config files out of version
-control. Credentials are never logged.
+`tmloader.ini` holds the password in plain text, so keep it out of version
+control. The loader never logs credentials.
 
 The runtime directory contains:
 
@@ -173,8 +178,14 @@ docs/         documentation
 
 ## License
 
-tmloader is licensed under the [GNU General Public License v3.0](LICENSE).
+Copyright (C) 2026 sruon
+
+tmloader is free software: you can redistribute it and/or modify it under the
+terms of the [GNU General Public License v3.0](LICENSE), with the additional
+permission in [LICENSE-EXCEPTION.txt](LICENSE-EXCEPTION.txt). That permission,
+given under section 7 of the GPL, lets tmloader load and run with the
+proprietary `TM_native.dll` and `polcore_native.dll`.
 
 The license covers the loader source and tools only. The game files you supply
-are not covered and remain the property of their respective owners. Third-party library notices are listed in
-[third-party code](docs/third-party.md).
+are not covered and remain the property of their respective owners. Third-party
+library notices are listed in [third-party code](docs/third-party.md).

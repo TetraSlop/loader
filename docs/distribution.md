@@ -12,6 +12,7 @@ TetraMaster/
   tmloader.ini                 read automatically from the executable's folder
   retail-files.txt             the game files the runtime folder needs, with hashes
   LICENSE.txt                  GPL-3.0
+  LICENSE-EXCEPTION.txt        additional permission for the two game DLLs
   THIRD_PARTY_NOTICES.txt      CLI11, cpp-httplib, Dear ImGui, nlohmann/json, WIL
   runtime/                     created by you, see below
 ```
