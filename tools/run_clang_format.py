@@ -40,6 +40,7 @@ def format_sources(executable: str, check: bool) -> int:
         for directory in (ROOT / "src", ROOT / "tests", ROOT / "browser")
         for file in directory.rglob("*")
         if file.suffix in {".cpp", ".h", ".hpp"} and file.is_file() and not file.is_symlink()
+        and "third_party" not in file.relative_to(ROOT).parts
     )
     if not files:
         raise RuntimeError("No first-party C++ files found")

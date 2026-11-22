@@ -46,6 +46,9 @@ enum Exception : std::uint16_t
     kRoundedUp = 0x0200,
 };
 
+// Make a fresh Env per instruction (envFromControl): kRoundedUp is that instruction's C1, not a sticky flag. The caller
+// ORs bits 0..5 into the status word and decides from the control word's masks whether an unmasked kInvalid,
+// kZeroDiv or kDenormal leaves the destination unwritten.
 struct Env
 {
     Precision     precision = kExtended;
@@ -69,6 +72,14 @@ auto fromInt64(std::int64_t value) -> F80;
 auto fromFloat(std::uint32_t bits, Env& env) -> F80;  // IEEE single bits; sets kDenormal / kInvalid for SNaN
 auto fromDouble(std::uint64_t bits, Env& env) -> F80; // IEEE double bits
 
+// FADD, FSUB(R), FMUL, FDIV(R) and FCOM(P) with an m32 or m64 operand convert it inside the instruction, which is not
+// the same as FLD then the register form: a signaling NaN stays signaling when the x87 picks which NaN to return, and
+// a denormal source only raises kDenormal when the operation itself would. Convert with floatOperand/doubleOperand
+// (exact, no flags), run the operation, then call denormalOperand if the source was denormal.
+auto floatOperand(std::uint32_t bits, bool& denormal) -> F80;
+auto doubleOperand(std::uint64_t bits, bool& denormal) -> F80;
+void denormalOperand(F80 a, F80 operand, Env& env);
+
 // Stores round to the destination format by Env::rounding (precision control does not apply)
 auto toFloat(F80 value, Env& env) -> std::uint32_t;
 auto toDouble(F80 value, Env& env) -> std::uint64_t;
@@ -83,10 +94,12 @@ auto sub(F80 a, F80 b, Env& env) -> F80;
 auto mul(F80 a, F80 b, Env& env) -> F80;
 auto div(F80 a, F80 b, Env& env) -> F80;
 auto sqrt(F80 a, Env& env) -> F80;
-auto roundToInt(F80 a, Env& env) -> F80;                                                        // FRNDINT
-auto scale(F80 a, F80 b, Env& env) -> F80;                                                      // FSCALE: a * 2^trunc(b)
-auto partialRemainder(F80 a, F80 b, bool ieee, Env& env, std::uint16_t& conditionCodes) -> F80; // FPREM, FPREM1
-auto extract(F80 a, F80& significand, Env& env) -> F80;                                         // FXTRACT: returns the exponent, writes the significand
+auto roundToInt(F80 a, Env& env) -> F80;   // FRNDINT
+auto scale(F80 a, F80 b, Env& env) -> F80; // FSCALE: a * 2^trunc(b)
+// FPREM (ieee false) and FPREM1. conditionCodes gets C0..C3 in status-word positions (C0 0x0100, C1 0x0200,
+// C2 0x0400, C3 0x4000): C2 when the reduction is partial, else the quotient's low bits in C0, C3, C1.
+auto partialRemainder(F80 a, F80 b, bool ieee, Env& env, std::uint16_t& conditionCodes) -> F80;
+auto extract(F80 a, F80& significand, Env& env) -> F80; // FXTRACT: returns the exponent, writes the significand
 
 auto negate(F80 a) -> F80;
 auto abs(F80 a) -> F80;
@@ -117,7 +130,19 @@ enum class Class : std::uint8_t
 auto classify(F80 a) -> Class;
 auto isNegative(F80 a) -> bool;
 
-// Host doubles for the transcendental instructions, which the interpreter computes as QEMU does
+// Transcendentals, computed in SoftFloat's 128-bit format and rounded once to 64 bits, so native and Wasm builds
+// agree bit for bit. FSIN, FCOS, FSINCOS and FPTAN return false when |a| >= 2^63: the x87 then sets C2 and leaves
+// the operand unchanged. FPTAN's push of 1.0 is the caller's.
+auto sin(F80 a, F80& result, Env& env) -> bool;
+auto cos(F80 a, F80& result, Env& env) -> bool;
+auto sinCos(F80 a, F80& sine, F80& cosine, Env& env) -> bool;
+auto tan(F80 a, F80& result, Env& env) -> bool;
+auto atan2(F80 y, F80 x, Env& env) -> F80;    // FPATAN: y = ST(1), x = ST(0)
+auto exp2m1(F80 a, Env& env) -> F80;          // F2XM1
+auto yLog2X(F80 x, F80 y, Env& env) -> F80;   // FYL2X: y * log2(x)
+auto yLog2Xp1(F80 x, F80 y, Env& env) -> F80; // FYL2XP1: y * log2(x + 1)
+
+// Host doubles, for debugging and host stand-ins; not used by the instructions above
 auto toHostDouble(F80 a) -> double;
 auto fromHostDouble(double value) -> F80;
 

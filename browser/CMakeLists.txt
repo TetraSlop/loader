@@ -23,6 +23,13 @@ if(EMSCRIPTEN)
     add_link_options(-fwasm-exceptions)
 endif()
 
+# Berkeley SoftFloat 3e, the x87 subset (third_party/softfloat/README.md)
+file(GLOB softfloat_sources CONFIGURE_DEPENDS third_party/softfloat/source/*.c third_party/softfloat/source/8086/*.c)
+add_library(softfloat STATIC ${softfloat_sources})
+target_include_directories(softfloat PUBLIC third_party/softfloat third_party/softfloat/source/include
+    third_party/softfloat/source/8086)
+target_compile_options(softfloat PRIVATE $<IF:$<C_COMPILER_ID:MSVC>,/W0,-w>)
+
 add_library(tmweb_core STATIC
     core/boundary.cpp
     core/cpu.cpp
@@ -31,6 +38,7 @@ add_library(tmweb_core STATIC
     core/threads.cpp
     core/x87.cpp
     f80/f80.cpp
+    f80/f80_transcendental.cpp
 )
 target_include_directories(tmweb_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(tmweb_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -44,6 +52,7 @@ endif()
 # The module's side of the page and the Node runner (host/host.h, web/)
 add_library(tmweb_host OBJECT app/boot.cpp host/host.cpp)
 target_link_libraries(tmweb_host PUBLIC tmweb_core)
+target_link_libraries(tmweb_core PRIVATE softfloat)
 
 add_executable(tmweb app/main.cpp)
 target_link_libraries(tmweb PRIVATE tmweb_core)
@@ -80,6 +89,7 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
     add_executable(tmweb_tests
         tests/cpu_test.cpp
         tests/host_test.cpp
+        tests/f80_test.cpp
         tests/memory_test.cpp
         tests/threads_test.cpp
     )
@@ -87,4 +97,20 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
     list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
     include(Catch)
     catch_discover_tests(tmweb_tests)
+endif()
+
+# f80's results hashed: native and Wasm (run by Node) must print the same digest as kExpected
+if(BUILD_TESTING)
+    add_executable(f80_digest tests/f80_digest.cpp)
+    target_link_libraries(f80_digest PRIVATE tmweb_core)
+    if(EMSCRIPTEN)
+        target_link_options(f80_digest PRIVATE -sENVIRONMENT=node -sEXIT_RUNTIME=1)
+    endif()
+    add_test(NAME f80_digest COMMAND f80_digest --check)
+endif()
+
+# f80 against the host x87: Windows x86 only, run by hand (browser/README.md)
+if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    add_executable(f80_hostdiff tests/f80_hostdiff.cpp)
+    target_link_libraries(f80_hostdiff PRIVATE tmweb_core)
 endif()
