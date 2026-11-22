@@ -6,6 +6,40 @@ socket calls with C++ stand-ins. WASM_SPIKE.md on the `wasm-spike` branch has th
 
 This branch (`feat/browser-client`) is separate from `main` and is not merged into it.
 
+## Where this stands
+
+Parked on 2026-11-22.
+
+- **Checkpoint A passed.** With no server the page reaches the connection error ("TRM-8196-37302 Error occurred
+  while connecting to the server") through WebGL2. Chromium's frame 300 scores 0.0021 against native tmloader's
+  frame 300 (`tools/compare_frame.py`, threshold 0.02). The game paces at about 57 fps, and the first frame comes
+  about 3 s after boot. A click on Retry reaches the game and brings up its retry screen. That visual check stands in
+  for a native input reference.
+- **Checkpoint B is next:** Now Loading, the handle screen, and the main menu after Game IRC sign-in and the profile
+  load, compared with native's with-server frames 300, 600 and 1200. It needs:
+  - polcore's PR #17 (real polcore as the Viewer, `tmweb_configure('viewer','polcore')`), still open. Its CI is red.
+    Merged onto this branch, the native test "Messages reach the window procedure, and host keys go through the
+    low-level hook" segfaults before its first assertion.
+  - tmserver's fix for hosted-account passwords. tmserver hands out 16 characters (`token_hex(8)`), and polcore
+    takes at most 15. Until the fix lands, run a local tmserver with `token_hex(7)` in `register_hosted_account`.
+  - tmserver's dev identity, which is on tmserver main. Start it with `--auth-config examples/auth-dev.json
+    --auth-port 8081 --auth-insecure-loopback --auth-dev-identity`, or use `tools/polcore/gateway.py` from #17.
+    Serve the page from `http://localhost:5173`. The harness does not sign in yet.
+- **Known issues:**
+  - Native input automation does not reach the tmloader window from a background session, so
+    `tools/capture_reference.py`'s `--key`, `--mouse` and `--click` are best effort.
+  - Startup runs at about 50–65 MIPS in Chrome. A decoded-instruction cache would shorten the boot.
+  - The D3DX stand-in (`com/d3dx.cpp`) handles A8R8G8B8 and X8R8G8B8, one mip level, no filter and 4-channel
+    PNGs. Anything else goes through the game's own D3DX.
+
+The title-screen check, with native references from `tools/capture_reference.py`:
+
+```sh
+python browser/tools/capture_reference.py --loader <tmloader.exe> --config <tmloader.ini> --runtime <runtime> --out <folder>
+node browser/web/harness.mjs --folder <runtime folder> --frames 300 --reference <folder>/frame300.png
+node browser/web/harness.mjs --folder <runtime folder> --frames 360 --click <x>,<y>@300   # input
+```
+
 ## What works
 
 - **The interpreter** (`core/cpu.cpp`, `core/x87.cpp`): the x86-32 integer ISA, 16- and 32-bit addressing, string
