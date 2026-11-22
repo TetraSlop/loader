@@ -156,14 +156,8 @@ src/
   ui/         game window, preferences, ImGui settings panel, hosted launcher
 tests/        Catch2 tests mirroring src/; Python tool tests in tests/tools
 tools/        packaging, release and formatting scripts
-assets/       game files for the full release archive
 docs/         documentation
 ```
-
-The repository includes the supported original DLLs, selected original data
-and audio under `assets/`; see
-[assets/README.md](assets/README.md). These feed the full release archive; the
-minimal archive excludes them.
 
 ## Documentation
 
@@ -181,7 +175,6 @@ minimal archive excludes them.
 
 tmloader is licensed under the [GNU General Public License v3.0](LICENSE).
 
-The license covers the loader source and tools only. The original game files
-in `assets/` and the full release archive are not covered and remain the property of their respective
-owners. Third-party library notices are listed in
+The license covers the loader source and tools only. The game files you supply
+are not covered and remain the property of their respective owners. Third-party library notices are listed in
 [third-party code](docs/third-party.md).

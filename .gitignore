@@ -16,4 +16,3 @@ __pycache__/
 /.PVS-Studio/
 /cmake-build-*/
 /.ruff_cache/
-!/assets/**
