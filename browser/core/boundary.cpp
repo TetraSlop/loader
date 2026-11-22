@@ -17,9 +17,10 @@ constexpr std::uint32_t kImageAlignment = 0x10000; // module images start on 64 
 constexpr std::uint32_t kSectionStart   = 0x1000;  // headers take the first page
 constexpr std::uint32_t kSlotIndex      = 20;      // the slot's index is stored past the trap, where nothing runs
 constexpr std::uint32_t kReturnTrapName = 0;       // the first late slot
-// Module images take the first MiB of the stand-in range; slots made one at a time (COM methods, names resolved
-// after publish, the return trap) the rest, so they can be made before publish too
-constexpr std::uint32_t kLateSlots = layout::kModules + 0x100000;
+// Module images take the first 1.5 MiB of the stand-in range (seventeen DLLs and the stand-in Viewer, each at least
+// 64 KiB); slots made one at a time (COM methods, names resolved after publish, the return trap) the rest, 16,384
+// of them, so they can be made before publish too
+constexpr std::uint32_t kLateSlots = layout::kModules + 0x180000;
 
 // mov edi,edi; push ebp; mov ebp,esp; pop ebp; nops up to the trap; int3 after it
 constexpr auto kSlotBytes = []()
