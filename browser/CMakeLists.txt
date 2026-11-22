@@ -62,6 +62,7 @@ add_library(tmweb_hle STATIC
     hle/small.cpp
     hle/text.cpp
     hle/user32.cpp
+    hle/viewer.cpp
     hle/ws2_32.cpp
 )
 target_link_libraries(tmweb_hle PUBLIC tmweb_core)
@@ -182,6 +183,7 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
         tests/memory_test.cpp
         tests/proxies_test.cpp
         tests/threads_test.cpp
+        tests/viewer_test.cpp
         tests/x87_test.cpp
     )
     target_link_libraries(tmweb_tests PRIVATE tmweb_host Catch2::Catch2WithMain)

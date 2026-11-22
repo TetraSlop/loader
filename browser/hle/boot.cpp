@@ -56,9 +56,9 @@ auto slotName(const bool second, const unsigned slot) -> std::string
 
 } // namespace
 
-auto Boot::start(Machine& machine, std::shared_ptr<HostFiles> files) -> std::shared_ptr<Boot>
+auto Boot::start(Machine& machine, std::shared_ptr<HostFiles> files, BootOptions options) -> std::shared_ptr<Boot>
 {
-    auto boot = std::make_shared<Boot>(machine, std::move(files));
+    auto boot = std::make_shared<Boot>(machine, std::move(files), std::move(options));
     machine.boundary().add(Function{ "tmweb", "boot.next", Convention::Cdecl, 0, [boot](Call& call)
                                      {
                                          return boot->next(call.context().r[kEax]);
@@ -67,11 +67,16 @@ auto Boot::start(Machine& machine, std::shared_ptr<HostFiles> files) -> std::sha
     return boot;
 }
 
-Boot::Boot(Machine& machine, std::shared_ptr<HostFiles> files)
+Boot::Boot(Machine& machine, std::shared_ptr<HostFiles> files, BootOptions options)
 : machine_(machine)
 , files_(std::move(files))
 , process_(machine, *files_, kInstallRoot)
+, options_(std::move(options))
 {
+    if (options_.realViewer)
+    {
+        realViewer_ = std::make_unique<Viewer>(process_, options_.login, options_.keygenStandIns);
+    }
 }
 
 void Boot::install()
@@ -150,6 +155,10 @@ void Boot::install()
                                } });
     }
 
+    if (realViewer_)
+    {
+        realViewer_->install();
+    }
     boundary.publish();
     finishInstall(p);
 
@@ -185,8 +194,38 @@ void Boot::install()
         throw std::runtime_error(std::format("{} is not in the runtime folder", p.gameFile));
     }
     p.game = loadImage(memory, boundary, *file);
+    if (realViewer_)
+    {
+        const auto viewer = files_->read(p.viewerFile);
+        if (!viewer)
+        {
+            throw std::runtime_error(std::format("{} is not in the runtime folder", p.viewerFile));
+        }
+        realViewer_->load(*viewer);
+    }
     machine_.scheduler().createMain(kMainStack);
+    if (realViewer_ && options_.probe)
+    {
+        step_      = Step::Probe;
+        auto calls = realViewer_->setup();
+        for (auto& call : realViewer_->probe())
+        {
+            calls.push_back(std::move(call));
+        }
+        startViewer(std::move(calls));
+        return;
+    }
     stage(p.game.entry, { p.game.base, 1, 0 }); // DllMain(DLL_PROCESS_ATTACH)
+}
+
+void Boot::startViewer(std::deque<GuestCall> calls)
+{
+    auto& thread           = machine_.scheduler().current();
+    thread.context.r[kEsp] = thread.stackBase - kStackHeadroom;
+    realViewer_->start(std::move(calls), machine_.boundary().resolve("tmweb", "boot.next") + TrapRange::kTrapOffset, []
+                       {
+                           return 0u;
+                       });
 }
 
 auto Boot::blob(const std::span<const std::uint8_t> bytes) -> std::uint32_t
@@ -264,14 +303,34 @@ auto Boot::next(const std::uint32_t eax) -> Outcome
             {
                 onStep(step_);
             }
-            step_ = Step::GameStart;
-            // LaunchDescriptor { size, flags, core interface id, message }
-            auto descriptor = std::array<std::uint8_t, 28>{};
-            descriptor[0]   = 28;
-            descriptor[5]   = kLaunchWindowed >> 8;
-            std::ranges::copy(kCoreInterface, descriptor.begin() + 8);
-            stage(start_, { game_, core_, blob(descriptor) });
-            return Resume{};
+            if (realViewer_)
+            {
+                step_ = Step::Viewer;
+                startViewer(realViewer_->setup());
+                return Resume{};
+            }
+            return startGame();
+        }
+        case Step::Viewer:
+            core_ = realViewer_->core();
+            if (onStep)
+            {
+                onStep(step_);
+            }
+            return startGame();
+        case Step::Probe:
+        {
+            const auto& results = realViewer_->profileResults();
+            const auto  result  = [&](const unsigned request)
+            {
+                const auto found = results.find(request);
+                return found == results.end() ? std::string{ "none" } : std::to_string(static_cast<std::int32_t>(found->second));
+            };
+            if (onStep)
+            {
+                onStep(step_);
+            }
+            return Halt{ std::format("viewer probe: Game IRC login accepted; profile handles {}, characters {}, status {}", result(171), result(175), result(193)) };
         }
         case Step::GameStart:
             if (onStep)
@@ -281,6 +340,23 @@ auto Boot::next(const std::uint32_t eax) -> Outcome
             return Halt{ std::format("GameStart returned {:#x}", eax) };
     }
     return Halt{ "boot.next after the last step" };
+}
+
+auto Boot::startGame() -> Outcome
+{
+    step_ = Step::GameStart;
+    // LaunchDescriptor { size, flags, core interface id, message }
+    auto descriptor = std::array<std::uint8_t, 28>{};
+    descriptor[0]   = 28;
+    descriptor[5]   = kLaunchWindowed >> 8;
+    std::ranges::copy(kCoreInterface, descriptor.begin() + 8);
+    stage(start_, { game_, core_, blob(descriptor) });
+    return Resume{};
+}
+
+auto Boot::realViewer() -> Viewer*
+{
+    return realViewer_.get();
 }
 
 auto Boot::process() -> Process&
