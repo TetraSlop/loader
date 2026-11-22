@@ -188,6 +188,22 @@ auto Process::hostPath(const std::string_view guestPath) const -> std::optional<
     return out;
 }
 
+auto Process::writable(const std::string_view path) -> bool
+{
+    const auto top = lower(std::string{ path.substr(0, path.find('/')) });
+    return path.find('/') != std::string_view::npos && (top == "pub" || top == "logs" || top == "settings");
+}
+
+auto Process::flush(File& file) -> bool
+{
+    if (!file.dirty)
+    {
+        return true;
+    }
+    file.dirty = false;
+    return files.write(file.path, *file.data);
+}
+
 void install(Process& process)
 {
     installKernel32(process);

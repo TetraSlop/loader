@@ -146,7 +146,8 @@ TEST_CASE("TM_native.dll unpacks and boots to Direct3DCreate8(220)" TMWEB_ENGINE
     CHECK(names[0x20400C] == "advapi32.dll!RegCreateKeyExA");
     CHECK(names[0x2041FC] == "user32.dll!MessageBoxA");
 
-    // What GameStart called before Direct3DCreate8, as the spike counted it
+    // What GameStart called before Direct3DCreate8, as the spike counted it, plus the DefWindowProcA the window
+    // procedure passes its creation messages to (the spike sent none)
     auto imports = std::set<std::string>{};
     for (const auto& [key, count] : calls)
     {
@@ -155,7 +156,7 @@ TEST_CASE("TM_native.dll unpacks and boots to Direct3DCreate8(220)" TMWEB_ENGINE
             imports.insert(key.substr(key.find('!') + 1));
         }
     }
-    CHECK(imports == std::set<std::string>{ "#11", "AttachThreadInput", "CloseHandle", "CoInitialize", "CreateFileA", "CreateMutexA", "CreateThread", "CreateWindowExA", "Direct3DCreate8", "EnterCriticalSection", "FindFirstFileA", "FindNextFileA", "GetFileType", "GetForegroundWindow", "GetLastError", "GetStockObject", "GetVersionExA", "GetWindowThreadProcessId", "HeapAlloc", "HeapFree", "ImmDisableIME", "InitializeCriticalSection", "LeaveCriticalSection", "LoadCursorA", "LoadIconA", "ReadFile", "RegCloseKey", "RegCreateKeyExA", "RegQueryValueExA", "RegisterClassExA", "ReleaseMutex", "SetFilePointer", "SetForegroundWindow", "SetLastError", "SetThreadExecutionState", "SetThreadPriority", "SetWindowsHookExA", "ShowCursor", "SystemParametersInfoA", "TlsGetValue", "WaitForSingleObject" });
+    CHECK(imports == std::set<std::string>{ "#11", "AttachThreadInput", "CloseHandle", "CoInitialize", "CreateFileA", "CreateMutexA", "CreateThread", "CreateWindowExA", "DefWindowProcA", "Direct3DCreate8", "EnterCriticalSection", "FindFirstFileA", "FindNextFileA", "GetFileType", "GetForegroundWindow", "GetLastError", "GetStockObject", "GetVersionExA", "GetWindowThreadProcessId", "HeapAlloc", "HeapFree", "ImmDisableIME", "InitializeCriticalSection", "LeaveCriticalSection", "LoadCursorA", "LoadIconA", "ReadFile", "RegCloseKey", "RegCreateKeyExA", "RegQueryValueExA", "RegisterClassExA", "ReleaseMutex", "SetFilePointer", "SetForegroundWindow", "SetLastError", "SetThreadExecutionState", "SetThreadPriority", "SetWindowsHookExA", "ShowCursor", "SystemParametersInfoA", "TlsGetValue", "WaitForSingleObject" });
 
     const auto& viewer = boot->viewer();
     auto        core   = std::set<unsigned>{};

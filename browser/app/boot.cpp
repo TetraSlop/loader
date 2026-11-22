@@ -2,10 +2,11 @@
 
 #include "hle/boot.h"
 
+#include "host/host.h"
+
 #ifdef __EMSCRIPTEN__
 #include "com/directx.h"
 #include "com/proxies.h"
-#include "host/host.h"
 #endif
 
 #include <format>
@@ -14,8 +15,12 @@
 namespace tmweb
 {
 
+static_assert(static_cast<int>(host::InputKind::Key) == static_cast<int>(hle::InputKind::Key) && static_cast<int>(host::InputKind::Move) == static_cast<int>(hle::InputKind::Move) &&
+              static_cast<int>(host::InputKind::Button) == static_cast<int>(hle::InputKind::Button) && static_cast<int>(host::InputKind::Wheel) == static_cast<int>(hle::InputKind::Wheel));
+
 // The stand-ins keep the boot and the folder alive; a failure halts the machine with the reason, so the host's
-// first run reports it
+// first run reports it. The host's keyboard and mouse go to user32's queue, and what the game writes to the host's
+// copy of the folder.
 void boot(Machine& machine, const std::filesystem::path& runtime)
 {
     try
@@ -43,7 +48,16 @@ void boot(Machine& machine, const std::filesystem::path& runtime)
             machine.boundary().add(std::move(function));
         }
 #endif
-        hle::Boot::start(machine, std::make_shared<hle::DiskFiles>(runtime));
+        auto files         = std::make_shared<hle::DiskFiles>(runtime);
+        files->written     = host::fileWritten;
+        const auto started = std::weak_ptr<hle::Boot>{ hle::Boot::start(machine, std::move(files)) };
+        host::onInput([started](const host::InputEvent& event)
+                      {
+                          if (const auto boot = started.lock())
+                          {
+                              boot->process().input(static_cast<hle::InputKind>(event.kind), event.a, event.b);
+                          }
+                      });
     }
     catch (const std::exception& error)
     {

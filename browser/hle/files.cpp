@@ -94,4 +94,35 @@ auto DiskFiles::list(const std::string_view directory) -> std::optional<std::vec
     return out;
 }
 
+// Existing folders and the file keep their case; new parts are made as the guest spells them
+auto DiskFiles::write(const std::string_view path, const std::span<const std::uint8_t> bytes) -> bool
+{
+    auto full  = root_;
+    auto error = std::error_code{};
+    for (const auto part : std::views::split(path, '/'))
+    {
+        const auto name = std::string_view{ part.begin(), part.end() };
+        if (name.empty() || name == "." || name == "..")
+        {
+            continue;
+        }
+        const auto relative = std::filesystem::relative(full / name, root_, error).generic_string();
+        const auto existing = locate(relative);
+        full                = existing ? *existing : full / name;
+    }
+    std::filesystem::create_directories(full.parent_path(), error);
+    auto file = std::ofstream(full, std::ios::binary | std::ios::trunc);
+    file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    file.close();
+    if (!file)
+    {
+        return false;
+    }
+    if (written)
+    {
+        written(path);
+    }
+    return true;
+}
+
 } // namespace tmweb::hle

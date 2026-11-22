@@ -1,6 +1,7 @@
 // The stand-ins called the way guest code calls them: arguments on the main thread's stack, then the trap
 #include "hle/image.h"
 #include "hle/process.h"
+#include "hle/text.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -8,6 +9,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <vector>
 
 using namespace tmweb;
 using namespace tmweb::hle;
@@ -66,7 +68,31 @@ struct World
         machine.boundary().publish();
         finishInstall(process);
         machine.scheduler().createMain(0x10000);
+        machine.cpu().setTraps(machine.boundary().traps()); // callGuest runs guest code outside Machine::run
         scratch = machine.memory().allocate(0x10000);
+    }
+
+    // Guest code from its bytes; pieces above 0xFF are 32-bit little-endian operands
+    auto code(std::initializer_list<std::uint32_t> pieces) -> std::uint32_t
+    {
+        auto bytes = std::vector<std::uint8_t>{};
+        for (const auto piece : pieces)
+        {
+            if (piece > 0xFF)
+            {
+                for (auto shift = 0u; shift < 32; shift += 8)
+                {
+                    bytes.push_back(static_cast<std::uint8_t>(piece >> shift));
+                }
+            }
+            else
+            {
+                bytes.push_back(static_cast<std::uint8_t>(piece));
+            }
+        }
+        const auto address = buffer(static_cast<std::uint32_t>(bytes.size()));
+        machine.memory().write(address, std::span<const std::uint8_t>{ bytes });
+        return address;
     }
 
     // Call module!name with stdcall arguments; returns EAX
@@ -290,4 +316,181 @@ TEST_CASE("Heap, TLS, last error, strings and the window the boot creates")
     CHECK(world.process.classes[0].procedure == 0x101863D0);
     CHECK(world.process.windows[0].width == 640);
     CHECK(world.call("user32.dll", "ShowCursor", { 0 }) == 0xFFFFFFFF);
+}
+
+TEST_CASE("Shift-JIS converts on Microsoft's table, both ways")
+{
+    using namespace tmweb::hle::text;
+    auto       invalid = false;
+    const auto title   = std::string{ "\x83\x65\x83\x67\x83\x89\x83\x7D\x83\x58\x83\x5E\x81\x5B" };
+    const auto wide    = std::u16string{ u"テトラマスター" }; // テトラマスター
+    CHECK(decode(kShiftJis, title, invalid) == wide);
+    CHECK_FALSE(invalid);
+    CHECK(decode(kShiftJis, "A\xB1", invalid) == u"Aｱ");     // halfwidth katakana
+    CHECK(decode(kShiftJis, "\x81\x20", invalid) == u"・ "); // a lead byte without a trail
+    CHECK(invalid);
+
+    auto used = false;
+    CHECK(encode(kShiftJis, wide, '?', used) == title);
+    CHECK_FALSE(used);
+    CHECK(encode(kShiftJis, u"∵", '?', used) == "\x81\xE6"); // JIS X 0208 over NEC row 13 (0x879A)
+    CHECK(encode(kShiftJis, u"ⅰ", '?', used) == "\xFA\x40"); // IBM over NEC-selected IBM (0xEEEF)
+    CHECK_FALSE(used);
+    CHECK(encode(kShiftJis, u"é", '?', used) == "?");
+    CHECK(used);
+    CHECK(decode(kUtf8, "\xE3\x83\x86", invalid) == u"テ");
+    CHECK(codePage(0) == kShiftJis);
+
+    auto       world  = World{};
+    auto&      memory = world.machine.memory();
+    const auto out    = world.buffer(64);
+    CHECK(world.call("kernel32.dll", "MultiByteToWideChar", { 0, 0, world.text(title), 0xFFFFFFFF, out, 32 }) == 8);
+    CHECK(memory.readWideString(out) == wide);
+    const auto narrow = world.buffer(64);
+    CHECK(world.call("kernel32.dll", "WideCharToMultiByte", { 932, 0, out, 0xFFFFFFFF, narrow, 64, 0, 0 }) == 15);
+    CHECK(memory.readString(narrow) == title);
+}
+
+TEST_CASE("Writes in pub/, logs/ and settings/ reach the host when flushed or closed")
+{
+    auto  world         = World{};
+    auto& memory        = world.machine.memory();
+    auto  written       = std::vector<std::string>{};
+    world.files.written = [&written](const std::string_view path)
+    {
+        written.emplace_back(path);
+    };
+
+    const auto file = world.call("kernel32.dll", "CreateFileA", { world.text("pub\\home00\\option.bin"), 0xC0000000, 0, 0, 2, 0x80, 0 });
+    REQUIRE(file != kInvalidHandle);
+    CHECK(written == std::vector<std::string>{ "pub/home00/option.bin" }); // created empty at once
+    const auto count = world.buffer(4);
+    CHECK(world.call("kernel32.dll", "WriteFile", { file, world.text("hello"), 5, count, 0 }) == 1);
+    CHECK(memory.read<std::uint32_t>(count) == 5);
+    CHECK(world.call("kernel32.dll", "SetFilePointer", { file, 1, 0, 0 }) == 1);
+    CHECK(world.call("kernel32.dll", "WriteFile", { file, world.text("EL"), 2, count, 0 }) == 1);
+    CHECK(world.call("kernel32.dll", "FlushFileBuffers", { file }) == 1);
+    CHECK(written.size() == 2);
+    CHECK(world.call("kernel32.dll", "CloseHandle", { file }) == 1);
+    CHECK(written.size() == 2); // nothing changed since the flush
+    auto stored = std::ifstream(world.folder.path() / "pub" / "home00" / "option.bin", std::ios::binary);
+    CHECK(std::string(std::istreambuf_iterator<char>(stored), {}) == "hELlo");
+
+    // OPEN_ALWAYS keeps what is there and says so
+    const auto again = world.call("kernel32.dll", "CreateFileA", { world.text("PUB/home00/OPTION.BIN"), 0xC0000000, 0, 0, 4, 0x80, 0 });
+    CHECK(world.lastError() == kErrorAlreadyExists);
+    CHECK(world.call("kernel32.dll", "GetFileSize", { again, 0 }) == 5);
+    CHECK(world.call("kernel32.dll", "CloseHandle", { again }) == 1);
+
+    // Elsewhere in the runtime folder writes are refused, as tmloader refuses them
+    CHECK(world.call("kernel32.dll", "CreateFileA", { world.text("data\\gW000.dat"), 0x40000000, 0, 0, 3, 0, 0 }) == kInvalidHandle);
+    CHECK(world.lastError() == kErrorAccessDenied);
+    CHECK(world.call("kernel32.dll", "CreateFileA", { world.text("logs\\new.txt"), 0x40000000, 0, 0, 1, 0, 0 }) != kInvalidHandle);
+    CHECK(world.call("kernel32.dll", "CreateFileA", { world.text("logs\\new.txt"), 0x40000000, 0, 0, 1, 0, 0 }) == kInvalidHandle);
+    CHECK(world.lastError() == kErrorFileExists);
+}
+
+TEST_CASE("Messages reach the window procedure, and host keys go through the low-level hook")
+{
+    auto  world  = World{};
+    auto& memory = world.machine.memory();
+    auto& p      = world.process;
+    // The window procedure logs each message and returns 1: mov eax,[esp+8]; mov ecx,[count];
+    // mov [log+ecx*4],eax; inc ecx; mov [count],ecx; mov eax,1; ret 16
+    const auto count     = world.buffer(4);
+    const auto log       = world.buffer(4 * 256);
+    const auto procedure = world.code({ 0x8B, 0x44, 0x24, 0x08, 0x8B, 0x0D, count, 0x89, 0x04, 0x8D, log, 0x41, 0x89, 0x0D, count, 0xB8, 1, 0, 0, 0, 0xC2, 0x10, 0x00 });
+    // The hook records the virtual key and swallows Q: mov eax,[esp+12]; mov eax,[eax]; mov [seen],eax;
+    // cmp eax,'Q'; sete al; movzx eax,al; ret 12
+    const auto seen     = world.buffer(4);
+    const auto hook     = world.code({ 0x8B, 0x44, 0x24, 0x0C, 0x8B, 0x00, 0xA3, seen, 0x3D, 'Q', 0, 0, 0, 0x0F, 0x94, 0xC0, 0x0F, 0xB6, 0xC0, 0xC2, 0x0C, 0x00 });
+    const auto messages = [&]()
+    {
+        auto out = std::vector<std::uint32_t>{};
+        for (auto i = 0u; i < memory.read<std::uint32_t>(count); ++i)
+        {
+            out.push_back(memory.read<std::uint32_t>(log + 4 * i));
+        }
+        memory.write<std::uint32_t>(count, 0);
+        return out;
+    };
+
+    const auto info = world.buffer(48);
+    memory.write<std::uint32_t>(info + 8, procedure);
+    memory.write<std::uint32_t>(info + 40, world.text("Tetra Master"));
+    CHECK(world.call("user32.dll", "RegisterClassExA", { info }) != 0);
+    world.call("user32.dll", "SetWindowsHookExA", { 13, hook, 0x10000000, 0 });
+    const auto window = world.call("user32.dll", "CreateWindowExA", { 0, world.text("Tetra Master"), world.text("Tetra Master"), 0x90000000, 0, 0, 640, 480, 0, 0, 0x10000000, 0 });
+    REQUIRE(window != 0);
+    // Creation, then WS_VISIBLE shows and activates it
+    CHECK(messages() == std::vector<std::uint32_t>{ 0x24, 0x81, 0x83, 0x01, 0x05, 0x03, 0x18, 0x46, 0x1C, 0x86, 0x06, 0x07, 0x47 });
+    CHECK(world.call("user32.dll", "GetForegroundWindow", {}) == window);
+
+    // The shown window needs painting until DefWindowProc validates it
+    const auto msg = world.buffer(28);
+    CHECK(world.call("user32.dll", "PeekMessageA", { msg, 0, 0, 0, 1 }) == 1);
+    CHECK(memory.read<std::uint32_t>(msg + 4) == 0x0F);
+    world.call("user32.dll", "DefWindowProcA", { window, 0x0F, 0, 0 });
+    CHECK(world.call("user32.dll", "PeekMessageA", { msg, 0, 0, 0, 1 }) == 0);
+
+    // Q goes to the hook, which swallows it; A reaches the queue, and TranslateMessage adds its character
+    p.input(InputKind::Key, 0x10, 1);
+    p.input(InputKind::Key, 0x1E, 1);
+    CHECK(world.call("user32.dll", "GetAsyncKeyState", { 'A' }) == 0x8000);
+    CHECK(world.call("user32.dll", "PeekMessageA", { msg, 0, 0, 0, 1 }) == 1);
+    CHECK(memory.read<std::uint32_t>(seen) == 'A');
+    CHECK(memory.read<std::uint32_t>(msg + 4) == 0x100);
+    CHECK(memory.read<std::uint32_t>(msg + 8) == 'A');
+    CHECK(memory.read<std::uint32_t>(msg + 12) == (1u | (0x1Eu << 16)));
+    CHECK(world.call("user32.dll", "TranslateMessage", { msg }) == 1);
+    CHECK(world.call("user32.dll", "DispatchMessageA", { msg }) == 1);
+    CHECK(world.call("user32.dll", "PeekMessageA", { msg, 0, 0, 0, 1 }) == 1);
+    CHECK(memory.read<std::uint32_t>(msg + 4) == 0x102);
+    CHECK(memory.read<std::uint32_t>(msg + 8) == 'a');
+    CHECK(messages() == std::vector<std::uint32_t>{ 0x100 });
+
+    // The mouse, in client pixels; moves coalesce
+    p.input(InputKind::Move, 10, 20);
+    p.input(InputKind::Move, 30, 40);
+    p.input(InputKind::Button, 0, 1);
+    CHECK(world.call("user32.dll", "PeekMessageA", { msg, window, 0, 0, 1 }) == 1);
+    CHECK(memory.read<std::uint32_t>(msg + 4) == 0x200);
+    CHECK(memory.read<std::uint32_t>(msg + 12) == ((40u << 16) | 30u));
+    CHECK(world.call("user32.dll", "PeekMessageA", { msg, window, 0, 0, 1 }) == 1);
+    CHECK(memory.read<std::uint32_t>(msg + 4) == 0x201);
+    const auto point = world.buffer(8);
+    world.call("user32.dll", "GetCursorPos", { point });
+    CHECK(memory.read<std::int32_t>(point) == 30);
+
+    world.call("user32.dll", "PostQuitMessage", { 3 });
+    CHECK(world.call("user32.dll", "GetMessageA", { msg, 0, 0, 0 }) == 0);
+    CHECK(memory.read<std::uint32_t>(msg + 8) == 3);
+}
+
+TEST_CASE("RtlUnwind runs the unwind handlers of the frames it removes")
+{
+    auto  world  = World{};
+    auto& memory = world.machine.memory();
+    auto& thread = world.machine.scheduler().current();
+    // Each handler logs the record's flags and its frame: mov eax,[esp+4]; mov eax,[eax+4]; mov ecx,[count];
+    // mov [log+ecx*8],eax; mov eax,[esp+8]; mov [log+ecx*8+4],eax; inc ecx; mov [count],ecx; mov eax,1; ret
+    const auto count   = world.buffer(4);
+    const auto log     = world.buffer(64);
+    const auto handler = world.code({ 0x8B, 0x44, 0x24, 0x04, 0x8B, 0x40, 0x04, 0x8B, 0x0D, count, 0x89, 0x04, 0xCD, log, 0x8B, 0x44, 0x24, 0x08, 0x89, 0x04, 0xCD, log + 4, 0x41, 0x89, 0x0D, count, 0xB8, 1, 0, 0, 0, 0xC3 });
+    const auto outer   = thread.stackBase - 0x100;
+    const auto middle  = thread.stackBase - 0x140;
+    const auto inner   = thread.stackBase - 0x180;
+    for (const auto& [frame, next] : { std::pair{ outer, 0xFFFFFFFFu }, { middle, outer }, { inner, middle } })
+    {
+        memory.write<std::uint32_t>(frame, next);
+        memory.write<std::uint32_t>(frame + 4, handler);
+    }
+    memory.write<std::uint32_t>(thread.teb, inner);
+
+    CHECK(world.call("kernel32.dll", "RtlUnwind", { outer, 0, 0, 0x77 }) == 0x77);
+    REQUIRE(memory.read<std::uint32_t>(count) == 2);
+    CHECK(memory.read<std::uint32_t>(log) == 2); // EH_UNWINDING
+    CHECK(memory.read<std::uint32_t>(log + 4) == inner);
+    CHECK(memory.read<std::uint32_t>(log + 12) == middle);
+    CHECK(memory.read<std::uint32_t>(thread.teb) == outer);
 }

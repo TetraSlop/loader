@@ -31,8 +31,18 @@ constexpr auto     kMainStack      = 0x100000u;
 // Stack arguments after this, for the core slots tmloader knows; other slots halt as unhandled
 const auto kCoreArgs   = std::map<unsigned, std::uint8_t>{ { 0, 2 }, { 1, 0 }, { 2, 0 }, { 3, 1 }, { 4, 1 }, { 5, 2 }, { 7, 1 }, { 26, 1 }, { 27, 1 } };
 const auto kSecondArgs = std::map<unsigned, std::uint8_t>{ { 0, 2 }, { 1, 0 }, { 2, 0 } };
-// Ticket polls the boot waits on: report them done
-const auto kTableResults = std::map<unsigned, std::uint32_t>{ { 471, 1 }, { 473, 1 }, { 908, 1 } };
+// Ticket polls the boot waits on report done. Past the boot, the frame loop's entries answer as polcore does when
+// idle, measured on polcore itself under tools/polcore (run_polcore.py's set-up, then the entry): 832 and 844
+// release what 831 and 843 handed out, 155 and 911 report ready, 190 has no pending message (-1), 696 passes
+// GetTickCount through, and 705, the periodic tick, returns 0. There is no server: the Game IRC open (132) gives
+// slot 0, and its check (133) fails with -33 on every poll while the pump (153) returns 1, as polcore does when
+// the connection is refused. TM then shows its "error while connecting to the server" screen.
+const auto         kTableResults = std::map<unsigned, std::uint32_t>{ { 132, 0 }, { 133, 0xFFFFFFDF }, { 153, 1 }, { 155, 1 }, { 190, 0xFFFFFFFF }, { 471, 1 }, { 473, 1 }, { 832, 1 }, { 844, 1 }, { 908, 1 }, { 911, 1 } };
+constexpr unsigned kTickCount    = 696;
+// Strings the frame loop copies and hashes: 831 the signed-in POL ID, 843 the message hash key. The stand-in has
+// no sign-in, so it answers with tools/polcore's test account and a placeholder key, not polcore's.
+const auto     kTableStrings = std::map<unsigned, std::pair<std::uint32_t, const char*>>{ { 831, { 48, "EEEEEEEF" } }, { 843, { 64, "stand-in-key" } } };
+constexpr auto kStringsSize  = 96u;
 
 auto ret(const std::uint32_t value = 0) -> Outcome
 {
@@ -127,6 +137,14 @@ void Boot::install()
                                {
                                    ++viewer_.table[entry];
                                    process_.trace.push_back(std::format("table {} {:#x} {:#x} {:#x} {:#x}", entry, call.arg(0), call.arg(1), call.arg(2), call.arg(3)));
+                                   if (const auto text = kTableStrings.find(entry); text != kTableStrings.end())
+                                   {
+                                       return ret(strings_ + text->second.first);
+                                   }
+                                   if (entry == kTickCount)
+                                   {
+                                       return ret(static_cast<std::uint32_t>(machine_.scheduler().now() + 1000));
+                                   }
                                    const auto result = kTableResults.find(entry);
                                    return ret(result == kTableResults.end() ? 0 : result->second);
                                } });
@@ -154,8 +172,12 @@ void Boot::install()
     {
         memory.write<std::uint32_t>(table_ + 4 * entry, boundary.resolve(kViewer, std::format("table.{}", entry)));
     }
-    strings_ = p.allocate(64);
+    strings_ = p.allocate(kStringsSize);
     memory.writeString(strings_ + 4, kRegistryRoot);
+    for (const auto& [entry, text] : kTableStrings)
+    {
+        memory.writeString(strings_ + text.first, text.second);
+    }
 
     auto file = files_->read(p.gameFile);
     if (!file)

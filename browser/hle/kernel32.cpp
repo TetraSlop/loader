@@ -1,8 +1,9 @@
-// kernel32 for TM.dll, its protector and its CRT. Paths go to the runtime folder through HostFiles; writes are
-// refused until the game needs them. Text conversion follows Kestrel's compat layer (theater-fit
-// kestrel/port/compat/win32/impl/kernel.cpp, commit e1240c4): narrow strings are Shift-JIS bytes that widen one byte
-// to one character, so bytes round-trip, which is enough for paths and logs.
+// kernel32 for TM.dll, its protector and its CRT. Paths go to the runtime folder through HostFiles, and writes
+// only to pub/, logs/ and settings/. Text converts through hle/text.h (Shift-JIS on Microsoft's table). The copy-out
+// rule for converted text follows Kestrel's compat layer (theater-fit kestrel/port/compat/win32/impl/kernel.cpp,
+// commit e1240c4).
 #include "hle/process.h"
+#include "hle/text.h"
 
 #include <algorithm>
 #include <array>
@@ -16,26 +17,28 @@ namespace
 
 enum : std::uint32_t
 {
-    kWaitObject0     = 0,
-    kWaitTimeout     = 0x102,
-    kWaitFailed      = 0xFFFFFFFF,
-    kGenericWrite    = 0x40000000,
-    kCreateNew       = 1,
-    kCreateAlways    = 2,
-    kOpenExisting    = 3,
-    kOpenAlways      = 4,
-    kMemReserve      = 0x2000,
-    kMemRelease      = 0x8000,
-    kCreateSuspended = 4,
-    kCodePage        = 932,
-    kLocale          = 0x411,
-    kHeapHandle      = 0x00150000,
-    kProcessPseudo   = 0xFFFFFFFF,
-    kThreadPseudo    = 0xFFFFFFFE,
-    kPageExecuteRW   = 0x40,
-    kLowercase       = 0x100,
-    kUppercase       = 0x200,
-    kIgnoreCase      = 1,
+    kWaitObject0       = 0,
+    kWaitTimeout       = 0x102,
+    kWaitFailed        = 0xFFFFFFFF,
+    kGenericWrite      = 0x40000000,
+    kCreateNew         = 1,
+    kCreateAlways      = 2,
+    kOpenExisting      = 3,
+    kOpenAlways        = 4,
+    kTruncateExisting  = 5,
+    kMemReserve        = 0x2000,
+    kMemRelease        = 0x8000,
+    kCreateSuspended   = 4,
+    kCodePage          = 932,
+    kLocale            = 0x411,
+    kHeapHandle        = 0x00150000,
+    kProcessPseudo     = 0xFFFFFFFF,
+    kThreadPseudo      = 0xFFFFFFFE,
+    kPageExecuteRW     = 0x40,
+    kLowercase         = 0x100,
+    kUppercase         = 0x200,
+    kIgnoreCase        = 1,
+    kErrorInvalidChars = 8, // MB_ERR_INVALID_CHARS
 };
 
 auto ret(const std::uint32_t value = 0) -> Outcome
@@ -810,6 +813,10 @@ void installKernel32(Process& p)
     constant("SetThreadPriority", 2, 1);
     add("CloseHandle", 1, [&p](Call& call)
         {
+            if (const auto file = p.handleAs<File>(call.arg(0)))
+            {
+                p.flush(*file);
+            }
             if (!p.closeHandle(call.arg(0)))
             {
                 p.setLastError(kErrorInvalidHandle);
@@ -839,13 +846,38 @@ void installKernel32(Process& p)
             }
             return Resume{};
         });
-    // ponytail: unlinks the frames up to the target without calling their unwind handlers (needs callGuest);
-    // __finally blocks inside the unwound frames do not run
+    // RtlUnwind(target, targetIp, record, value): call each frame's handler above target with the record marked
+    // unwinding, unlinking each frame once its handler returns, as ntdll does for __finally and _local_unwind.
+    // A null target unwinds the whole chain (an exit unwind). The caller continues after the call with value in EAX.
     add("RtlUnwind", 4, [&p, &memory](Call& call)
         {
-            if (call.arg(0))
+            constexpr auto kUnwind  = 0xC0000027u; // STATUS_UNWIND
+            constexpr auto kRecord  = 0x50u;
+            constexpr auto kContext = 0x2CCu;
+            const auto     target   = call.arg(0);
+            const auto     teb      = p.thread().teb;
+            auto           record   = call.arg(2);
+            const auto     own      = record == 0 ? p.allocate(kRecord) : 0;
+            if (own)
             {
-                memory.write<std::uint32_t>(p.thread().teb, call.arg(0));
+                record = own;
+                memory.write<std::uint32_t>(record, kUnwind);
+                memory.write<std::uint32_t>(record + 12, call.returnAddress());
+            }
+            memory.write<std::uint32_t>(record + 4, memory.read<std::uint32_t>(record + 4) | 2 | (target == 0 ? 4 : 0)); // EH_UNWINDING, EH_EXIT_UNWIND
+            const auto context    = p.allocate(kContext);
+            const auto dispatcher = p.allocate(16);
+            for (auto frame = memory.read<std::uint32_t>(teb); frame != target && frame != 0 && frame != 0xFFFFFFFF; frame = memory.read<std::uint32_t>(teb))
+            {
+                const auto args = std::array<std::uint32_t, 4>{ record, frame, context, dispatcher };
+                p.machine.callGuest(memory.read<std::uint32_t>(frame + 4), args, Convention::Cdecl);
+                memory.write<std::uint32_t>(teb, memory.read<std::uint32_t>(frame));
+            }
+            p.free(context);
+            p.free(dispatcher);
+            if (own)
+            {
+                p.free(own);
             }
             return ret(call.arg(3));
         });
@@ -869,25 +901,31 @@ void installKernel32(Process& p)
             memory.writeString(call.arg(0), call.argString(0) + call.argString(1));
             return ret(call.arg(0));
         });
+    // MultiByteToWideChar(codePage, flags, text, length, out, capacity)
     add("MultiByteToWideChar", 6, [&p, &memory](Call& call)
         {
-            const auto text = narrowArgument(memory, call.arg(2), static_cast<std::int32_t>(call.arg(3)));
-            auto       wide = std::u16string(text.begin(), text.end());
-            std::ranges::transform(text, wide.begin(), [](const char c)
-                                   {
-                                       return static_cast<char16_t>(static_cast<unsigned char>(c));
-                                   });
+            const auto bytes   = narrowArgument(memory, call.arg(2), static_cast<std::int32_t>(call.arg(3)));
+            auto       invalid = false;
+            const auto wide    = text::decode(text::codePage(call.arg(0)), bytes, invalid);
+            if (invalid && (call.arg(1) & kErrorInvalidChars))
+            {
+                p.setLastError(kErrorNoUnicodeTranslation);
+                return ret(0);
+            }
             return ret(copyOut(p, wide, call.arg(4), call.arg(5)));
         });
+    // WideCharToMultiByte(codePage, flags, text, length, out, capacity, defaultChar, usedDefault)
     add("WideCharToMultiByte", 8, [&p, &memory](Call& call)
         {
-            const auto wide = wideArgument(memory, call.arg(2), static_cast<std::int32_t>(call.arg(3)));
-            auto       text = std::string(wide.size(), '?');
-            std::ranges::transform(wide, text.begin(), [](const char16_t c)
-                                   {
-                                       return c < 0x100 ? static_cast<char>(c) : '?';
-                                   });
-            return ret(copyOut(p, text, call.arg(4), call.arg(5)));
+            const auto wide     = wideArgument(memory, call.arg(2), static_cast<std::int32_t>(call.arg(3)));
+            const auto fallback = call.arg(6) ? static_cast<char>(memory.read<std::uint8_t>(call.arg(6))) : '?';
+            auto       used     = false;
+            const auto bytes    = text::encode(text::codePage(call.arg(0)), wide, fallback, used);
+            if (call.arg(7))
+            {
+                memory.write<std::uint32_t>(call.arg(7), used ? 1 : 0);
+            }
+            return ret(copyOut(p, bytes, call.arg(4), call.arg(5)));
         });
     add("LCMapStringA", 6, [&p, &memory](Call& call)
         {
@@ -977,6 +1015,8 @@ void installKernel32(Process& p)
         });
 
     // Files
+    // CreateFileA(name, access, share, security, disposition, flags, template). Reads open anything in the runtime
+    // folder; writes only pub/, logs/ and settings/, as tmloader allows.
     add("CreateFileA", 7, [&p](Call& call)
         {
             const auto guest       = call.argString(0);
@@ -984,24 +1024,41 @@ void installKernel32(Process& p)
             const auto disposition = call.arg(4);
             const auto path        = p.hostPath(guest);
             auto       data        = path ? p.files.read(*path) : std::nullopt;
-            const auto writes      = (access & kGenericWrite) || disposition == kCreateNew || disposition == kCreateAlways ||
-                                     (disposition == kOpenAlways && !data) || (disposition != kOpenExisting && disposition != kOpenAlways);
+            const auto creates     = disposition == kCreateNew || disposition == kCreateAlways || disposition == kOpenAlways;
+            const auto writes      = (access & kGenericWrite) || creates || disposition == kTruncateExisting;
             p.trace.push_back(std::format("CreateFileA {} {}{}", guest, writes ? "write" : "read", data ? "" : " missing"));
-            // ponytail: read-only; writes to pub/, logs/ and settings/ land when a screen needs them
-            if (writes)
+            const auto fail = [&p](const std::uint32_t error)
             {
-                p.setLastError(kErrorAccessDenied);
+                p.setLastError(error);
                 return ret(kInvalidHandle);
-            }
-            if (!data)
+            };
+            if (!path || (writes && !Process::writable(*path)))
             {
-                p.setLastError(path ? kErrorFileNotFound : kErrorPathNotFound);
-                return ret(kInvalidHandle);
+                return fail(path ? kErrorAccessDenied : kErrorPathNotFound);
             }
-            auto file  = std::make_shared<File>();
-            file->path = *path;
-            file->data = std::make_shared<const std::vector<std::uint8_t>>(std::move(*data));
-            p.setLastError(kErrorSuccess);
+            if (!data && !creates)
+            {
+                return fail(kErrorFileNotFound);
+            }
+            if (data && disposition == kCreateNew)
+            {
+                return fail(kErrorFileExists);
+            }
+            auto file      = std::make_shared<File>();
+            file->path     = *path;
+            file->writable = (access & kGenericWrite) != 0;
+            file->data     = std::make_shared<std::vector<std::uint8_t>>(data ? std::move(*data) : std::vector<std::uint8_t>{});
+            if (!data || disposition == kCreateAlways || disposition == kTruncateExisting)
+            {
+                // A new or truncated file exists on the host from here on, as on Windows
+                file->data->clear();
+                file->dirty = true;
+                if (!p.flush(*file))
+                {
+                    return fail(kErrorAccessDenied);
+                }
+            }
+            p.setLastError(data && (disposition == kCreateAlways || disposition == kOpenAlways) ? kErrorAlreadyExists : kErrorSuccess);
             return ret(p.addHandle(file));
         });
     add("ReadFile", 5, [&p, &memory](Call& call)
@@ -1023,10 +1080,29 @@ void installKernel32(Process& p)
             }
             return ret(1);
         });
-    add("WriteFile", 5, [&p](Call&)
+    // WriteFile(file, buffer, count, written, overlapped)
+    add("WriteFile", 5, [&p, &memory](Call& call)
         {
-            p.setLastError(kErrorAccessDenied);
-            return ret(0);
+            const auto file = p.handleAs<File>(call.arg(0));
+            if (!file || !file->writable)
+            {
+                p.setLastError(file ? kErrorAccessDenied : kErrorInvalidHandle);
+                return ret(0);
+            }
+            const auto count = call.arg(2);
+            auto&      data  = *file->data;
+            if (data.size() < static_cast<std::size_t>(file->position) + count)
+            {
+                data.resize(static_cast<std::size_t>(file->position) + count);
+            }
+            memory.read(call.arg(1), std::span{ data.data() + file->position, count });
+            file->position += count;
+            file->dirty = true;
+            if (call.arg(3))
+            {
+                memory.write<std::uint32_t>(call.arg(3), count);
+            }
+            return ret(1);
         });
     add("SetFilePointer", 4, [&p, &memory](Call& call)
         {
@@ -1073,15 +1149,34 @@ void installKernel32(Process& p)
             p.setLastError(kErrorInvalidHandle);
             return ret(0);
         });
-    constant("FlushFileBuffers", 1, 1);
-    for (const auto* name : { "DeleteFileA", "SetEndOfFile" })
-    {
-        add(name, 1, [&p](Call&)
+    add("FlushFileBuffers", 1, [&p](Call& call)
+        {
+            const auto file = p.handleAs<File>(call.arg(0));
+            if (!file)
             {
-                p.setLastError(kErrorAccessDenied);
+                p.setLastError(kErrorInvalidHandle);
                 return ret(0);
-            });
-    }
+            }
+            return ret(p.flush(*file));
+        });
+    add("SetEndOfFile", 1, [&p](Call& call)
+        {
+            const auto file = p.handleAs<File>(call.arg(0));
+            if (!file || !file->writable)
+            {
+                p.setLastError(file ? kErrorAccessDenied : kErrorInvalidHandle);
+                return ret(0);
+            }
+            file->data->resize(file->position);
+            file->dirty = true;
+            return ret(1);
+        });
+    // ponytail: no host delete or rename; refused until a screen needs them
+    add("DeleteFileA", 1, [&p](Call&)
+        {
+            p.setLastError(kErrorAccessDenied);
+            return ret(0);
+        });
     add("MoveFileA", 2, [&p](Call&)
         {
             p.setLastError(kErrorAccessDenied);
