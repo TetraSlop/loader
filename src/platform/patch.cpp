@@ -1,9 +1,7 @@
 #include "platform/patch.h"
 #include "app/log.h"
 #include <algorithm>
-#include <cstdint>
 #include <cstring>
-#include <format>
 #include <stdexcept>
 
 namespace tmloader
@@ -60,24 +58,6 @@ void setImport(HMODULE module, DWORD rva, void* function)
     logLine("Replace import +{:X}: {} -> {}", rva, *slot, function);
     *slot = function;
     VirtualProtect(slot, sizeof(void*), old, &old);
-}
-
-auto redirectCall(HMODULE module, DWORD callRva, DWORD targetRva, void* replacement) -> void*
-{
-    auto* const base     = reinterpret_cast<BYTE*>(module);
-    auto* const site     = base + callRva;
-    auto        relative = std::int32_t{};
-    std::memcpy(&relative, site + 1, sizeof(relative));
-    if (site[0] != 0xe8 || site + 5 + relative != base + targetRva)
-    {
-        throw std::runtime_error(std::format("Unsupported call at +{:X}", callRva));
-    }
-
-    // x86 relative CALL arithmetic wraps at 32 bits.
-    const auto redirected = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(replacement)) -
-                            static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(site + 5));
-    writeCode(site + 1, { reinterpret_cast<const BYTE*>(&redirected), sizeof(redirected) });
-    return base + targetRva;
 }
 
 void writeCode(void* site, std::span<const BYTE> bytes)

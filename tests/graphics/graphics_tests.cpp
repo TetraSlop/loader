@@ -69,11 +69,6 @@ void setImport(HMODULE, DWORD, void*)
 {
 }
 
-auto redirectCall(HMODULE, DWORD, DWORD, void*) -> void*
-{
-    return nullptr;
-}
-
 void initializeGameWindow(HWND)
 {
 }

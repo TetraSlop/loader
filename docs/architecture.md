@@ -35,7 +35,7 @@ folders.
 | `platform/network` | Connect/DNS redirection and the Viewer profile session |
 | `platform/desktop` | Removal of global keyboard hooks, cursor warping and focus stealing |
 | `platform/audio` | DirectSound 8 factory |
-| `platform/patch` | `replacePointer`, `setImport` and `redirectCall` |
+| `platform/patch` | `replacePointer`, `setImport` and `writeCode` |
 | `ui/` | Game window, per-account preferences, the shared ImGui window host, the settings panel and the hosted launcher |
 
 Hook functions are named `hooked<ApiName>`, for example `hookedCreateFileA` or
