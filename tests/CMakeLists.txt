@@ -67,7 +67,3 @@ loader_test(graphics_tests
     ${loader_source_dir}/graphics/render_scale.cpp)
 target_link_libraries(graphics_tests PRIVATE nlohmann_json::nlohmann_json loader_config user32 ole32)
 
-if(TMLOADER_HOSTED)
-    loader_test(hosted_tests hosted/auth_tests.cpp hosted/gateway_tests.cpp)
-    target_link_libraries(hosted_tests PRIVATE loader_hosted nlohmann_json::nlohmann_json httplib::httplib)
-endif()

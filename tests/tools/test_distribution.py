@@ -60,7 +60,6 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(set(files), base)
         self.assertIn(b"runtime-dir=runtime", files["tmloader.ini"])
         self.assertIn(b"CLI11", files["THIRD_PARTY_NOTICES.txt"])
-        self.assertIn(b"cpp-httplib", files["THIRD_PARTY_NOTICES.txt"])
         self.assertNotIn(b"Catch2", files["THIRD_PARTY_NOTICES.txt"])
         archive = self.root / "client.zip"
         build_release.write_archive(archive, files)

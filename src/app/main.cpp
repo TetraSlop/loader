@@ -6,9 +6,6 @@
 #include <stdexcept>
 #include <wil/stl.h>
 #include <wil/win32_helpers.h>
-#ifdef TMLOADER_HOSTED
-#include "ui/launcher.h"
-#endif
 
 namespace
 {
@@ -79,21 +76,6 @@ void report(const char* error)
 
 auto play(const Config& config) -> int
 {
-#ifdef TMLOADER_HOSTED
-    if (!config.hostedServer.empty())
-    {
-        const auto session = tmloader::runLauncher(config);
-        if (!session)
-        {
-            return 0;
-        }
-
-        const auto exitCode = tmloader::launch(session->gameConfig(config));
-        session->endPlay();
-        return exitCode;
-    }
-#endif
-
     return tmloader::launch(config);
 }
 

@@ -55,28 +55,6 @@ add_custom_command(TARGET tmloader POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${PROJECT_SOURCE_DIR}/retail-files.txt" "$<TARGET_FILE_DIR:tmloader>")
 set(loader_targets loader_common loader_config tmloader)
 
-# Optional features. Each lives in its own folder and is switched in the
-# top-level CMakeLists.txt; docs/architecture.md lists what refers to it.
-if(TMLOADER_HOSTED)
-    add_library(loader_hosted STATIC
-        hosted/auth.cpp
-        hosted/auth.h
-        hosted/http.cpp
-        hosted/http.h
-        hosted/session.cpp
-        hosted/session.h
-        hosted/tunnel.cpp
-        hosted/tunnel.h)
-    target_link_libraries(loader_hosted PUBLIC loader_config winhttp crypt32 ws2_32 PRIVATE nlohmann_json::nlohmann_json httplib::httplib)
-    target_sources(tmloader PRIVATE
-        ui/image.cpp
-        ui/image.h
-        ui/launcher.cpp
-        ui/launcher.h)
-    target_link_libraries(tmloader PRIVATE loader_hosted)
-    list(APPEND loader_targets loader_hosted)
-endif()
-
 foreach(target IN LISTS loader_targets)
     get_target_property(sources ${target} SOURCES)
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${sources})

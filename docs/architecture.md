@@ -29,39 +29,23 @@ folders.
 | `graphics/graphics` | Direct3D 8 hooks: device creation, reset and presentation |
 | `graphics/render_scale` | Resolution presets, automatic selection and the scale shader |
 | `graphics/screenshot` | F12 backbuffer capture and PNG encoding |
-| `hosted/` | Hosted play: WinHTTP client and WebSockets, Supabase PKCE sign-in with a cpp-httplib loopback callback, Credential Manager, play sessions and the loopback tunnel (see [hosted play](hosted.md)) |
 | `input/` | DirectInput factory hook and the mouse bridge |
 | `platform/system` | File-write boundary, virtual registry, message boxes |
 | `platform/network` | Connect/DNS redirection and the Viewer profile session |
 | `platform/desktop` | Removal of global keyboard hooks, cursor warping and focus stealing |
 | `platform/audio` | DirectSound 8 factory |
 | `platform/patch` | `replacePointer`, `setImport` and `writeCode` |
-| `ui/` | Game window, per-account preferences, the shared ImGui window host, the settings panel and the hosted launcher |
+| `ui/` | Game window, per-account preferences, the shared ImGui window host, and the settings panel |
 
 Hook functions are named `hooked<ApiName>`, for example `hookedCreateFileA` or
 `hookedPresent`.
-
-## Optional features
-
-Hosted play can be left out of a build. It has a CMake option, its own folders
-and static library, and a short list of places that refer to it, all behind
-`#ifdef TMLOADER_HOSTED`.
-
-| Option | Folders | Referenced from |
-|---|---|---|
-| `TMLOADER_HOSTED` | `hosted/`, `ui/launcher`, `ui/image` | `app/main` (launcher and session), `config/config` (`--hosted-server`, `--hosted-insecure-loopback`) |
-
-It defaults to on. Configure with `-DTMLOADER_HOSTED=OFF` to build without it;
-its options then disappear from `--help` and its tests are not built.
 
 ## Startup sequence
 
 1. `main` parses the configuration (`--config`, or `tmloader.ini` next to the
    executable) and verifies the DLL hashes and required assets. `--check`
    also hashes every file in the `retail-files.txt` beside the executable, then
-   stops without loading any DLL. In hosted mode the launcher then signs
-   in, creates the play session and starts the loopback tunnel; the game is
-   configured with the tunnel ports and the account the server returned.
+   stops without loading any DLL.
 2. The log is opened, then the process enters the runtime directory and
    disables DEP (the game executes generated code from data pages). It labels
    `pub/`, `logs/` and `settings/` writable at low integrity, then lowers its

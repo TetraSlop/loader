@@ -204,7 +204,7 @@ auto runImGuiWindow(const ImGuiWindowSpec& spec, const std::function<bool()>& fr
     const auto frameRect = placement(spec, scale);
     auto       state     = WindowState{};
     auto       style     = DWORD{ WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU };
-    // Owned windows minimize with their owner; a standalone launcher gets its own button.
+    // Owned windows minimize with their owner; a standalone window gets its own button.
     if (!spec.owner)
     {
         style |= WS_MINIMIZEBOX;

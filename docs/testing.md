@@ -14,7 +14,7 @@ python -m unittest discover -s tests/tools -v
 ```
 
 CTest discovers each Catch2 case individually and adds its tags as labels, so
-`-L hosted` or `-LE graphics-device` select or exclude a group.
+`-L config` or `-LE graphics-device` select or exclude a group.
 Assertions stay active in optimized builds. Tests that need an audio or
 graphics device report as skipped when none is available. Configure with
 `-DBUILD_TESTING=OFF` for a loader-only build; Catch2 is then not fetched.
@@ -26,15 +26,11 @@ The Python tests use only the standard library.
 | Area | Tests | Coverage |
 |---|---|---|
 | app | `abi_tests`, `runtime_tests` | COM slot dispatch against a fully named mock Viewer vtable (including the SetAreaCode slot 27 versus 25 regression), launch descriptor layout, low-integrity labels on writable folders |
-| hosted | `hosted_tests` | PKCE (RFC 7636 vector), the loopback sign-in callback (code, error, other paths, cancellation, timeout), server/token/play-session responses and error codes, origin rules, Credential Manager round trip. The hidden `[.gateway]` case runs against a live gateway through `tests/hosted/gateway_harness.py` (see [hosted play](hosted.md)) |
 | config | `config_tests` | Defaults, CLI-over-file precedence, duplicate and unknown keys, endpoints and ports, `ppNNN` hostname aliases, path boundaries, account ID and credential shape, SHA256, `retail-files.txt` parsing and the missing, wrong-hash and changed-settings reports |
 | graphics | `graphics_tests`, `render_scale_tests`, `screenshot_tests` | Device hooks, presentation and reset, scale shader and vertex-buffer dispatch, pixel-exact comparison of scaled rendering against a CPU-scaled reference at every preset, automatic resolution selection, PNG capture, row pitch, filename collisions and low-integrity writes |
 | input | `input_bridge_tests` | Focus and acquisition transitions, scaled and letterboxed mouse mapping, short-click latch |
 | platform | `audio_tests`, `desktop_tests`, `patch_tests`, `virtual_registry_tests` | DirectSound 8 buffer creation with `IDirectSoundBuffer8`, import replacement policy, guarded cursor patch, code writes on read-only pages, registry values and buffer contracts |
 | ui | `settings_ui_tests`, `window_messages_tests`, `window_settings_tests` | Settings panel layout at 100, 150 and 200% scaling, window message routing (close, Alt+F4, focus reclaim, cursor), JSON preference parsing and fallbacks |
-
-The hosted tests are built only when hosted play is
-enabled (see [optional features](architecture.md#optional-features)).
 
 Tests tagged `graphics-device` render through a real Direct3D 8 device. CI
 skips them; run them locally. The audio test needs a Windows audio

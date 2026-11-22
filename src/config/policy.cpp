@@ -11,9 +11,7 @@ namespace tmloader
 namespace
 {
 
-const auto kProfileAlias   = std::regex(R"(pp\d{3}\.pol\.com)", std::regex::icase);
-const auto kSecureOrigin   = std::regex(R"(https://[A-Za-z0-9.-]+(:\d{1,5})?)");
-const auto kLoopbackOrigin = std::regex(R"(http://127\.0\.0\.1:\d{1,5})");
+const auto kProfileAlias = std::regex(R"(pp\d{3}\.pol\.com)", std::regex::icase);
 
 } // namespace
 
@@ -27,11 +25,6 @@ auto isIpv4Address(const std::string& host) -> bool
 {
     auto address = IN_ADDR{};
     return InetPtonA(AF_INET, host.c_str(), &address) == 1 && address.s_addr != INADDR_NONE && address.s_addr != INADDR_ANY;
-}
-
-auto isAllowedOrigin(const std::string& origin, bool insecureLoopback) -> bool
-{
-    return std::regex_match(origin, kSecureOrigin) || (insecureLoopback && std::regex_match(origin, kLoopbackOrigin));
 }
 
 auto pathIsWithin(const std::filesystem::path& path, const std::filesystem::path& root) -> bool

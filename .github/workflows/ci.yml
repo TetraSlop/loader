@@ -90,9 +90,9 @@ jobs:
         run: cmake --build build --config Release --parallel 4
       - name: Run C++ tests without a graphics device
         run: ctest --test-dir build -C Release --output-on-failure --timeout 60 -LE graphics-device
-      - name: Build without the optional features
+      - name: Build the loader without tests
         run: |
-          cmake -S . -B build-minimal -A Win32 -DBUILD_TESTING=OFF -DTMLOADER_HOSTED=OFF
+          cmake -S . -B build-minimal -A Win32 -DBUILD_TESTING=OFF
           cmake --build build-minimal --config Release --parallel 4
       - name: Run Python tool and packaging tests
         run: python -m unittest discover -s tests/tools -v

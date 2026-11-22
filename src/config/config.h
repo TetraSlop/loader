@@ -22,13 +22,10 @@ struct Config
     std::string           password    = "tm-local-test";
     unsigned short        gamePort    = kClientGamePort;
     unsigned short        profilePort = 51220;
-    // Hosted mode: sign in through this HTTPS origin; it supplies the account and streams.
-    std::string hostedServer;
-    bool        insecureLoopback = false;
-    bool        diagnostics      = false;
-    bool        checkOnly        = false;
-    bool        help             = false;
-    bool        version          = false;
+    bool                  diagnostics = false;
+    bool                  checkOnly   = false;
+    bool                  help        = false;
+    bool                  version     = false;
 };
 
 auto parseConfig(const std::vector<std::string>& args) -> Config;
@@ -56,8 +53,6 @@ auto checkRetailFiles(const std::filesystem::path& list, const std::filesystem::
 auto describeRetailFailures(const RetailFileReport& report, size_t maxLines = 20) -> std::string;
 auto isProfileAlias(const char* host) -> bool;
 auto isIpv4Address(const std::string& host) -> bool;
-// An https:// origin, or http://127.0.0.1:PORT when insecure loopback is allowed.
-auto isAllowedOrigin(const std::string& origin, bool insecureLoopback) -> bool;
 auto pathIsWithin(const std::filesystem::path& path, const std::filesystem::path& root) -> bool;
 auto outputPathAllowed(const Config& config, const std::filesystem::path& path) -> bool;
 auto settingsPathAllowed(const Config& config, const std::filesystem::path& path) -> bool;
