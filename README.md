@@ -61,10 +61,6 @@ cmake --build build --config Release
 .\build\Release\tmloader.exe --config .\tmloader.ini --check
 ```
 
-Hosted play is optional; see
-[optional features](docs/architecture.md#optional-features) to build without
-it.
-
 `py tools/prepare_runtime.py` builds the ignored `runtime/` folder from your
 own install and writes a matching `tmloader.ini` (see [game files](#game-files)).
 Start the server, then run the loader without `--check`.
@@ -119,7 +115,6 @@ Paths are relative to `runtime-dir` unless absolute, and a relative
 | `--profile-port PORT` | `51220` | Profile port |
 | `--pol-id ID` | `EEEEEEEF` | Eight-character account ID |
 | `--password TEXT` | `tm-local-test` | Account password |
-| `--hosted-server URL` | | Sign in to a hosted server with Discord instead of `--server` (see [hosted play](docs/hosted.md)) |
 | `--diagnostics` | off | Extra logging, and screenshots at fixed startup frames |
 | `--check` | | Validate settings, DLL hashes and every file in `retail-files.txt`, then exit |
 | `--help`, `-h` | | Show help |
@@ -163,10 +158,9 @@ src/
   app/        entry point, loader, COM and Viewer ABI, logging, shared runtime
   config/     CLI and config parsing, endpoint and path rules, DLL validation
   graphics/   Direct3D 8 hooks, render scaling, screenshots
-  hosted/     Discord sign-in, play sessions and the WebSocket tunnel
   input/      DirectInput hook and mouse bridge
   platform/   file and registry boundary, network, desktop, audio, patching
-  ui/         game window, preferences, ImGui settings panel, hosted launcher
+  ui/         game window, preferences, ImGui settings panel
 tests/        Catch2 tests mirroring src/; Python tool tests in tests/tools
 tools/        packaging, release and formatting scripts
 docs/         documentation
@@ -176,7 +170,6 @@ docs/         documentation
 
 | Document | Description |
 |---|---|
-| [Hosted play](docs/hosted.md) | Discord sign-in, play sessions and the WebSocket tunnel for hosted servers |
 | [Architecture](docs/architecture.md) | Startup sequence, hooks per subsystem and reverse-engineered offsets |
 | [Testing](docs/testing.md) | Automated test coverage and manual in-game checks |
 | [C++ style](docs/cpp-style.md) | Formatting and coding conventions |

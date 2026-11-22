@@ -23,11 +23,6 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX DIRECTINPUT_VERSION=0x0800
     TMLOADER_VERSION="${PROJECT_VERSION}")
 add_compile_options(/W4 /EHsc /utf-8)
 
-option(TMLOADER_HOSTED "Hosted play with Discord sign-in (src/hosted)" ON)
-if(TMLOADER_HOSTED)
-    add_compile_definitions(TMLOADER_HOSTED)
-endif()
-
 find_package(Python3 3.10 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
     add_custom_target(format
