@@ -87,7 +87,7 @@ jobs:
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           emcmake cmake -G Ninja -S browser -B build/browser-wasm -DCMAKE_BUILD_TYPE=Release
           cmake --build build/browser-wasm
-          node build/browser-wasm/tmweb.js
+          (node build/browser-wasm/tmweb.js || true) | grep -q "usage: tmweb"
           ctest --test-dir build/browser-wasm --output-on-failure --timeout 120
       - name: Node runner and page (no game files)
         working-directory: browser/web
