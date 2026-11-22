@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <exception>
+#include <stdexcept>
 #include <wil/stl.h>
 #include <wil/win32_helpers.h>
 #ifdef TMLOADER_HOSTED
@@ -14,9 +15,37 @@ namespace
 
 using tmloader::Config;
 
+// A file shipped beside tmloader.exe.
+auto besideExecutable(const char* name) -> std::filesystem::path
+{
+    return std::filesystem::path(wil::GetModuleFileNameW<std::wstring>(nullptr)).replace_filename(name);
+}
+
 auto check(const Config& config) -> int
 {
     tmloader::validateRuntime(config);
+    const auto list = besideExecutable("retail-files.txt");
+    if (!std::filesystem::exists(list))
+    {
+        std::puts("No retail-files.txt beside tmloader.exe; checked the DLLs and required files only.");
+    }
+    else
+    {
+        const auto report = tmloader::checkRetailFiles(list, config.runtimeDir);
+        for (const auto& name : report.changed)
+        {
+            std::printf("Warning: %s differs from the factory copy, as expected once the Viewer has saved settings.\n", name.c_str());
+        }
+
+        std::fflush(stdout);
+        if (const auto failures = tmloader::describeRetailFailures(report); !failures.empty())
+        {
+            throw std::runtime_error(failures);
+        }
+
+        std::printf("Retail files verified: %zu.\n", report.checked);
+    }
+
     std::puts("Runtime verified.");
     return 0;
 }
@@ -29,8 +58,7 @@ auto withDefaultConfig(std::vector<std::string> args) -> std::vector<std::string
         return args;
     }
 
-    const auto executable = wil::GetModuleFileNameW<std::wstring>(nullptr);
-    const auto config     = std::filesystem::path(executable).replace_filename("tmloader.ini");
+    const auto config = besideExecutable("tmloader.ini");
     if (std::filesystem::exists(config))
     {
         args.insert(args.begin(), { "--config", config.string() });

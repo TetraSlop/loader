@@ -50,6 +50,9 @@ set_target_properties(tmloader PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BI
 # The game DLL executes generated code and expects fixed addresses. CMake embeds
 # the default asInvoker manifest for every generator.
 target_link_options(tmloader PRIVATE /ENTRY:mainCRTStartup /NXCOMPAT:NO /DYNAMICBASE:NO)
+# --check reads the retail file list from beside the executable, as in the release archive.
+add_custom_command(TARGET tmloader POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${PROJECT_SOURCE_DIR}/retail-files.txt" "$<TARGET_FILE_DIR:tmloader>")
 set(loader_targets loader_common loader_config tmloader)
 
 # Optional features. Each lives in its own folder and is switched in the

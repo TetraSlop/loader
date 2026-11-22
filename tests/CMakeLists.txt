@@ -18,6 +18,7 @@ add_test(NAME cli_help COMMAND tmloader --help)
 
 loader_test(config_tests config/config_tests.cpp)
 target_link_libraries(config_tests PRIVATE loader_config)
+target_compile_definitions(config_tests PRIVATE TMLOADER_RETAIL_FILES="${PROJECT_SOURCE_DIR}/retail-files.txt")
 
 loader_test(render_scale_tests
     graphics/render_scale_tests.cpp

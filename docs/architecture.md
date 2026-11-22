@@ -58,7 +58,8 @@ its options then disappear from `--help` and its tests are not built.
 
 1. `main` parses the configuration (`--config`, or `tmloader.ini` next to the
    executable) and verifies the DLL hashes and required assets. `--check`
-   stops here without loading any DLL. In hosted mode the launcher then signs
+   also hashes every file in the `retail-files.txt` beside the executable, then
+   stops without loading any DLL. In hosted mode the launcher then signs
    in, creates the play session and starts the loopback tunnel; the game is
    configured with the tunnel ports and the account the server returned.
 2. The log is opened, then the process enters the runtime directory and

@@ -1,8 +1,13 @@
 #include "config/config.h"
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <string>
+#include <string_view>
+#include <vector>
 
 using namespace tmloader;
 
@@ -191,4 +196,120 @@ TEST_CASE("only the logs and settings folders are writable", "[config]")
     }
 
     std::filesystem::remove_all(runtime);
+}
+
+namespace
+{
+
+auto lowerHex(std::string_view text) -> std::string
+{
+    auto digest = sha256Hex(text.data(), text.size());
+    std::ranges::transform(digest, digest.begin(), [](unsigned char c) -> char
+                           {
+                               return static_cast<char>(std::tolower(c));
+                           });
+    return digest;
+}
+
+// A runtime folder with a game DLL, a data file and Viewer settings, and a list of all three.
+struct RetailFixture
+{
+    std::filesystem::path runtime = fixturePath("retail-fixture");
+    std::filesystem::path list    = fixturePath("retail-fixture.txt");
+
+    RetailFixture()
+    {
+        REQUIRE_FALSE(std::filesystem::exists(runtime));
+        write("TM_native.dll", "game");
+        write("data/gW201.dat", "art");
+        write("pub/home00/option.bin", "factory");
+        auto out = std::ofstream(list, std::ios::binary);
+        out << "# comment\r\n\r\n";
+        out << lowerHex("game") << "  TM_native.dll\r\n";
+        out << lowerHex("art") << " *data/gW201.dat\n";
+        out << lowerHex("factory") << "  pub/home00/option.bin\n";
+    }
+
+    ~RetailFixture()
+    {
+        std::filesystem::remove_all(runtime);
+        std::filesystem::remove(list);
+    }
+
+    RetailFixture(const RetailFixture&)                    = delete;
+    auto operator=(const RetailFixture&) -> RetailFixture& = delete;
+
+    void write(const char* name, std::string_view text) const
+    {
+        std::filesystem::create_directories((runtime / name).parent_path());
+        std::ofstream(runtime / name, std::ios::binary) << text;
+    }
+};
+
+} // namespace
+
+TEST_CASE("a runtime matching its retail list passes", "[config]")
+{
+    const auto fixture = RetailFixture{};
+    const auto report  = checkRetailFiles(fixture.list, fixture.runtime);
+    REQUIRE(report.checked == 3);
+    REQUIRE(report.missing.empty());
+    REQUIRE(report.mismatched.empty());
+    REQUIRE(report.changed.empty());
+    REQUIRE(describeRetailFailures(report).empty());
+}
+
+TEST_CASE("missing and changed retail files are reported", "[config]")
+{
+    const auto fixture = RetailFixture{};
+    std::filesystem::remove(fixture.runtime / "TM_native.dll");
+    fixture.write("data/gW201.dat", "other art");
+    const auto report = checkRetailFiles(fixture.list, fixture.runtime);
+    REQUIRE(report.missing == std::vector<std::string>{ "TM_native.dll" });
+    REQUIRE(report.mismatched == std::vector<std::string>{ "data/gW201.dat" });
+    const auto text = describeRetailFailures(report);
+    REQUIRE(text.starts_with("2 of 3 retail files"));
+    REQUIRE(text.contains("missing: TM_native.dll"));
+    REQUIRE(text.contains("wrong hash: data/gW201.dat"));
+}
+
+TEST_CASE("saved Viewer settings are a warning, not a failure", "[config]")
+{
+    const auto fixture = RetailFixture{};
+    fixture.write("pub/home00/option.bin", "saved");
+    const auto report = checkRetailFiles(fixture.list, fixture.runtime);
+    REQUIRE(report.changed == std::vector<std::string>{ "pub/home00/option.bin" });
+    REQUIRE(report.mismatched.empty());
+    REQUIRE(describeRetailFailures(report).empty());
+}
+
+TEST_CASE("a long failure list is cut short", "[config]")
+{
+    auto report     = RetailFileReport{};
+    report.checked  = 30;
+    report.missing  = std::vector<std::string>(25, "data/x.dat");
+    const auto text = describeRetailFailures(report, 20);
+    REQUIRE(text.contains("... and 5 more"));
+}
+
+TEST_CASE("malformed or escaping retail list lines are rejected", "[config]")
+{
+    const auto runtime = fixturePath("retail-bad-fixture");
+    const auto list    = fixturePath("retail-bad-fixture.txt");
+    const auto digest  = lowerHex("x");
+    for (const auto& line : { std::string("not a hash  file"), digest + " file", digest.substr(1) + "  file", digest + "  ../outside.dll", digest + "  C:/outside.dll", digest + "  /outside.dll" })
+    {
+        CAPTURE(line);
+        std::ofstream(list, std::ios::binary) << line << '\n';
+        REQUIRE_THROWS_AS(checkRetailFiles(list, runtime), std::runtime_error);
+    }
+
+    std::filesystem::remove(list);
+}
+
+TEST_CASE("the shipped retail list parses", "[config]")
+{
+    const auto report = checkRetailFiles(TMLOADER_RETAIL_FILES, fixturePath("retail-empty-runtime"));
+    REQUIRE(report.checked > 100);
+    REQUIRE(report.missing.size() == report.checked);
 }

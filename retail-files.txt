@@ -2,7 +2,9 @@
 #
 # They come from your own PlayOnline install of Tetra Master and are not
 # distributed with tmloader. Copy them into the runtime folder with the paths
-# below (tools/prepare_runtime.py does this), then check them from that folder:
+# below (tools/prepare_runtime.py does this). tmloader.exe --check reads this
+# file from beside tmloader.exe and checks every line; so does this, run from
+# the runtime folder:
 #
 #     sha256sum -c ../retail-files.txt
 #

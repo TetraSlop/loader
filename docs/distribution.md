@@ -28,8 +28,8 @@ paths in `retail-files.txt`:
 
 From a source checkout, `py tools/prepare_runtime.py` does this (see the
 [README](../README.md#game-files)). `sha256sum -c ../retail-files.txt`, run in
-`runtime/`, checks the copy, and `tmloader.exe --check` verifies the DLL hashes
-and required files.
+`runtime/`, checks the copy. `tmloader.exe --check` does the same, against the
+`retail-files.txt` beside it, and also verifies the settings.
 
 Edit `tmloader.ini` with the server address, ports and account from the server
 operator, then run `tmloader.exe`.

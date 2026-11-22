@@ -74,8 +74,16 @@ Start the server, then run the loader without `--check`.
 tmloader does not include any game files. They come from your own PlayOnline
 install of Tetra Master, and [`retail-files.txt`](retail-files.txt) lists each
 one the runtime folder needs, with its SHA256 and where it comes from in a
-standard install. To check a copy, run `sha256sum -c ../retail-files.txt` from
-the runtime folder.
+standard install.
+
+`tmloader.exe --check` reads `retail-files.txt` from beside `tmloader.exe` and
+hashes every listed file in the runtime folder. It names each file that is
+missing or has the wrong hash, and fails if there are any. A changed
+`pub/home00/option.bin` is only a warning, because the Viewer rewrites it when
+settings are saved. Without `retail-files.txt` beside it, `--check` verifies only
+the two DLL hashes and the files the loader opens itself. Release archives and
+source builds both put the list beside the executable. Outside the loader, run
+`sha256sum -c ../retail-files.txt` from the runtime folder.
 
 In a source checkout, `tools/prepare_runtime.py` copies them for you. Pass the
 Tetra Master game folder and the PlayOnline Viewer folder:
@@ -113,7 +121,7 @@ Paths are relative to `runtime-dir` unless absolute, and a relative
 | `--password TEXT` | `tm-local-test` | Account password |
 | `--hosted-server URL` | | Sign in to a hosted server with Discord instead of `--server` (see [hosted play](docs/hosted.md)) |
 | `--diagnostics` | off | Extra logging, and screenshots at fixed startup frames |
-| `--check` | | Validate settings, DLL hashes and assets, then exit |
+| `--check` | | Validate settings, DLL hashes and every file in `retail-files.txt`, then exit |
 | `--help`, `-h` | | Show help |
 | `--version` | | Show the version |
 
