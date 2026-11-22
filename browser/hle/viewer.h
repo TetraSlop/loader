@@ -7,6 +7,8 @@
 // account, and the first open check (133) that succeeds seeds the profile cipher and loads the handles, characters
 // and status the Viewer normally loads before it starts the game. browser/docs/polcore.md has the measurements.
 //
+// polcore's Game IRC login takes passwords of at most 15 characters; load() refuses a longer one.
+//
 // The internal addresses are valid only for the pinned build (SHA-256 73B1864B...); load() checks its PE identity
 // and the setup checks the table's address, as tmloader does.
 //

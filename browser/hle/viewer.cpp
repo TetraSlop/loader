@@ -24,6 +24,9 @@ constexpr auto kCoreInterface = Guid{ 0x54, 0x66, 0x51, 0xe0, 0x77, 0xef, 0x5d, 
 constexpr std::uint32_t kTimeDateStamp = 0x4E4E5917;
 constexpr std::uint32_t kSizeOfImage   = 0x451000;
 
+// Game IRC open copies the password into a 16-byte buffer: a longer one overwrites polcore's stack
+constexpr std::size_t kMaxPassword = 15;
+
 constexpr unsigned kCreateInstance = 3; // IClassFactory slot
 constexpr unsigned kSetParamInit   = 5; // core slots (app/abi.h)
 constexpr unsigned kGetCommonTable = 7;
@@ -300,6 +303,10 @@ void Viewer::load(const std::span<const std::uint8_t> file)
     if (at(pe + 8) != kTimeDateStamp || at(pe + 24 + 56) != kSizeOfImage)
     {
         throw std::runtime_error("polcore_native.dll is not the supported build");
+    }
+    if (login_.password.size() > kMaxPassword)
+    {
+        throw std::runtime_error(std::format("the account's password has {} characters; polcore's Game IRC login takes at most {}", login_.password.size(), kMaxPassword));
     }
     auto& machine   = process_.machine;
     process_.viewer = loadImage(machine.memory(), machine.boundary(), file, layout::kViewerImage);
