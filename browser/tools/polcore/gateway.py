@@ -1,76 +1,45 @@
-# A local tmserver gateway for the browser build's scripted Game IRC login: the game and profile services and the
-# HTTP/WebSocket gateway with its browser streams (tmserver docs/LOADER_AUTH_SPEC.md, "Browser clients"), on
-# loopback. Sign-in uses a stand-in verifier, as tmserver's own gateway tests do, until tmserver has a loopback
-# dev sign-in. Writes the play session the Node runner reads (run.mjs --session) and serves until killed.
-# Usage: TMSERVER=<tmserver checkout> python gateway.py session.json [--origin http://localhost:5173]
+# tmserver's game and profile services and its gateway with the loopback dev identity (tmserver
+# docs/LOADER_AUTH_SPEC.md, "Local development without Supabase"), in one process as tmserver's own dev-identity
+# test runs them: an in-memory store, so neither PostgreSQL nor the x86 rules bridge is needed for a login. For the
+# Node runner's scripted Game IRC login: run.mjs --sign-in http://127.0.0.1:8081 --as <name>. A full
+# `tmserver --auth-dev-identity` serves the same routes. Serves until killed.
+# Usage: TMSERVER=<tmserver checkout> python gateway.py [--port 8081]
 import argparse
 import asyncio
-import json
 import os
 import sys
 import tempfile
 from pathlib import Path
 
-ACCOUNT = "11111111-1111-4111-8111-111111111111"  # a stand-in identity, bound to the first local POL ID
-
 
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("session")
-    parser.add_argument("--origin", default="http://localhost:5173")
+    parser.add_argument("--port", type=int, default=8081)
     args = parser.parse_args()
     root = os.environ.get("TMSERVER")
     if not root:
-        sys.exit("set TMSERVER to a tmserver checkout with browser streams (PR #19)")
+        sys.exit("set TMSERVER to a tmserver checkout with the dev identity (tmserver main)")
     sys.path[:0] = [str(Path(root) / "src"), root]
 
-    import httpx
     from tests.support.memory_store import MemoryStore
-    from tmserver.auth.config import AuthConfig
-    from tmserver.auth.provider import Subject
-    from tmserver.auth.web import create_app
-    from tmserver.network.http import serving_http
+    from tmserver.auth.config import load_auth_config
+    from tmserver.auth.server import serving_auth
     from tmserver.network.server import Server
     from tmserver.profiles.service import ProfileServer
 
-    class Verifier:
-        issuer = "https://example.supabase.co/auth/v1"
-
-        async def verify(self, token):
-            return Subject(issuer=self.issuer, subject=token, display_name="Browser Player")
-
-    with tempfile.TemporaryDirectory() as directory:
+    with tempfile.TemporaryDirectory() as folder:
         host = Server(store=MemoryStore())
-        profile = ProfileServer(Path(directory) / "profile.log", host)
+        profile = ProfileServer(Path(folder) / "profile.jsonl", host)
         await host.start(0)
         await profile.start(0)
-        config = AuthConfig(supabase_url="https://example.supabase.co", publishable_key="sb_publishable_test_only",
-                            public_origin="https://tm.example", browser_origins=[args.origin],
-                            bindings={ACCOUNT: "EEEEEEEF"})
-        apps = []
-
-        def application(port):
-            apps.append(create_app(host, profile, config, Verifier(), public_origin=f"http://127.0.0.1:{port}"))
-            return apps[-1]
-
-        async with serving_http(application, port=0, websockets=True) as listener:
-            base = f"http://127.0.0.1:{listener.port}"
-            async with httpx.AsyncClient(base_url=base, trust_env=False) as http:
-                page = {"Origin": args.origin}
-                ticket = await http.post("/v1/play/tickets", json={"protocol": 1},
-                                         headers=page | {"Authorization": "Bearer " + ACCOUNT})
-                ticket.raise_for_status()
-                session = await http.post("/v1/play/sessions", json={"ticket": ticket.json()["ticket"]}, headers=page)
-                session.raise_for_status()
-            play = session.json() | {"origin": args.origin}
-            Path(args.session).write_text(json.dumps(play, indent=1))
-            print(f"gateway {base}: game {play['streams']['game']}, profile {play['streams']['profile']}", flush=True)
-            try:
+        try:
+            async with serving_auth(host, profile, load_auth_config(Path(root) / "examples" / "auth-dev.json"),
+                                    port=args.port, insecure_loopback=True, dev_identity=True) as auth:
+                print(f"gateway http://127.0.0.1:{auth.port} with the dev identity", flush=True)
                 await asyncio.Event().wait()
-            finally:
-                apps[-1].state.play_sessions.close()
-                await profile.stop()
-                await host.stop()
+        finally:
+            await profile.stop()
+            await host.stop()
 
 
 if __name__ == "__main__":
