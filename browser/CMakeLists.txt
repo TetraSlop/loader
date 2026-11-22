@@ -31,6 +31,7 @@ target_include_directories(softfloat PUBLIC third_party/softfloat third_party/so
 target_compile_options(softfloat PRIVATE $<IF:$<C_COMPILER_ID:MSVC>,/W0,-w>)
 
 add_library(tmweb_core STATIC
+    com/proxies.cpp
     core/boundary.cpp
     core/cpu.cpp
     core/machine.cpp
@@ -53,6 +54,60 @@ endif()
 add_library(tmweb_host OBJECT app/boot.cpp host/host.cpp)
 target_link_libraries(tmweb_host PUBLIC tmweb_core)
 target_link_libraries(tmweb_core PRIVATE softfloat)
+
+# Kestrel's Direct3D 8 on WebGL2, DirectInput and DirectSound (compat/, see README.md). They are written against
+# the Windows headers, which mingw-w64 supplies, so they build for Wasm only.
+if(EMSCRIPTEN)
+    include(FetchContent)
+    FetchContent_Declare(mingw_w64
+        URL https://sourceforge.net/projects/mingw-w64/files/mingw-w64/mingw-w64-release/mingw-w64-v14.0.0.tar.bz2/download
+        URL_HASH SHA256=6eaf921d9eb987d3820b364ea9775bc19b965ec81490b6fdd716526c28e1995c
+        DOWNLOAD_NAME mingw-w64-v14.0.0.tar.bz2
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(mingw_w64)
+    set(MINGW_HEADERS ${mingw_w64_SOURCE_DIR}/mingw-w64-headers)
+
+    # mingw-w64's own build makes _mingw.h from this template, by default for the UCRT and Windows 10. Each Windows
+    # header compat/ names is read through a wrapper that opens it between mingw_begin.h and mingw_end.h.
+    set(WIN32_DIR ${CMAKE_CURRENT_BINARY_DIR}/win32)
+    set(DEFAULT_MSVCRT_VERSION 0xE00)
+    set(DEFAULT_WIN32_WINNT 0xa00)
+    configure_file(${MINGW_HEADERS}/crt/_mingw.h.in ${WIN32_DIR}/_mingw.h @ONLY)
+    foreach(header dinput.h dsound.h mmsystem.h objbase.h unknwn.h windows.h winerror.h)
+        file(CONFIGURE OUTPUT ${WIN32_DIR}/${header}
+            CONTENT "#include <mingw_begin.h>
+#include_next <${header}>
+#include <mingw_end.h>
+")
+    endforeach()
+
+    file(GLOB COMPAT_SOURCES CONFIGURE_DEPENDS compat/dx/*.cpp compat/gl/*.cpp compat/win32/*.cpp)
+    add_library(tmweb_compat STATIC ${COMPAT_SOURCES})
+    target_include_directories(tmweb_compat SYSTEM PUBLIC ${WIN32_DIR} compat/win32 compat/dx compat)
+    # Kestrel's style, not ours to change
+    target_compile_options(tmweb_compat PRIVATE -Wno-unused-parameter)
+    # After the C library's own headers, so mingw-w64 only fills in what musl lacks
+    target_compile_options(tmweb_compat PUBLIC
+        "SHELL:-idirafter ${MINGW_HEADERS}/include"
+        "SHELL:-idirafter ${MINGW_HEADERS}/crt"
+        # MSVC code: __declspec, anonymous structs
+        -fms-extensions
+        -fdeclspec
+        -fno-strict-aliasing
+        # Wasm has no __stdcall, which the COM interfaces declare
+        -Wno-ignored-attributes
+        # mingw-w64's headers
+        -Wno-pragma-pack
+        -Wno-unknown-pragmas)
+    # INITGUID defines each GUID where a header declares it, as a selectany constant the linker folds
+    target_compile_definitions(tmweb_compat PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN INITGUID)
+    target_link_options(tmweb_compat PUBLIC -lGL -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2
+        --js-library=${CMAKE_CURRENT_SOURCE_DIR}/compat/gl/gl.js)
+
+    # d3d8.dll, dinput8.dll and dsound.dll for the guest, on compat's objects
+    add_library(tmweb_directx STATIC com/directx.cpp)
+    target_link_libraries(tmweb_directx PUBLIC tmweb_core tmweb_compat)
+endif()
 
 add_executable(tmweb app/main.cpp)
 target_link_libraries(tmweb PRIVATE tmweb_core)
@@ -79,18 +134,22 @@ if(EMSCRIPTEN)
 endif()
 
 include(CTest)
-if(BUILD_TESTING AND NOT EMSCRIPTEN)
+if(BUILD_TESTING)
     include(FetchContent)
     FetchContent_Declare(Catch2
         URL https://github.com/catchorg/Catch2/archive/refs/tags/v3.16.0.tar.gz
         URL_HASH SHA256=0957cae5821b17ce07f0833aaa52b5137643a8382203221f363a8303c109af34
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
     FetchContent_MakeAvailable(Catch2)
+endif()
+if(BUILD_TESTING AND NOT EMSCRIPTEN)
     add_executable(tmweb_tests
+        tests/boundary_com_test.cpp
         tests/cpu_test.cpp
         tests/host_test.cpp
         tests/f80_test.cpp
         tests/memory_test.cpp
+        tests/proxies_test.cpp
         tests/threads_test.cpp
         tests/x87_test.cpp
     )
@@ -114,4 +173,14 @@ endif()
 if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
     add_executable(f80_hostdiff tests/f80_hostdiff.cpp)
     target_link_libraries(f80_hostdiff PRIVATE tmweb_core)
+endif()
+
+if(BUILD_TESTING AND EMSCRIPTEN)
+    # What only builds for Wasm, under Node: node build/browser-wasm/tmweb_wasm_tests.js. One guest arena per
+    # process, so the tests share one machine.
+    add_executable(tmweb_wasm_tests tests/directx_test.cpp)
+    target_link_libraries(tmweb_wasm_tests PRIVATE tmweb_directx Catch2::Catch2WithMain)
+    target_link_options(tmweb_wasm_tests PRIVATE -sENVIRONMENT=node -sALLOW_MEMORY_GROWTH=1
+        -sINITIAL_MEMORY=448MB -sMAXIMUM_MEMORY=2GB -sSTACK_SIZE=4MB -sEXIT_RUNTIME=1)
+    add_test(NAME tmweb_wasm_tests COMMAND node $<TARGET_FILE:tmweb_wasm_tests>)
 endif()

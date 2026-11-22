@@ -104,14 +104,24 @@ auto Boundary::find(std::uint32_t) const -> const Function*
     return nullptr;
 }
 
-auto Boundary::addInterface(std::string_view, std::span<const Method>) -> std::uint32_t
+auto Boundary::addInterface(const std::string_view name, const std::span<const Method> methods) -> std::uint32_t
 {
-    throw std::logic_error("Boundary::addInterface is not implemented yet");
+    const auto vtable = memory_.allocate(static_cast<std::uint32_t>(4 * methods.size()), 4);
+    for (std::uint32_t index = 0; const auto& method : methods)
+    {
+        const auto entry = newSlot(Function{ std::string{ name }, method.name, Convention::Stdcall, method.argc, method.handler });
+        memory_.write<std::uint32_t>(vtable + 4 * index++, entry);
+    }
+    return vtable;
 }
 
-auto Boundary::newObject(std::uint32_t, std::shared_ptr<void>) -> std::uint32_t
+auto Boundary::newObject(const std::uint32_t vtable, std::shared_ptr<void> host) -> std::uint32_t
 {
-    throw std::logic_error("Boundary::newObject is not implemented yet");
+    const auto object = memory_.allocate(8, 8);
+    memory_.write<std::uint32_t>(object, vtable);
+    memory_.write<std::uint32_t>(object + 4, static_cast<std::uint32_t>(objects_.size()));
+    objects_.push_back(std::move(host));
+    return object;
 }
 
 void Boundary::observe(std::function<void(const Call&)> observer)
@@ -139,9 +149,15 @@ auto Boundary::newSlot(Function) -> std::uint32_t
     return 0;
 }
 
-auto Boundary::objectHost(std::uint32_t) const -> void*
+// Null for a null or unmapped pointer or a cookie newObject never gave; the guest can forge the rest
+auto Boundary::objectHost(const std::uint32_t guestObject) const -> void*
 {
-    return nullptr;
+    if (guestObject == 0 || !memory_.mapped(guestObject, 8))
+    {
+        return nullptr;
+    }
+    const auto cookie = memory_.read<std::uint32_t>(guestObject + 4);
+    return cookie < objects_.size() ? objects_[cookie].get() : nullptr;
 }
 
 } // namespace tmweb

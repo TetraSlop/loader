@@ -95,6 +95,8 @@ jobs:
           npm ci
           npm test
           npm run build
+      - name: Wasm-only tests under Node (no game files)
+        run: node build/browser-wasm/tmweb_wasm_tests.js
 
   build:
     name: Windows x86

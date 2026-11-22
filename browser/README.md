@@ -19,8 +19,11 @@ This branch (`feat/browser-client`) is separate from `main` and is not merged in
 - **Threads and the run loop**: TEBs and stacks, waits with timeouts, round robin, idle reporting, structured
   exceptions handed to `Machine::raise`, and `callGuest` for callbacks.
 - **The x87's arithmetic** (`f80/`), checked against a real x87 (see "The x87 in software").
-- Not yet: the Win32 stand-ins and the protector unpack in C++ (`Boundary::dispatch`, `Machine::raise`, `boot`),
-  and the COM bridge.
+- COM proxies: guest vtables for host objects, generated from the C++ method types (`com/proxies.h`).
+- d3d8.dll, dinput8.dll and dsound.dll on compat's objects (`com/directx.cpp`, Wasm only): every slot of the
+  interfaces they hand out, locks through guest staging buffers, and CreateDevice setting the x87 to 24-bit precision.
+  Enumeration callbacks go through `Machine::callGuest`; volume texture locks halt.
+- Not yet: the Win32 stand-ins and the protector unpack in C++ (`Boundary::dispatch`, `Machine::raise`, `boot`).
 
 ## Layout
 
@@ -34,8 +37,10 @@ This branch (`feat/browser-client`) is separate from `main` and is not merged in
 | `host/host.h` | The module's way out: log, keyboard and mouse, sound, stream sockets, and the exports the host drives |
 | `web/` | The host side: the Node runner, the page and its worker, input, WebAudio, the game-file picker, the WebSocket transport |
 | `f80/f80.h` | The 80-bit soft float the x87 runs on, on Berkeley SoftFloat 3e (`third_party/softfloat`) |
+| `com/` | COM proxies, and the DirectX DLLs built on them |
+| `compat/` | Kestrel's Direct3D 8 on WebGL2, DirectInput and DirectSound (Wasm only; see Origins) |
 | `app/` | The command-line entry for Node and native runs |
-| `tests/` | Catch2 tests, native only |
+| `tests/` | Catch2 tests: native ones, and `directx_test.cpp`, which builds for Wasm only and runs under Node |
 | `tools/` | Local checks with the user's files: `difftest.py`, `rules.py`, the Unicorn reference run in `reference/`, the C interface they use (`capi.cpp`) and the polcore research in `polcore/` |
 | `docs/` | Design notes: `polcore.md` |
 
@@ -56,6 +61,9 @@ cmake -G Ninja -S browser -B build/browser
 cmake --build build/browser
 ctest --test-dir build/browser --output-on-failure
 ```
+
+The Wasm build also makes `tmweb_wasm_tests.js`, for what builds only there: `node build/browser-wasm/tmweb_wasm_tests.js`.
+compat/ is written against the Windows headers, so the Wasm build downloads mingw-w64 v14.0.0's (hash-pinned).
 
 ## Node runner and page
 
@@ -160,3 +168,13 @@ taken.
 Code taken from Kestrel's port (the owner's theater-fit `kestrel/port/compat`, commit `e1240c4`, GPL-3.0) is noted
 in the file that holds it. `web/input.js` and `web/speakers.js` are taken from theater-fit's `kestrel/port/run/`
 (commit `658d8c2`), the owner's code, relicensed here under GPL-3.0.
+
+`compat/` is that port's `dx/` (Direct3D 8, D3DX pixel formats, DirectInput, DirectSound), `gl/` and the
+`win32/` header shims they need, copied unchanged at `e1240c4` except:
+
+- The DirectX 8 SDK's headers are not used. `dx/d3d8.h` reads mingw-w64's own `d3d8.h` (Wine's, LGPL-2.1+), and
+  `dx/d3dx8.h` is ours: just `D3DXMATRIX`, `D3DXMatrixMultiply` and two filter constants, which `gl/` and
+  `dx/d3dx8_pixels.cpp` use. The game links its own D3DX.
+- `dx/d3dx8_math.cpp` keeps only `D3DXMatrixMultiply`.
+- `NullDevice::SetCursorPosition` takes `UINT` coordinates, as Wine's header declares it (the SDK's takes `int`).
+- `win32/guids.cpp` holds the two GUID definitions from the port's `win32/impl/com.cpp`.
