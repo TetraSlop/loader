@@ -1,8 +1,9 @@
 // The stream sockets' transport (host/host.h, Socket): one binary WebSocket per guest connection, in the page's worker
 // and under Node alike, shaped for tmserver's gateway streams (docs/LOADER_AUTH_SPEC.md, "Browser clients"): the
 // tm-stream-v1 subprotocol, the play-session token as the first text message, then raw stream bytes both ways.
-// route(address, port) gives { url, token } for a guest's address:port, or nothing for none. Until sign-in lands no
-// route exists, so the default refuses every connect.
+// route(address, port) gives { url, token, origin } for a guest's address:port, or nothing for none. Until sign-in
+// lands no route exists, so the default refuses every connect. origin is for Node only, whose WebSocket sends none
+// unless told: the gateway takes a browser stream by its listed Origin. A page's WebSocket sends its own.
 
 export const SocketEvent = { Opened: 0, Received: 1, Closed: 2, Failed: 3 };
 
@@ -25,7 +26,7 @@ export function webSocketTransport(route = () => undefined, log = () => {}) {
       const to = route(address, port);
       // Asynchronous, as a WebSocket's own failure is: the guest sees the socket Connecting first
       if (!to) return void queueMicrotask(() => event(id, SocketEvent.Failed));
-      const ws = new WebSocket(to.url, "tm-stream-v1");
+      const ws = to.origin ? new WebSocket(to.url, { protocols: ["tm-stream-v1"], headers: { Origin: to.origin } }) : new WebSocket(to.url, "tm-stream-v1");
       ws.binaryType = "arraybuffer";
       open.set(id, ws);
       ws.onopen = () => {

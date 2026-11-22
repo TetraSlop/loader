@@ -187,6 +187,7 @@ namespace
 {
 
 std::unique_ptr<tmweb::Machine> g_machine;
+tmweb::hle::BootOptions         g_options;
 std::uint64_t                   g_instructions = 0;
 bool                            g_halted       = false;
 
@@ -244,6 +245,32 @@ auto traceLine(const tmweb::Call& call) -> std::string
     return line;
 }
 
+extern "C" auto tmweb_configure(const char* key, const char* value) -> int
+{
+    const auto name = std::string_view{ key }, text = std::string_view{ value };
+    if (name == "viewer" && (text == "polcore" || text == "stub"))
+    {
+        g_options.realViewer = text == "polcore";
+    }
+    else if (name == "probe" || name == "keygen")
+    {
+        (name == "probe" ? g_options.probe : g_options.keygenStandIns) = text == "1";
+    }
+    else if (name == "pol_id")
+    {
+        g_options.login.polId = text;
+    }
+    else if (name == "password")
+    {
+        g_options.login.password = text;
+    }
+    else
+    {
+        return 1;
+    }
+    return 0;
+}
+
 extern "C" auto tmweb_boot(const char* root, const int trace, const char* until) -> int
 {
     using tmweb::host::log;
@@ -277,7 +304,7 @@ extern "C" auto tmweb_boot(const char* root, const int trace, const char* until)
     tmweb::host::g_inputState = {};
     tmweb::host::g_inputListeners.clear();
     tmweb::host::g_frames = 0;
-    tmweb::boot(*g_machine, root);
+    tmweb::boot(*g_machine, root, g_options);
     return 0;
 }
 

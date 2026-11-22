@@ -21,7 +21,7 @@ static_assert(static_cast<int>(host::InputKind::Key) == static_cast<int>(hle::In
 // The stand-ins keep the boot and the folder alive; a failure halts the machine with the reason, so the host's
 // first run reports it. The host's keyboard and mouse go to user32's queue, and what the game writes to the host's
 // copy of the folder.
-void boot(Machine& machine, const std::filesystem::path& runtime)
+void boot(Machine& machine, const std::filesystem::path& runtime, const hle::BootOptions& options)
 {
     try
     {
@@ -50,7 +50,7 @@ void boot(Machine& machine, const std::filesystem::path& runtime)
 #endif
         auto files         = std::make_shared<hle::DiskFiles>(runtime);
         files->written     = host::fileWritten;
-        const auto started = std::weak_ptr<hle::Boot>{ hle::Boot::start(machine, std::move(files)) };
+        const auto started = std::weak_ptr<hle::Boot>{ hle::Boot::start(machine, std::move(files), options) };
         host::onInput([started](const host::InputEvent& event)
                       {
                           if (const auto boot = started.lock())

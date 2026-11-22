@@ -1,16 +1,22 @@
 // The Node runner: boots the module on a runtime folder and runs it to a stop condition, printing its log.
 //   node browser/web/run.mjs <runtime folder> [--module tmweb-web.mjs] [--budget N] [--until module!name] [--trace]
-//                            [--slice N] [--idle-ms N]
+//                            [--slice N] [--idle-ms N] [--viewer polcore|stub] [--probe] [--session play.json]
 // --budget stops after N instructions (default: none). --until halts at the first call to that stand-in, as
 // "kernel32.dll!CreateFileA" or "d3d8.dll!Direct3DCreate8". --trace logs every stand-in call. --slice is the
 // instructions per run call; between calls socket events arrive. --idle-ms stops once the guest has been idle that
 // long (every thread waiting on the host). The module defaults to $TMWEB_MODULE, then build/browser-wasm.
+// --viewer polcore runs the user's polcore_native.dll instead of the stand-in Viewer; --probe then logs in to Game IRC
+// and loads the profile instead of booting TM.dll. --session is a tmserver play session (POST /v1/play/sessions, as
+// browser/tools/polcore/gateway.py writes it, with "origin" added): its account logs in, and the game port (51241)
+// and the profile port (51220) go to its game and profile streams.
 // Exit code: 0 once it stopped, 1 when the module would not boot, 2 for bad usage.
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import fs from "node:fs";
 import { loadTmweb, ROOT, RunState } from "./module.js";
+import { webSocketTransport } from "./transport.js";
 
 const { values: o, positionals } = parseArgs({
   allowPositionals: true,
@@ -21,6 +27,9 @@ const { values: o, positionals } = parseArgs({
     trace: { type: "boolean", default: false },
     slice: { type: "string", default: "1000000" },
     "idle-ms": { type: "string", default: "10000" },
+    viewer: { type: "string", default: "stub" },
+    probe: { type: "boolean", default: false },
+    session: { type: "string" },
   },
 });
 if (positionals.length !== 1) {
@@ -28,9 +37,20 @@ if (positionals.length !== 1) {
   process.exit(2);
 }
 
-const tmweb = await loadTmweb((await import(pathToFileURL(path.resolve(o.module)).href)).default, line => console.log(line));
+const log = line => console.log(line);
+const play = o.session && JSON.parse(fs.readFileSync(o.session, "utf8"));
+const PORTS = { 51241: "game", 51220: "profile" };
+const route = play ? (address, port) => PORTS[port] && { url: play.streams[PORTS[port]], token: play.session_token, origin: play.origin } : undefined;
+const tmweb = await loadTmweb((await import(pathToFileURL(path.resolve(o.module)).href)).default, log, { transport: webSocketTransport(route, log) });
 tmweb.FS.mkdir(ROOT);
 tmweb.FS.mount(tmweb.NODEFS, { root: path.resolve(positionals[0]) }, ROOT);
+const options = { viewer: o.viewer, probe: o.probe ? 1 : 0, ...(play && { pol_id: play.legacy.pol_id, password: play.legacy.password }) };
+for (const [key, value] of Object.entries(options)) {
+  if (tmweb.configure(key, value) !== 0) {
+    console.error(`run.mjs: bad option ${key} ${value}`);
+    process.exit(2);
+  }
+}
 if (tmweb.boot(ROOT, { trace: o.trace, until: o.until }) !== 0) process.exit(1);
 
 const budget = Number(o.budget), slice = Number(o.slice), idleMs = Number(o["idle-ms"]);
@@ -40,6 +60,8 @@ while (tmweb.instructions() < budget) {
   if (state === RunState.Halted) break;
   if (state !== RunState.Idle) {
     idleSince = undefined;
+    // A guest that polls without sleeping still lets socket events in
+    await new Promise(resolve => setImmediate(resolve));
     continue;
   }
   idleSince ??= performance.now();

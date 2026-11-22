@@ -26,6 +26,16 @@ export async function loadTmweb(factory, onLog, { transport = webSocketTransport
   return {
     FS: m.FS,
     NODEFS: m.NODEFS,
+    /** Before boot: one of tmweb_configure's options (host/host.h), as text. 0 on success. */
+    configure(key, value) {
+      const [k, v] = [string(key), string(String(value))];
+      try {
+        return m._tmweb_configure(k, v);
+      } finally {
+        m._free(k);
+        m._free(v);
+      }
+    },
     /** 0 on success. trace logs every stand-in call; until halts at the first call to that "module!name". */
     boot(root = ROOT, { trace = false, until = "" } = {}) {
       const [r, u] = [string(root), string(until)];

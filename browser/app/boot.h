@@ -4,12 +4,13 @@
 // and set up the main thread, so Machine::run starts at the game's entry. The host calls it from tmweb_boot.
 
 #include "core/machine.h"
+#include "hle/boot.h"
 
 #include <filesystem>
 
 namespace tmweb
 {
 
-void boot(Machine& machine, const std::filesystem::path& runtime);
+void boot(Machine& machine, const std::filesystem::path& runtime, const hle::BootOptions& options = {});
 
 } // namespace tmweb

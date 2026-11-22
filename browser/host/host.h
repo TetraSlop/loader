@@ -111,6 +111,11 @@ auto connect(std::string_view address, std::uint16_t port) -> std::shared_ptr<So
 // What the host calls, exported from the module (web/module.js)
 extern "C"
 {
+    // Before tmweb_boot: one boot option. "viewer" "polcore" runs the user's polcore_native.dll instead of the
+    // stand-in Viewer; "probe" "1" then logs in to Game IRC and loads the profile instead of booting TM.dll;
+    // "keygen" "0" runs the RSA key generation on polcore's own code; "pol_id" and "password" are the play
+    // session's legacy account. 0 on success, 1 for an unknown key or value.
+    auto tmweb_configure(const char* key, const char* value) -> int;
     // Make the machine and boot the runtime folder at root. trace logs every stand-in call; until (empty for none)
     // halts at the first call to that "module!name". 0 on success.
     auto tmweb_boot(const char* root, int trace, const char* until) -> int;
